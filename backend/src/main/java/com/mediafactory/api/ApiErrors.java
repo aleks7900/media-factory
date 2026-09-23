@@ -4,6 +4,8 @@ import org.springframework.http.*;
 import org.springframework.dao.DataIntegrityViolationException;
 @RestControllerAdvice
 public class ApiErrors {
+ @ExceptionHandler(com.mediafactory.prompt.PromptException.class)
+ public ProblemDetail prompt(com.mediafactory.prompt.PromptException e) {var p=ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,e.getMessage());p.setProperty("code",e.code());if(e.variable()!=null)p.setProperty("variable",e.variable());return p;}
  @ExceptionHandler(com.mediafactory.provider.resilience.ImageGenerationException.class)
  public ProblemDetail provider(com.mediafactory.provider.resilience.ImageGenerationException e) { return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,e.getMessage()); }
  @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)

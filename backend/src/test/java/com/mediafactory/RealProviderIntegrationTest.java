@@ -125,6 +125,16 @@ class RealProviderIntegrationTest {
   response.set(r->new MockResponse().setResponseCode(401));var g=generation();fallback((UUID)g.get("id"));run();available();run();
   assertThat(service.one("generations",(UUID)g.get("id"))).containsEntry("status","QA_PENDING").containsEntry("final_provider","mock");
   assertThat(db.sql("select provider from generation_attempts order by attempt_number").query(String.class).list()).containsExactly("openai","mock");assertThat(service.list("generations")).hasSize(1);
+  assertThat(db.sql("select count(distinct prompt_snapshot_id) from generation_attempts").query(Integer.class).single()).isEqualTo(2);
+  assertThat(db.sql("select count(distinct canonical_positive_prompt) from rendered_prompt_snapshots where generation_id=?").param(g.get("id")).query(Integer.class).single()).isEqualTo(1);
+ }
+ @Test void fallbackKeepsCanonicalNegativeAndDistinctFrozenProviderAdaptations() {
+  response.set(r->new MockResponse().setResponseCode(401));var p=service.project("Fallback prompts","");var c=service.collection((UUID)p.get("id"),"Tests");var concept=service.concept((UUID)c.get("id"),"Concept","Wolf");
+  var options=new ImageOptions("openai",null,ImageOptions.AspectRatio.SQUARE,ImageOptions.Quality.LOW,ImageOptions.Format.PNG,"watermark",null,null,false,1);
+  var g=service.generateImage((UUID)concept.get("id"),"A wolf",1024,1024,"fallback-prompt",null,options);fallback((UUID)g.get("id"));run();available();run();
+  var snapshots=db.sql("select * from rendered_prompt_snapshots where generation_id=? order by provider").param(g.get("id")).query().listOfRows();
+  assertThat(snapshots).hasSize(2);assertThat(snapshots).extracting(s->s.get("canonical_positive_prompt")).containsOnly("A wolf");assertThat(snapshots).extracting(s->s.get("canonical_negative_prompt")).containsOnly("watermark");
+  assertThat(snapshots.get(0).get("adapted_positive_prompt")).isNotEqualTo(snapshots.get(1).get("adapted_positive_prompt"));assertThat(db.sql("select count(distinct prompt_snapshot_id) from generation_attempts").query(Integer.class).single()).isEqualTo(2);
  }
  @Test void allProvidersFailThenGenerationIsTerminal() {
   response.set(r->new MockResponse().setResponseCode(401));var g=generation();fallback((UUID)g.get("id"));run();

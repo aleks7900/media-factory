@@ -1,5 +1,7 @@
 # Pipelines
 
+TASK-03 makes prompt resolution a prerequisite to the existing image job: resolve version/experiment → validate variables/defaults → compose template, preset revisions, pipeline constraints and suffixes → route provider → freeze adaptations → execute. `default`, `wallpaper`, and `stock` contribute deterministic literal constraints through `PromptComposer`; they do not replace image size options. See [prompt engine](prompt-engine.md). The YAML pipeline files remain descriptive specifications, not a separate interpreter.
+
 TASK-02 extends this image pipeline with OpenAI, model/capability validation, provider routes, durable attempt history and shared resilience controls. See [resilience](resilience.md) for the current execution order and [provider routing](provider-routing.md) for fallback. The legacy mock-only behavior below remains available as the default route.
 
 The executable foundation pipeline is implemented in `GenerationWorker`. `pipelines/mock-image-v1.yaml` describes it for version control; it is documentation, not a generic YAML interpreter.

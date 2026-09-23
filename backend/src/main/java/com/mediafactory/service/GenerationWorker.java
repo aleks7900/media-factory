@@ -22,7 +22,7 @@ import tools.jackson.databind.json.JsonMapper;
 /** One provider exchange per dispatch. Backoff is durable queue time, never a sleeping transaction. */
 @Component
 @ConditionalOnProperty(name="media.worker.enabled",havingValue="true",matchIfMissing=true)
-public class GenerationWorker {
+public class GenerationWorker implements AutoCloseable {
  private final JdbcClient db;private final TransactionTemplate tx;private final FactoryService service;
  private final ImageProviderRouter router;private final ImageGenerationProperties properties;
  private final ProviderRateLimiter limiter;private final RetryDecisionService retry;
@@ -59,7 +59,7 @@ public class GenerationWorker {
   try {
    var generation=service.one("generations",generationId);route=service.route(generation);int index=((Number)job.get("route_index")).intValue();hop=route.get(index);
    telemetry.event("provider_selected",generationId,null,hop.provider(),hop.model(),0);provider=router.provider(hop.provider());
-   var request=router.validate(hop,new Request(generationId.toString(),(String)generation.get("prompt"),((Number)generation.get("width")).intValue(),((Number)generation.get("height")).intValue(),FactoryService.options(generation)));
+   var request=router.validate(hop,service.promptRequest(generation,hop));
    var admission=limiter.acquire(hop.provider(),(UUID)job.get("id"));
    if(!admission.acquired()) {
     boolean fallback=admission.circuitOpen()&&index+1<route.size();schedule(job,admission.waitFor(),fallback,admission.circuitOpen()?"Provider circuit is open":"Waiting for provider capacity");

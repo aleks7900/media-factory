@@ -1,5 +1,11 @@
 # Verification report
 
+## TASK-03 — production prompt engine (2026-09-24)
+
+Final checks passed **27 backend unit tests, 35 integration tests and 13 frontend tests**, plus Java 21 bootJar, TypeScript/Vite and Docker production builds. V4 applied to the existing local database without changing earlier migrations. Testcontainers also verified a separate V3-to-V4 upgrade with legacy data. The prompt smoke script and browser workflow verified publication, previews, mock generation, exact persisted snapshots, v2 immutability and A/B attribution. Retry/fallback snapshot guarantees passed integration tests using local fixtures; no paid calls were made. See the [full TASK-03 report](task-03-report.md), [prompt engine](prompt-engine.md) and `scripts/prompt-smoke.ps1`.
+
+The earlier task results below are historical and superseded by these counts.
+
 ## TASK-02 — provider routing (2026-09-24)
 
 The final code passed 10 backend unit tests, 21 integration tests (15 real-adapter fixture tests, 5 pipeline tests and 1 MinIO test), and 7 frontend tests. Java 21 bootJar, TypeScript/Vite, and backend/frontend Docker production builds passed. Tests use local HTTP fixtures and Testcontainers; no paid API was contacted.

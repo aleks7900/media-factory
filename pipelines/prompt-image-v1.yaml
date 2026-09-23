@@ -1,0 +1,24 @@
+# Descriptive contract; implementation lives in PromptEngine and GenerationWorker.
+id: prompt-image-v1
+version: 1
+prompt_engine: com.mediafactory.prompt.PromptEngine
+worker: com.mediafactory.service.GenerationWorker
+steps:
+  - resolve_version_and_experiment
+  - validate_and_default_variables
+  - render_positive_and_negative
+  - compose_presets_pipeline_and_overrides
+  - route_provider
+  - persist_immutable_provider_adaptations
+  - enqueue_existing_job
+  - reuse_snapshot_for_attempt
+  - generate_image
+  - record_usage_and_cost
+  - store_immutable_original
+  - technical_qa
+  - human_review
+prompt_constraints:
+  allowed_pipeline_keys: [default, wallpaper, stock]
+  composition_order: [template, presets_in_request_order, pipeline, manual_suffix]
+  retry: reuse_exact_snapshot
+  fallback: same_canonical_prompt_provider_specific_snapshot

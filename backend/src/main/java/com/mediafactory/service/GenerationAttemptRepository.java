@@ -24,6 +24,7 @@ public class GenerationAttemptRepository {
    var quote=pricing.quote(provider,model,Map.of());
    db.sql("insert into generation_attempts(id,generation_id,job_id,provider,model,attempt_number,status,fallback,estimated_cost,actual_cost,currency) values(?,?,?,?,?,?,'STARTED',?,?,?,?)")
     .params(attempt.id(),attempt.generationId(),attempt.jobId(),provider,model,number,((Number)job.get("route_index")).intValue()>0,quote.estimatedCost(),quote.actualCost(),quote.currency()).update();
+   db.sql("update generation_attempts set prompt_snapshot_id=(select id from rendered_prompt_snapshots where generation_id=? and provider=?) where id=?").params(attempt.generationId(),provider,attempt.id()).update();
    db.sql("""
     insert into generation_costs(id,generation_id,job_id,attempt,attempt_id,provider,model,operation,input_usage,output_usage,estimated_cost,actual_cost,currency,outcome,pricing_status,pricing_version)
     values(?,?,?,?,?,?,?,'IMAGE_GENERATION',null,null,?,?,?,'STARTED',?,?)

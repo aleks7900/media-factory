@@ -1,5 +1,7 @@
 # Domain model
 
+TASK-03 adds PromptTemplate → PromptVersion → PromptVariableDefinition; PromptPreset → PromptPresetVersion; PromptExperiment → PromptExperimentVariant → PromptVersion; and RenderedPromptSnapshot per Generation/provider. Generation references its selected version, primary snapshot, experiment and variant. Each GenerationAttempt references the exact provider snapshot used. Primary snapshot identity remains fixed even when a fallback attempt uses another snapshot. Existing Asset → Publication → PerformanceMetric relationships carry attribution forward. See [prompt versioning](prompt-versioning.md) and [experiments](prompt-experiments.md).
+
 TASK-02 adds `GenerationAttempt` (many per Generation/Job), links each new GenerationCost to its attempt, and stores route/request/result snapshots on Generation. Job adds route index, per-provider count, dispatch gate and recovery-required state. Provider runtime/permits/request-events are infrastructure tables. Existing entities and relationships are retained; see [resilience](resilience.md) for current delivery guarantees.
 
 ```mermaid

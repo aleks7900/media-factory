@@ -2,6 +2,8 @@
 
 A Java 21 / Spring Boot 4.1.1 and React media production foundation. TASK-02 adds an OpenAI Images adapter, provider routing, shared rate/concurrency controls, attempt history and usage-based cost estimates. Free deterministic mock generation remains the default. Tests never call a paid API.
 
+TASK-03 adds a production prompt domain: immutable published versions, typed variables, reusable preset revisions, canonical/provider previews, frozen generation snapshots, and deterministic weighted experiments. See [prompt engine](docs/prompt-engine.md), [versioning](docs/prompt-versioning.md), [presets](docs/prompt-presets.md), and [experiments](docs/prompt-experiments.md).
+
 ## Run the complete system
 
 Prerequisite: Docker Desktop with its Linux engine running and Docker Compose v2.
@@ -20,6 +22,10 @@ docker compose ps
 The MinIO initializer creates and versions the private `media-factory` bucket. Flyway installs pgvector and the schema on startup. Named volumes preserve database and object data across `docker compose down`. Copy `.env.example` to `.env` to change local credentials. Ports bind only to localhost.
 
 Open **Collections**, create a project, collection, and concept. Select **New generation**, enter a prompt, aspect ratio, quality, and Auto/explicit provider/model. Follow **Generation Queue** and open a generation to inspect its route, attempts, latency, costs and failures. In **Review**, approve, reject, or regenerate. **Assets** retains originals; **Costs** distinguishes known estimates from unknown billing. Regenerate creates a new generation and preserves the prior asset and its review state.
+
+For versioned prompts, open **Prompt Library** and create a template. Edit its draft's positive/negative templates and typed variables, supply preview values, and compare canonical/Mock/OpenAI previews without spending money. Save, then publish. **New generation → Prompt source** selects the published version and exposes its variables, presets and pipeline constraints. Generation details show stored prompt snapshots. **Prompt History** creates draft copies and compares versions; **Presets** saves immutable fragment revisions; **Experiments** configures weighted variants and lifecycle. Regeneration repeats the parent's frozen prompt and attribution.
+
+Run `pwsh -File scripts/prompt-smoke.ps1` for an end-to-end free prompt/experiment check. It creates sample templates, preset, versions, a running 50/50 experiment and mock generations. [TASK-03 report](docs/task-03-report.md) records verification results and limitations.
 
 ## Mock-only and real-provider modes
 

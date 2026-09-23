@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Sparkles, X, ArrowRight, Clock, ShieldCheck } from 'lucide-react';
 import { api, type Row } from './api';
+import { PromptGenerationFields } from './PromptStudio';
 
 export interface ProviderInfo {
  id:string; name:string; enabled:boolean; health:string; defaultModel:string; models:string[]; default:boolean; environment:string;
@@ -23,14 +24,16 @@ export function ProvidersPanel({providers}:{providers:ProviderInfo[]}) {
 
 export function GenerationDialog({concepts,providers,close,onCreated}:{concepts:Row[];providers:ProviderInfo[];close:()=>void;onCreated:(id:string)=>void}) {
  const [provider,setProvider]=useState('');const [ratio,setRatio]=useState('SQUARE');const [model,setModel]=useState('');
+ const [promptSource,setPromptSource]=useState<Record<string,unknown>>({});
  const idempotency=useRef({payload:'',key:crypto.randomUUID()});
  const selected=providers.find(p=>p.id===provider)||providers.find(p=>p.default);
  const mutation=useMutation({mutationFn:(body:unknown)=>{const payload=JSON.stringify(body);if(idempotency.current.payload&&idempotency.current.payload!==payload) idempotency.current.key=crypto.randomUUID();idempotency.current.payload=payload;return api<{generationId:string}>('/v1/generations/images',body,idempotency.current.key);},onSuccess:r=>onCreated(r.generationId)});
- function submit(e:FormEvent<HTMLFormElement>) {e.preventDefault();const f=new FormData(e.currentTarget);mutation.mutate({conceptId:f.get('conceptId'),prompt:f.get('prompt'),provider:provider||null,model:model||null,aspectRatio:ratio,quality:f.get('quality'),format:f.get('format'),...(ratio==='CUSTOM'?{width:Number(f.get('width')),height:Number(f.get('height'))}:{})});}
+ function submit(e:FormEvent<HTMLFormElement>) {e.preventDefault();const f=new FormData(e.currentTarget);mutation.mutate({conceptId:f.get('conceptId'),...(promptSource.promptVersionId?promptSource:{prompt:f.get('prompt')}),provider:provider||null,model:model||null,aspectRatio:ratio,quality:f.get('quality'),format:f.get('format'),...(ratio==='CUSTOM'?{width:Number(f.get('width')),height:Number(f.get('height'))}:{})});}
  return <Modal title="New generation" close={close}><div className="eyebrow">LET'S MAKE SOMETHING</div><h2>New generation</h2><p className="muted">Select a provider or let the configured route choose. Paid providers may incur charges.</p>
  {!concepts.length?<p>Create a project, collection, and concept on the Collections page first.</p>:<form onSubmit={submit}>
   <label>Concept<select name="conceptId" required>{concepts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-  <label>Creative prompt<textarea name="prompt" required maxLength={10000} placeholder="Describe the scene you have in mind…"/></label>
+  <PromptGenerationFields value={promptSource} onChange={setPromptSource}/>
+  {!promptSource.promptVersionId&&<label>Creative prompt<textarea name="prompt" required maxLength={10000} placeholder="Describe the scene you have in mind…"/></label>}
   <div className="dimensions"><label>Provider<select aria-label="Provider" value={provider} onChange={e=>{setProvider(e.target.value);setModel('');}}><option value="">Auto{providers.find(p=>p.default)?` · ${providers.find(p=>p.default)?.name}`:''}</option>{providers.map(p=><option key={p.id} value={p.id} disabled={!p.enabled}>{p.name}{!p.enabled?' (disabled)':''}</option>)}</select></label>
   <label>Model<select aria-label="Model" value={model} onChange={e=>setModel(e.target.value)}><option value="">Provider default</option>{selected?.models.map(m=><option key={m}>{m}</option>)}</select></label></div>
   <div className="dimensions"><label>Aspect ratio<select name="aspectRatio" value={ratio} onChange={e=>setRatio(e.target.value)}><option value="SQUARE">Square · 1:1</option><option value="PORTRAIT">Portrait · 2:3</option><option value="LANDSCAPE">Landscape · 3:2</option><option value="CUSTOM">Custom dimensions</option></select></label>
@@ -42,7 +45,8 @@ export function GenerationDialog({concepts,providers,close,onCreated}:{concepts:
 }
 
 interface Attempt {id:string;provider:string;model:string;attempt_number:number;status:string;duration_ms:number|null;fallback:boolean;error_type:string|null;error_message:string|null;outcome_unknown:boolean;estimated_cost:number|null;actual_cost:number|null;currency:string;provider_request_id:string|null}
-interface Details {id:string;status:string;selected_provider:string;final_provider:string|null;model:string;created_at:string;started_at:string|null;completed_at:string|null;provider_route:{provider:string;model:string}[];attempts:Attempt[];assets:Row[];job:{id:string;status:string;failure_reason:string|null;recovery_required:boolean};costs:{currency:string;estimated_total:number|null;actual_total:number|null;unknown_attempts:number}[]}
+interface PromptSnapshot {id:string;kind:string;template_version:number|null;provider:string;canonical_positive_prompt:string;canonical_negative_prompt:string;adapted_positive_prompt:string;adapted_negative_prompt:string;adaptation_strategy:string;variables:Record<string,unknown>;presets:unknown[];composition:Record<string,unknown>;warnings:string[];experiment_id:string|null;experiment_variant_id:string|null}
+interface Details {promptSnapshots?:PromptSnapshot[];id:string;status:string;selected_provider:string;final_provider:string|null;model:string;created_at:string;started_at:string|null;completed_at:string|null;provider_route:{provider:string;model:string}[];attempts:Attempt[];assets:Row[];job:{id:string;status:string;failure_reason:string|null;recovery_required:boolean};costs:{currency:string;estimated_total:number|null;actual_total:number|null;unknown_attempts:number}[]}
 export function GenerationDetails({id,close}:{id:string;close:()=>void}) {
  const client=useQueryClient();const [acknowledged,setAcknowledged]=useState(false);
  const {data,error}=useQuery({queryKey:['generation-details',id],queryFn:()=>api<Details>(`/v1/generations/${id}`),refetchInterval:2000});
@@ -53,6 +57,7 @@ export function GenerationDetails({id,close}:{id:string;close:()=>void}) {
   <p className="muted">Selected: {data.selected_provider} · Final: {data.final_provider??'Pending'}</p>
   <div className="attempt-timeline">{data.attempts.map(a=><article key={a.id}><div className="timeline-dot"/><div className="attempt-heading"><strong>{a.provider} <small>Attempt {a.attempt_number}{a.fallback?' · fallback':''}</small></strong><span className={'badge '+a.status.toLowerCase()}>{a.status}</span></div><p className="muted">{a.model} · {a.duration_ms==null?'In progress':`${(a.duration_ms/1000).toFixed(2)}s`} · {a.estimated_cost==null?'Cost unknown':`${Number(a.estimated_cost).toFixed(5)} ${a.currency}`}</p>{a.error_message&&<p className="attempt-error">{a.error_type}: {a.error_message}</p>}{a.outcome_unknown&&<p className="attempt-error">Provider outcome unknown; billing may have occurred.</p>}{a.provider_request_id&&<small className="muted">Request: {a.provider_request_id}</small>}</article>)}</div>
   {!data.attempts.length&&<p className="muted"><Clock size={14}/> Waiting for a provider permit.</p>}
+  {data.promptSnapshots?.map(s=><details className="prompt-snapshot" key={s.id}><summary>Stored prompt · {s.provider} · {s.kind}{s.template_version?` v${s.template_version}`:''}</summary><p className="muted">{s.adaptation_strategy}</p><h4>Canonical positive</h4><pre>{s.canonical_positive_prompt}</pre><h4>Canonical negative</h4><pre>{s.canonical_negative_prompt||'None'}</pre><h4>Exact provider prompt</h4><pre>{s.adapted_positive_prompt}</pre>{s.adapted_negative_prompt&&<pre>{s.adapted_negative_prompt}</pre>}<h4>Variables, presets and overrides</h4><pre>{JSON.stringify({variables:s.variables,presets:s.presets,composition:s.composition},null,2)}</pre>{s.experiment_id&&<p className="muted">Experiment {s.experiment_id} · variant {s.experiment_variant_id}</p>}{s.warnings.map((w,i)=><p className="lint-warning" key={i}>{w}</p>)}</details>)}
   {data.assets.map(a=><img className="detail-preview" key={a.id} src={`/api/assets/${a.id}/content`} alt="Generated original"/>)}
   <div className="detail-cost"><h3>Generation cost</h3>{data.costs.length?data.costs.map(c=><p key={c.currency}>{c.estimated_total==null?'Unknown':`${Number(c.estimated_total).toFixed(5)} ${c.currency} estimated`}{c.unknown_attempts>0?` + ${c.unknown_attempts} unknown attempt(s)`:''}<small className="muted"> · Actual: {c.actual_total==null?'not reported':`${Number(c.actual_total).toFixed(5)} ${c.currency}`}</small></p>):<p className="muted">No provider call yet.</p>}</div>
   {data.job.failure_reason&&<p className="attempt-error">{data.job.failure_reason}</p>}

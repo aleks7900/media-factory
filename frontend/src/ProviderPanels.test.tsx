@@ -9,12 +9,12 @@ function wrap(element:React.ReactNode) {return render(<QueryClientProvider clien
 describe('Provider operations UI',()=>{
  it('shows safe health, limits and unknown costs',()=>{wrap(<ProvidersPanel providers={[provider]}/>);expect(screen.getByText('HEALTHY')).toBeInTheDocument();expect(screen.getByText('Unknown')).toBeInTheDocument();expect(screen.getByText('2 concurrent')).toBeInTheDocument();});
  it('submits auto routing and explicit quality asynchronously',async()=>{
-  const fetcher=vi.spyOn(globalThis,'fetch').mockResolvedValue(new Response(JSON.stringify({generationId:'gen-1'}),{status:202}));const created=vi.fn();
+  const fetcher=vi.spyOn(globalThis,'fetch').mockImplementation(async url=>new Response(JSON.stringify(String(url).includes('/generations/images')?{generationId:'gen-1'}:[]),{status:String(url).includes('/generations/images')?202:200}));const created=vi.fn();
   wrap(<GenerationDialog concepts={[{id:'concept-1',name:'Concept'}]} providers={[provider]} close={()=>{}} onCreated={created}/>);
   await userEvent.type(screen.getByLabelText('Creative prompt'),'A quiet studio');await userEvent.selectOptions(screen.getByLabelText('Quality'),'LOW');
   await userEvent.selectOptions(screen.getByLabelText('Aspect ratio'),'PORTRAIT');await userEvent.click(screen.getByRole('button',{name:'Generate image'}));
   await waitFor(()=>expect(created).toHaveBeenCalledWith('gen-1'));
-  const options=fetcher.mock.calls[0][1]!;expect(JSON.parse(String(options.body))).toMatchObject({provider:null,quality:'LOW',aspectRatio:'PORTRAIT'});expect(options.headers).toHaveProperty('Idempotency-Key');
+  const options=fetcher.mock.calls.find(c=>String(c[0]).includes('/generations/images'))![1]!;expect(JSON.parse(String(options.body))).toMatchObject({provider:null,quality:'LOW',aspectRatio:'PORTRAIT'});expect(options.headers).toHaveProperty('Idempotency-Key');
  });
  it('shows fallback attempt history and requires acknowledgement of duplicate billing',async()=>{
   vi.spyOn(globalThis,'fetch').mockResolvedValue(new Response(JSON.stringify({id:'gen-1',status:'FAILED',selected_provider:'openai',final_provider:null,model:'gpt-image-2',provider_route:[{provider:'openai',model:'gpt-image-2'},{provider:'mock',model:'studio-mock-v1'}],attempts:[{id:'a-1',provider:'openai',model:'gpt-image-2',attempt_number:1,status:'TIMED_OUT',duration_ms:120000,fallback:false,error_type:'TIMEOUT',error_message:'Request timed out',outcome_unknown:true,estimated_cost:null,currency:'USD'}],assets:[],job:{id:'job-1',status:'FAILED',recovery_required:true,failure_reason:'Provider outcome unknown'},costs:[{currency:'USD',estimated_total:null,actual_total:null,unknown_attempts:1}]}),{status:200}));
