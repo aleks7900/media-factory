@@ -10,8 +10,8 @@ import java.util.*;
 @RestController
 @RequestMapping("/api")
 public class FactoryController {
- private final FactoryService service; private final MediaStorage storage;
- public FactoryController(FactoryService service,MediaStorage storage) { this.service=service;this.storage=storage; }
+ private final FactoryService service; private final MediaStorage storage;private final com.mediafactory.service.ProviderInfoService providers;
+ public FactoryController(FactoryService service,MediaStorage storage,com.mediafactory.service.ProviderInfoService providers) { this.service=service;this.storage=storage;this.providers=providers; }
  public record ProjectRequest(@NotBlank @Size(max=200) String name,@Size(max=10000) String description) {}
  public record CollectionRequest(@NotNull UUID projectId,@NotBlank @Size(max=200) String name) {}
  public record ConceptRequest(@NotNull UUID collectionId,@NotBlank @Size(max=200) String name,@NotBlank @Size(max=10000) String prompt) {}
@@ -42,8 +42,9 @@ public class FactoryController {
  @PostMapping("/reviews") @ResponseStatus(HttpStatus.CREATED) public Object review(@Valid @RequestBody ReviewRequest r) { return service.review(r.assetId(),r.decision(),Objects.toString(r.reason(),"")); }
  @GetMapping("/jobs") public Object jobs() { return service.list("jobs"); }
  @GetMapping("/jobs/{id}") public Object job(@PathVariable UUID id) { return service.one("jobs",id); }
- @PostMapping("/jobs/{id}/retry") public Object retry(@PathVariable UUID id) { return service.retry(id); }
+ public record RetryRequest(boolean acknowledgeDuplicateRisk) {}
+ @PostMapping("/jobs/{id}/retry") public Object retry(@PathVariable UUID id,@RequestBody(required=false) RetryRequest request) { return service.retry(id,request!=null&&request.acknowledgeDuplicateRisk()); }
  @GetMapping("/dashboard") public Object dashboard() { return service.dashboard(); }
  @GetMapping("/costs") public Object costs() { return service.list("generation_costs"); }
- @GetMapping("/providers") public Object providers() { return List.of(Map.of("name","Mock Studio","model","studio-mock-v1","mode","mock","cost",0,"capabilities",List.of("image","video-fixture","text","vision","upscale"))); }
+ @GetMapping("/providers") public Object providers() { return providers.list(); }
 }

@@ -1,5 +1,7 @@
 # Architecture
 
+TASK-02 supersedes the original worker retry/provider description below. The active worker now uses a persistent provider route, shared PostgreSQL rate/concurrency permits and circuit state, classified retries, a duplicate-dispatch gate, and explicit reconciliation for unknown paid outcomes. See [providers](providers.md), [routing](provider-routing.md), [resilience](resilience.md), and [cost tracking](cost-tracking.md). V3 adds these structures without changing V1/V2. The original sections remain TASK-01 design history where they differ.
+
 The foundation is a modular monolith with a PostgreSQL-backed queue. Java 21, Spring Boot 4.1.1, Gradle 9.1, PostgreSQL 17/pgvector, and S3-compatible object storage are used. Spring Boot 4.1.1 is compatible with Java 21 per the [official system requirements](https://docs.spring.io/spring-boot/system-requirements.html).
 
 ```mermaid

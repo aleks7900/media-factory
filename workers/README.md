@@ -1,5 +1,7 @@
 # Worker runtime
 
+TASK-02: the scheduler now polls every second by default and dispatches bounded virtual-thread tasks (`IMAGE_WORKER_CONCURRENCY`, default 4). PostgreSQL enforces each provider's RPM/concurrency across instances. The compare-and-set dispatch gate prevents duplicate calls under the same lease. Real-provider expired attempts require reconciliation instead of blind replay. See [resilience](../docs/resilience.md) for the active design; the paragraph below describes the initial TASK-01 implementation.
+
 The initial worker runs in the backend JVM (`GenerationWorker`) every 1.5 seconds. This avoids an external broker while retaining transactional enqueue and multi-instance-safe claiming. Set `WORKER_ENABLED=false` to disable it for API-only deployments. Separate worker deployment can reuse the backend artifact after adding an explicit non-web application profile.
 
 PostgreSQL owns durability. Queue polling uses row locks with `SKIP LOCKED`; a five-minute lease fences stale completions. This version processes one job per instance at a time. Use job status/failure reason/attempts and application logs for diagnosis. Do not manually reset attempts or delete originals to retry a job.

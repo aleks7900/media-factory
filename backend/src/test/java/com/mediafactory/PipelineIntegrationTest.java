@@ -27,12 +27,17 @@ class PipelineIntegrationTest {
  }
  @Autowired FactoryService service; @Autowired JdbcClient db; @Autowired TransactionTemplate tx; @Autowired MediaStorage storage; @Autowired TechnicalQa qa;
  @org.springframework.beans.factory.annotation.Value("${local.server.port}") int port;
- GenerationWorker worker(ImageGenerationProvider provider) { return new GenerationWorker(db,tx,service,provider,storage,qa); }
+ @Autowired ImageGenerationProperties properties;
+ @Autowired com.mediafactory.provider.resilience.ProviderRateLimiter limiter;
+ @Autowired com.mediafactory.provider.resilience.RetryDecisionService retry;
+ @Autowired GenerationAttemptRepository attempts;
+ @Autowired ProviderObservability telemetry;
+ GenerationWorker worker(ImageGenerationProvider provider) { return new GenerationWorker(db,tx,service,new com.mediafactory.provider.routing.ImageProviderRouter(List.of(provider),properties),properties,limiter,retry,attempts,telemetry,storage,qa); }
  UUID concept() {
    var p=service.project("Integration studio","");var c=service.collection((UUID)p.get("id"),"Test collection");
    return (UUID)service.concept((UUID)c.get("id"),"Test concept","A landscape").get("id");
  }
- @BeforeEach void clear() { db.sql("truncate projects cascade").update(); }
+ @BeforeEach void clear() { db.sql("truncate projects,provider_runtime,provider_request_events cascade").update(); }
  @Test void completePipelineIdempotencyReviewAndRegeneration() {
    UUID concept=concept();String key=UUID.randomUUID().toString();
    var g=service.generate(concept,"Test",128,128,key,null);

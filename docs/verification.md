@@ -1,5 +1,17 @@
 # Verification report
 
+## TASK-02 — provider routing (2026-09-24)
+
+The final code passed 10 backend unit tests, 21 integration tests (15 real-adapter fixture tests, 5 pipeline tests and 1 MinIO test), and 7 frontend tests. Java 21 bootJar, TypeScript/Vite, and backend/frontend Docker production builds passed. Tests use local HTTP fixtures and Testcontainers; no paid API was contacted.
+
+All four Compose services are healthy. Readiness returned `UP`; Flyway versions 1, 2 and additive version 3 succeeded. Both `scripts/smoke.ps1` and `scripts/provider-smoke.ps1` passed. The latter verifies provider discovery, explicit mock routing, asynchronous v1 creation, idempotency, attempt/cost records, JPEG download, SHA-256, technical QA and Prometheus metrics. Browser verification covered provider health/statistics, generation controls, and a completed mock generation with attempt timeline, cost and original preview.
+
+The deployed smoke test exposed an omitted optional boolean being rejected by Jackson. The request DTO now explicitly defaults it, and an HTTP integration regression test verifies minimal requests and idempotent replay.
+
+Real provider implementation completed but live generation was not executed because credentials were not available.
+
+See [TASK-02 implementation report](task-02-report.md) for architecture, changed files, capabilities, resilience, pricing and remaining limitations. The foundation results below are historical TASK-01 results, superseded by the counts above.
+
 Verified on 2026-09-24 (Europe/Bucharest), Windows with Docker Desktop Linux containers.
 
 | Check | Result |

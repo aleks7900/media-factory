@@ -1,6 +1,9 @@
 server:
   port: 8080
 spring:
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
   datasource:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:55432/mediafactory}
     username: ${DATABASE_USER:mediafactory}
@@ -12,7 +15,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
   endpoint:
     health:
       probes:
@@ -30,3 +33,59 @@ media:
     secret-key: ${S3_SECRET_KEY:minioadmin}
   worker:
     enabled: ${WORKER_ENABLED:true}
+logging:
+  structured:
+    format:
+      console: logstash
+media-factory:
+  openai:
+    api-key: ${OPENAI_API_KEY:}
+    endpoint: ${OPENAI_IMAGE_ENDPOINT:https://api.openai.com/v1/images/generations}
+  image-generation:
+    default-provider: ${MEDIA_FACTORY_IMAGE_PROVIDER:mock}
+    environment: ${MEDIA_FACTORY_ENVIRONMENT:development}
+    worker-concurrency: ${IMAGE_WORKER_CONCURRENCY:4}
+    lease-duration: 5m
+    routing:
+      fallback-enabled: ${IMAGE_FALLBACK_ENABLED:false}
+      fallback-providers: ${IMAGE_FALLBACK_PROVIDERS:}
+      mock-production-fallback-enabled: ${MOCK_PRODUCTION_FALLBACK_ENABLED:false}
+    providers:
+      mock:
+        enabled: true
+        model: studio-mock-v1
+        models: [studio-mock-v1]
+        mock-scenario: ${MOCK_IMAGE_SCENARIO:success}
+        rate-limit:
+          requests-per-minute: 120
+          concurrent-requests: 3
+        retry:
+          max-attempts: 3
+      openai:
+        enabled: ${OPENAI_IMAGE_ENABLED:false}
+        model: ${OPENAI_IMAGE_MODEL:gpt-image-2}
+        models: [gpt-image-2, gpt-image-1.5, gpt-image-1]
+        timeout:
+          connect: ${OPENAI_CONNECT_TIMEOUT:10s}
+          request: ${OPENAI_IMAGE_TIMEOUT:120s}
+        rate-limit:
+          requests-per-minute: ${OPENAI_REQUESTS_PER_MINUTE:20}
+          concurrent-requests: ${OPENAI_MAX_CONCURRENT:3}
+        retry:
+          max-attempts: ${OPENAI_MAX_ATTEMPTS:3}
+          initial-delay: 1s
+          max-delay: 30s
+          multiplier: 2
+          jitter: true
+          retry-ambiguous: ${OPENAI_RETRY_AMBIGUOUS:false}
+        circuit:
+          failure-threshold: 3
+          cooldown: 60s
+        pricing:
+          "[gpt-image-2]":
+            version: "2026-09-24"
+            source: https://developers.openai.com/api/docs/pricing
+            currency: USD
+            text-input-per-million: 2.50
+            image-input-per-million: 4.00
+            output-per-million: 15.00

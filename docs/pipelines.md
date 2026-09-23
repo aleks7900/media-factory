@@ -1,5 +1,7 @@
 # Pipelines
 
+TASK-02 extends this image pipeline with OpenAI, model/capability validation, provider routes, durable attempt history and shared resilience controls. See [resilience](resilience.md) for the current execution order and [provider routing](provider-routing.md) for fallback. The legacy mock-only behavior below remains available as the default route.
+
 The executable foundation pipeline is implemented in `GenerationWorker`. `pipelines/mock-image-v1.yaml` describes it for version control; it is documentation, not a generic YAML interpreter.
 
 1. Create a project → collection → concept.

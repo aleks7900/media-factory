@@ -1,5 +1,7 @@
 # Domain model
 
+TASK-02 adds `GenerationAttempt` (many per Generation/Job), links each new GenerationCost to its attempt, and stores route/request/result snapshots on Generation. Job adds route index, per-provider count, dispatch gate and recovery-required state. Provider runtime/permits/request-events are infrastructure tables. Existing entities and relationships are retained; see [resilience](resilience.md) for current delivery guarantees.
+
 ```mermaid
 erDiagram
   Project ||--o{ Collection : contains

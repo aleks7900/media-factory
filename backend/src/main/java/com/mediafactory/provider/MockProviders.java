@@ -10,11 +10,29 @@ import java.util.Map;
 
 @Component
 public class MockProviders implements ImageGenerationProvider, VideoGenerationProvider, VisionProvider, TextGenerationProvider, UpscaleProvider {
+ private final ImageGenerationProperties properties;
+ public MockProviders() { this.properties=null; }
+ @org.springframework.beans.factory.annotation.Autowired
+ public MockProviders(ImageGenerationProperties properties) { this.properties=properties; }
+ public String providerId() { return "mock"; }
+ public boolean replaySafe() { return true; }
+ public ProviderCapabilities capabilities() {
+  return new ProviderCapabilities(java.util.Set.of(ImageOptions.AspectRatio.values()),java.util.Set.of(ImageOptions.Format.values()),java.util.Set.of(ImageOptions.Quality.values()),java.util.Set.of(),true,false,false,false,false,1);
+ }
  public Usage estimate(Request request) { return new Usage("mock","studio-mock-v1","image.generate",request.prompt().length(),0,BigDecimal.ZERO,"USD"); }
  private <T> Result<T> result(T output, String operation, long input) {
    return new Result<>(output,new Usage("mock","studio-mock-v1",operation,input,1,BigDecimal.ZERO,"USD"),Map.of("mode","mock","billable","false"));
  }
  public Result<Media> generate(Request r) {
+   if(properties!=null) {
+    var type=switch(properties.provider("mock").mockScenario()) {
+     case "rate-limit" -> com.mediafactory.provider.resilience.ImageGenerationException.Type.RATE_LIMIT;
+     case "timeout" -> com.mediafactory.provider.resilience.ImageGenerationException.Type.TIMEOUT;
+     case "provider-error" -> com.mediafactory.provider.resilience.ImageGenerationException.Type.UNAVAILABLE;
+     default -> null;
+    };
+    if(type!=null) throw new com.mediafactory.provider.resilience.ImageGenerationException(type,"Simulated "+type,java.time.Duration.ofSeconds(1),false,null);
+   }
    try {
      var image = new BufferedImage(r.width(),r.height(),BufferedImage.TYPE_INT_RGB);
      var g = image.createGraphics();
@@ -25,8 +43,9 @@ public class MockProviders implements ImageGenerationProvider, VideoGenerationPr
      for(int i=0;i<7;i++) g.drawOval(r.width()/8+i*22,r.height()/8+i*22,r.width()/2,r.height()/2);
      g.setFont(new Font("SansSerif",Font.BOLD,Math.max(16,r.width()/28)));
      g.drawString("MEDIA / FACTORY",r.width()/12,r.height()*4/5); g.dispose();
-     var out = new ByteArrayOutputStream(); ImageIO.write(image,"png",out);
-     return result(new Media(out.toByteArray(),"image/png"),"image.generate",r.prompt().length());
+     String format=r.options().format()==ImageOptions.Format.PNG?"png":"jpeg";
+     var out = new ByteArrayOutputStream(); ImageIO.write(image,format,out);
+     return result(new Media(out.toByteArray(),"image/"+format),"IMAGE_GENERATION",r.prompt().length());
    } catch(IOException e) { throw new IllegalStateException("Mock rendering failed",e); }
  }
  public Result<Media> generateVideo(Request r) {

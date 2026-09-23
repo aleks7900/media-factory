@@ -1,6 +1,6 @@
 # Media Factory
 
-A Java 21 / Spring Boot 4.1.1 and React media production foundation. Free, deterministic mock images exercise the complete generation → storage → technical QA → human review pipeline. No paid AI credentials or calls are used.
+A Java 21 / Spring Boot 4.1.1 and React media production foundation. TASK-02 adds an OpenAI Images adapter, provider routing, shared rate/concurrency controls, attempt history and usage-based cost estimates. Free deterministic mock generation remains the default. Tests never call a paid API.
 
 ## Run the complete system
 
@@ -19,7 +19,32 @@ docker compose ps
 
 The MinIO initializer creates and versions the private `media-factory` bucket. Flyway installs pgvector and the schema on startup. Named volumes preserve database and object data across `docker compose down`. Copy `.env.example` to `.env` to change local credentials. Ports bind only to localhost.
 
-Open **Collections**, create a project, collection, and concept. Select **New generation**, enter a prompt and dimensions, then follow **Generation Queue**. In **Review**, approve, reject, or regenerate. **Assets** retains originals, and **Costs** shows a zero-cost ledger for mock operations. Regenerate creates a new generation and preserves the prior asset and its review state.
+Open **Collections**, create a project, collection, and concept. Select **New generation**, enter a prompt, aspect ratio, quality, and Auto/explicit provider/model. Follow **Generation Queue** and open a generation to inspect its route, attempts, latency, costs and failures. In **Review**, approve, reject, or regenerate. **Assets** retains originals; **Costs** distinguishes known estimates from unknown billing. Regenerate creates a new generation and preserves the prior asset and its review state.
+
+## Mock-only and real-provider modes
+
+Default mock-only mode needs no AI credentials:
+
+```text
+MEDIA_FACTORY_IMAGE_PROVIDER=mock
+OPENAI_IMAGE_ENABLED=false
+MOCK_IMAGE_SCENARIO=success
+```
+
+For real generation, set these in your uncommitted `.env` or backend secret environment:
+
+```text
+MEDIA_FACTORY_IMAGE_PROVIDER=openai
+OPENAI_IMAGE_ENABLED=true
+OPENAI_API_KEY=<your own key, set locally>
+OPENAI_IMAGE_MODEL=gpt-image-2
+```
+
+Then run `docker compose up -d --build`. A generation submitted in this mode may incur provider charges. Keep secrets out of frontend settings and Git. The app never sends the key to the browser. Supported output is one PNG/JPEG at 1024×1024, 1024×1536, or 1536×1024. Unsupported options fail validation. Model access depends on your provider account.
+
+Fallback is disabled by default. `IMAGE_FALLBACK_ENABLED=true` plus `IMAGE_FALLBACK_PROVIDERS=mock` deliberately enables a development fallback. Production additionally requires `MOCK_PRODUCTION_FALLBACK_ENABLED=true` to use mock automatically. Ambiguous paid outcomes require manual acknowledgement by default; review [resilience](docs/resilience.md) before enabling automatic timeout retries.
+
+See [providers](docs/providers.md), [routing](docs/provider-routing.md), [resilience](docs/resilience.md), and [cost tracking](docs/cost-tracking.md). Metrics are available at `http://localhost:8080/actuator/prometheus`.
 
 Run the full API smoke test (creates a small demo collection):
 
@@ -74,6 +99,6 @@ On Windows use `gradlew.bat`. Integration tests require Docker and run real Post
 
 ## Deployment boundary
 
-This is a private, single-workspace foundation. It has no user authentication or tenant authorization; do not expose it publicly without an authenticated gateway, TLS, managed secrets, backup/restore procedures, and infrastructure hardening. The Compose credentials are development defaults. Lists return the newest 200 records. Video orchestration, publishing, metric ingestion, embeddings, and AI-powered upscale are extension points rather than active pipelines. All five provider ports have free mock implementations. Publication and performance schemas are ready for later integration.
+This is a private, single-workspace foundation. It has no user authentication or tenant authorization; do not expose it publicly without an authenticated gateway, TLS, managed secrets, backup/restore procedures, and infrastructure hardening—especially with a paid provider enabled. Compose database/storage defaults are local development defaults. Lists return the newest 200 records. Video orchestration, publishing, metric ingestion, embeddings, and AI-powered upscale remain extension points. Publication and performance schemas are ready for later integration.
 
 MinIO's community repository is archived and old Docker Hub images are unavailable; Compose pins official Quay releases for reproducible local development. For production, use a maintained S3 service through `S3MediaStorage` and review your storage lifecycle and retention requirements. See the [official MinIO repository](https://github.com/minio/minio) and [container documentation](https://min.io/docs/minio/container/index.html).
