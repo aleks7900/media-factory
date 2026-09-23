@@ -1,0 +1,32 @@
+server:
+  port: 8080
+spring:
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:55432/mediafactory}
+    username: ${DATABASE_USER:mediafactory}
+    password: ${DATABASE_PASSWORD:mediafactory}
+  threads:
+    virtual:
+      enabled: true
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db,mediaStorage
+media:
+  storage:
+    type: ${STORAGE_TYPE:local}
+    root: ${STORAGE_ROOT:../storage/data}
+    endpoint: ${S3_ENDPOINT:http://localhost:9000}
+    bucket: ${S3_BUCKET:media-factory}
+    access-key: ${S3_ACCESS_KEY:minioadmin}
+    secret-key: ${S3_SECRET_KEY:minioadmin}
+  worker:
+    enabled: ${WORKER_ENABLED:true}

@@ -1,0 +1,22 @@
+id: mock-image-v1
+version: 1
+mode: mock
+implementation: com.mediafactory.service.GenerationWorker
+steps:
+  - enqueue
+  - claim_with_lease
+  - generate_image
+  - record_usage_and_cost
+  - store_immutable_original
+  - technical_qa
+  - human_review
+technical_qa:
+  maximum_bytes: 26214400
+  resolution: exact_requested_dimensions
+  aspect_ratio_tolerance: 0.01
+  decode_integrity: required
+  duplicate_sha256: reject
+retry:
+  automatic_attempts: 3
+  lease_seconds: 300
+  backoff: exponential
