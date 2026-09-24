@@ -30,11 +30,13 @@ public class QualityReviewService {
   private final JdbcClient db;
   private final QaConfiguration config;
   private final MeterRegistry metrics;
+  public final com.mediafactory.similarity.SimilarityService similarity;
 
-  public QualityReviewService(JdbcClient db, QaConfiguration config, MeterRegistry metrics) {
+  public QualityReviewService(JdbcClient db, QaConfiguration config, MeterRegistry metrics, com.mediafactory.similarity.SimilarityService similarity) {
     this.db = db;
     this.config = config;
     this.metrics = metrics;
+    this.similarity = similarity;
   }
 
   public static void event(String name, UUID review, Map<String, ?> details) {
@@ -42,6 +44,7 @@ public class QualityReviewService {
         .addKeyValue("event", name).addKeyValue("review_id", review).addKeyValue("details", details)
         .log("Quality assurance event");
   }
+  public com.mediafactory.similarity.SimilarityService similarity() { return similarity; }
 
   public static ResponseStatusException conflict(String message) {
     return new ResponseStatusException(HttpStatus.CONFLICT, message);

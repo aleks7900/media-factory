@@ -1,6 +1,10 @@
 server:
   port: 8080
 spring:
+  task:
+    scheduling:
+      pool:
+        size: 4
   jackson:
     deserialization:
       fail-on-unknown-properties: true
@@ -24,6 +28,12 @@ management:
         readiness:
           include: readinessState,db,mediaStorage
 media:
+  similarity:
+    enabled: ${SIMILARITY_ENABLED:true}
+    embedding:
+      endpoint: ${EMBEDDING_ENDPOINT:http://localhost:8001}
+    top-k: ${SIMILARITY_TOP_K:50}
+    minimum-similarity: ${SIMILARITY_MINIMUM:0.70}
   qa:
     provider: ${VISION_PROVIDER:mock}
     mock-scenario: ${MOCK_VISION_SCENARIO:PERFECT}

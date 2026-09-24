@@ -30,15 +30,17 @@ public class FactoryService {
   private final ImageGenerationProperties properties;
   private final PromptEngine prompts;
   private final com.mediafactory.quality.QualityReviewService quality;
+  private final com.mediafactory.similarity.DiversityGuard diversity;
 
   public FactoryService(JdbcClient db, ImageProviderRoutingStrategy routing,
       ImageGenerationProperties properties, PromptEngine prompts,
-      com.mediafactory.quality.QualityReviewService quality) {
+      com.mediafactory.quality.QualityReviewService quality, com.mediafactory.similarity.DiversityGuard diversity) {
     this.db = db;
     this.routing = routing;
     this.properties = properties;
     this.prompts = prompts;
     this.quality = quality;
+    this.diversity = diversity;
   }
 
   public static ImageOptions options(Map<String, Object> generation) {
@@ -138,6 +140,7 @@ public class FactoryService {
     var resolved = parent == null || !reuseParent ? prompts.resolve(input, concept, key, true)
         : prompts.historical(parent);
     String prompt = resolved.canonical().positivePrompt();
+    var diversityEvidence = diversity.enforce(concept, prompt, parent != null);
     var route = parent == null ? routing.resolve(
         new Request(id.toString(), prompt, width, height, prompts.adaptedOptions(options, null)))
         : new ProviderRoute("REGENERATE", route(one("generations", parent)));
@@ -163,6 +166,7 @@ public class FactoryService {
         .params(JSON.writeValueAsString(input), resolved.versionId(), resolved.experimentId(),
             resolved.variantId(), firstSnapshot, id).update();
     transition(id, GenerationStatus.QUEUED);
+    diversity.record(id, diversityEvidence);
     db.sql("insert into jobs(id,generation_id,idempotency_key,status) values(?,?,?,'QUEUED')")
         .params(UUID.randomUUID(), id, key).update();
     db.sql("update jobs set max_attempts=? where generation_id=?").params(route.providers().stream()

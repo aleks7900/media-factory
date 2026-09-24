@@ -30,7 +30,7 @@ import tools.jackson.databind.json.JsonMapper;
 import static org.assertj.core.api.Assertions.*;
 
 @Tag("integration") @Testcontainers @ExtendWith(OutputCaptureExtension.class)
-@SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={"media.worker.enabled=false"})
+@SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={"media.worker.enabled=false","media.similarity.enabled=false"})
 class RealProviderIntegrationTest {
  static final String SECRET="test-provider-secret-DO-NOT-EXPOSE";
  static final MockWebServer server=new MockWebServer();

@@ -30,6 +30,15 @@ public class ProviderRateLimiter {
 
   public Admission acquire(String provider, UUID jobId, boolean qaJob,
       ImageGenerationProperties.RateLimit rate, Duration lease) {
+    return acquireOwned(provider, jobId, qaJob ? "qa_job_id" : "job_id", rate, lease);
+  }
+
+  public Admission acquireSimilarity(String provider, UUID jobId, ImageGenerationProperties.RateLimit rate, Duration lease) {
+    return acquireOwned(provider, jobId, "similarity_job_id", rate, lease);
+  }
+
+  private Admission acquireOwned(String provider, UUID jobId, String owner,
+      ImageGenerationProperties.RateLimit rate, Duration lease) {
     return tx.execute(s -> {
       db.sql("insert into provider_runtime(provider) values(?) on conflict do nothing")
           .param(provider).update();
@@ -63,7 +72,7 @@ public class ProviderRateLimiter {
         return new Admission(null, Duration.ofMillis(wait + 1), false);
       }
       UUID token = UUID.randomUUID();
-      db.sql("insert into provider_permits(token,provider," + (qaJob ? "qa_job_id" : "job_id")
+      db.sql("insert into provider_permits(token,provider," + owner
               + ",expires_at) values(?,?,?,now()+(? * interval '1 millisecond'))")
           .params(token, provider, jobId, lease.toMillis()).update();
       db.sql("insert into provider_request_events(id,provider) values(?,?)")

@@ -1,5 +1,7 @@
 # Worker runtime
 
+TASK-05 adds `similarity/embedding/`, a long-lived Python CLIP image/text service, and the backend `SimilarityWorker` for durable feature extraction/backfill/reindex/clustering jobs. Compose starts the model worker on localhost:8001; CPU works without a GPU or paid API key. Model identity, preprocessing, batch bounds, leases and upgrade procedures are documented in [image embeddings](../docs/image-embeddings.md) and [similarity architecture](../docs/similarity-engine.md). Run its network-free contract tests with `docker compose exec -T embedding python -m unittest discover -s tests -v`.
+
 TASK-02: the scheduler now polls every second by default and dispatches bounded virtual-thread tasks (`IMAGE_WORKER_CONCURRENCY`, default 4). PostgreSQL enforces each provider's RPM/concurrency across instances. The compare-and-set dispatch gate prevents duplicate calls under the same lease. Real-provider expired attempts require reconciliation instead of blind replay. See [resilience](../docs/resilience.md) for the active design; the paragraph below describes the initial TASK-01 implementation.
 
 The initial worker runs in the backend JVM (`GenerationWorker`) every 1.5 seconds. This avoids an external broker while retaining transactional enqueue and multi-instance-safe claiming. Set `WORKER_ENABLED=false` to disable it for API-only deployments. Separate worker deployment can reuse the backend artifact after adding an explicit non-web application profile.

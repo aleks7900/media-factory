@@ -124,6 +124,8 @@ public class ReviewWorkflowService {
       throw QualityReviewService.conflict("Effective QA approval required for publication");
     }
     UUID id = UUID.randomUUID();
+    var similarityBlock = db.sql("select similarity_publication_block_reason(?)").param(asset).query(String.class).optional();
+    if (similarityBlock.isPresent()) throw QualityReviewService.conflict(similarityBlock.get());
     db.sql("insert into publications(id,asset_id,channel,external_id) values(?,?,?,?)")
         .params(id, asset, channel, externalId).update();
     db.sql("update generations set status='PUBLISHED',updated_at=now() where id=?")

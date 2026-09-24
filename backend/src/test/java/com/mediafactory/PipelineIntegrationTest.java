@@ -18,7 +18,7 @@ import java.nio.file.*;
 import static org.assertj.core.api.Assertions.*;
 @Tag("integration")
 @Testcontainers
-@SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={"media.worker.enabled=false"})
+@SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={"media.worker.enabled=false","media.similarity.enabled=false"})
 class PipelineIntegrationTest {
  @Container static PostgreSQLContainer<?> postgres=new PostgreSQLContainer<>(DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"));
  @DynamicPropertySource static void properties(DynamicPropertyRegistry r) {

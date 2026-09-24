@@ -22,10 +22,12 @@ import {api, type Row} from './api';
 import {GenerationDetails, GenerationDialog, type ProviderInfo, ProvidersPanel} from './ProviderPanels';
 import {PromptStudio} from './PromptStudio';
 import {CollectionQaPolicies, QaDashboard, QaJobs, ReviewWorkspace} from './ReviewWorkspace';
+import {SimilarityWorkspace, SimilarityDashboard} from './SimilarityWorkspace';
 
 const pages = ['Dashboard', 'Collections', 'Generation Queue', 'Assets', 'Review', 'Providers', 'Costs', 'Settings'] as const;
 const promptPages = ['Prompt Library', 'Prompt Editor', 'Prompt History', 'Presets', 'Experiments'] as const;
-type Page = typeof pages[number] | typeof promptPages[number];
+const similarityPages = ['Duplicate Review', 'Similarity Explorer', 'Collection Diversity', 'Embedding Jobs'] as const;
+type Page = typeof pages[number] | typeof promptPages[number] | typeof similarityPages[number];
 const icons = [LayoutDashboard, Layers3, ListVideo, Images, ScanEye, Plug, CircleDollarSign, Settings];
 const labels: Record<string, string> = {
     generated_today: 'Generated today',
@@ -93,6 +95,8 @@ export function App() {
                                                   onClick={() => setPage(name)}><Layers3 size={18}/>{name}
             </button>)}</nav>
             <div className="aside-bottom">
+                <div className="nav-label">SIMILARITY</div>
+                <nav>{similarityPages.map(name=><button key={name} className={page===name?'selected':''} onClick={()=>setPage(name)}><ScanEye size={18}/>{name}</button>)}</nav>
                 <div className="mock-indicator">
                     <span/>{realEnabled ? 'Provider routing enabled' : 'Mock providers enabled'}</div>
                 <p>{realEnabled ? 'Provider costs tracked per attempt.' : 'Your ideas. Zero API spend.'}</p>
@@ -145,6 +149,7 @@ export function App() {
                         <strong>{dashboard.isPending ? '—' : key === 'generation_cost' ? `$${Number(dashboard.data?.[key] ?? 0).toFixed(2)}` : dashboard.data?.[key] ?? '—'}</strong><small>{key === 'generation_cost' && Number(dashboard.data?.unknown_cost_attempts ?? 0) > 0 ? `${dashboard.data?.unknown_cost_attempts} costs unknown` : key.includes('today') ? 'Since 00:00 UTC' : key === 'generation_cost' ? 'All-time estimated spend' : 'Live workspace total'}</small>
                     </article>)}</section>
                     <QaDashboard/>
+                    <SimilarityDashboard/>
                     <div className="section-title"><h2>Recent creations <span>{assets.data?.length ?? 0}</span></h2>
                         <button onClick={() => setPage('Assets')}>View all assets <ArrowUpRight size={15}/></button>
                     </div>
@@ -199,6 +204,7 @@ export function App() {
                 </div>}
                 {page === 'Providers' && <ProvidersPanel providers={providers.data ?? []}/>}
                 {promptPages.includes(page as typeof promptPages[number]) && <PromptStudio section={page}/>}
+                {similarityPages.includes(page as typeof similarityPages[number]) && <SimilarityWorkspace key={page} page={page}/>}
                 {page === 'Costs' &&
                     <div className="panel"><h2>Operation ledger</h2><p className="muted">Every provider attempt is
                         recorded. Estimates exclude any costs marked unknown.</p>

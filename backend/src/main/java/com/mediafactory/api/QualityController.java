@@ -64,6 +64,11 @@ public class QualityController {
     return reviews.decide(id, Decision.APPROVED, request, actor.current());
   }
 
+  @PostMapping("/assets/{id}/qa")
+  public Object enqueueAssetQa(@PathVariable UUID id) {
+    return reviews.enqueue(id, false, null, null);
+  }
+
   @PostMapping("/reviews/{id}/reject")
   public Object reject(@PathVariable UUID id, @RequestBody HumanCommand request) {
     return reviews.decide(id, Decision.REJECTED, request, actor.current());

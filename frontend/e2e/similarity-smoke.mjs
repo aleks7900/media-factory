@@ -1,0 +1,35 @@
+import {chromium,expect} from '@playwright/test';
+import {mkdir,readFile} from 'node:fs/promises';
+const fixture=JSON.parse((await readFile('../storage/data/similarity-verification.json','utf8')).replace(/^\uFEFF/,''));
+const browser=await chromium.launch({headless:true});
+const page=await browser.newPage({viewport:{width:1536,height:1100}});const errors=[];
+page.on('pageerror',e=>errors.push(e.message));
+try{
+ await page.goto(process.env.MEDIA_FACTORY_URL??'http://localhost:3000',{waitUntil:'networkidle'});
+ await expect(page.getByRole('region',{name:'Similarity overview'})).toBeVisible();
+ await page.getByRole('button',{name:'Duplicate Review',exact:true}).click();
+ await page.getByLabel('Collection',{exact:true}).selectOption(fixture.collection);
+ await expect(page.locator('.comparison-card').first()).toBeVisible();
+ await mkdir('test-results',{recursive:true});
+ await page.screenshot({path:'test-results/similarity-review.png',fullPage:true});
+ await page.locator('.comparison-card').first().click();
+ const dialog=page.getByRole('dialog',{name:'Compare originals'});await expect(dialog).toBeVisible();
+ await expect(dialog.getByText(/pHash distance:/)).toBeVisible();await expect(dialog.getByText(/Cosine similarity:/)).toBeVisible();
+ await expect(dialog.getByRole('button',{name:'Mark distinct'})).toBeDisabled();
+ await dialog.screenshot({path:'test-results/similarity-pair.png'});await dialog.getByRole('button',{name:'Close',exact:true}).click();
+ await page.getByRole('button',{name:'Similarity Explorer',exact:true}).click();
+ await page.getByRole('combobox',{name:/source original/i}).selectOption(fixture.source);
+ await expect(page.getByText('Analysis: READY')).toBeVisible();
+ await page.getByLabel('Semantic query').fill('concentric circles in a colorful gradient');
+ await page.getByRole('button',{name:'Find related originals'}).click();
+ await expect(page.getByText('Semantic similarity',{exact:true}).first()).toBeVisible();
+ await page.getByRole('button',{name:'Collection Diversity',exact:true}).click();
+ await page.getByLabel('Collection',{exact:true}).selectOption(fixture.collection);
+ await expect(page.getByText('Representative original',{exact:true}).first()).toBeVisible();
+ await page.screenshot({path:'test-results/similarity-diversity.png',fullPage:true});
+ await page.getByRole('button',{name:'Embedding Jobs',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Backfill originals'})).toBeVisible();await expect(page.getByRole('cell',{name:'SUCCEEDED',exact:true}).first()).toBeVisible();
+ await page.screenshot({path:'test-results/similarity-jobs.png',fullPage:true});
+ if(errors.length)throw new Error(errors.join('\n'));
+ console.log('PASS: similarity dashboard, duplicate grid, side-by-side evidence, image/semantic explorer, collection representatives, embedding jobs; no browser errors.');
+}catch(error){await page.screenshot({path:'test-results/similarity-error.png',fullPage:true});console.error('Browser errors:',errors);console.error((await page.locator('body').innerText()).slice(-5000));throw error;}finally{await browser.close()}

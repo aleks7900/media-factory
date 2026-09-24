@@ -38,6 +38,7 @@ services:
   backend:
     build: ./backend
     environment:
+      EMBEDDING_ENDPOINT: http://embedding:8000
       DATABASE_URL: jdbc:postgresql://postgres:5432/mediafactory
       DATABASE_USER: ${DATABASE_USER:-mediafactory}
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:-mediafactory}
@@ -93,6 +94,15 @@ services:
       interval: 10s
       timeout: 3s
       retries: 10
+  embedding:
+    build: ./workers/similarity/embedding
+    environment:
+      EMBEDDING_DEVICE: ${EMBEDDING_DEVICE:-AUTO}
+      TORCH_THREADS: ${EMBEDDING_THREADS:-4}
+    volumes: ["embedding_models:/models"]
+    ports: ["127.0.0.1:8001:8000"]
+    restart: unless-stopped
 volumes:
+  embedding_models:
   postgres_data:
   minio_data:
