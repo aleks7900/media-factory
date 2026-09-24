@@ -23,12 +23,13 @@ import {GenerationDetails, GenerationDialog, type ProviderInfo, ProvidersPanel} 
 import {PromptStudio} from './PromptStudio';
 import {CollectionQaPolicies, QaDashboard, QaJobs, ReviewWorkspace} from './ReviewWorkspace';
 import {SimilarityWorkspace, SimilarityDashboard} from './SimilarityWorkspace';
+import {ProcessingWorkspace} from './ProcessingWorkspace';
 
-const pages = ['Dashboard', 'Collections', 'Generation Queue', 'Assets', 'Review', 'Providers', 'Costs', 'Settings'] as const;
+const pages = ['Dashboard', 'Collections', 'Generation Queue', 'Assets', 'Review', 'Providers', 'Costs', 'Settings', 'Processing'] as const;
 const promptPages = ['Prompt Library', 'Prompt Editor', 'Prompt History', 'Presets', 'Experiments'] as const;
 const similarityPages = ['Duplicate Review', 'Similarity Explorer', 'Collection Diversity', 'Embedding Jobs'] as const;
 type Page = typeof pages[number] | typeof promptPages[number] | typeof similarityPages[number];
-const icons = [LayoutDashboard, Layers3, ListVideo, Images, ScanEye, Plug, CircleDollarSign, Settings];
+const icons = [LayoutDashboard, Layers3, ListVideo, Images, ScanEye, Plug, CircleDollarSign, Settings, Sparkles];
 const labels: Record<string, string> = {
     generated_today: 'Generated today',
     approved_today: 'Approved today',
@@ -52,6 +53,7 @@ export function App() {
     const [creating, setCreating] = useState(false);
     const [selectedGeneration, setSelectedGeneration] = useState<string | null>(null);
     const [notice, setNotice] = useState('');
+    const [processingAsset, setProcessingAsset] = useState<string>();
     const client = useQueryClient();
     const dashboard = useQuery({queryKey: ['dashboard'], queryFn: () => api<Record<string, number>>('/dashboard')});
     const assets = useRows('/assets');
@@ -164,13 +166,14 @@ export function App() {
                 {(page === 'Assets') && <>
                     <div className="section-title"><h2>Asset library <span>{visibleAssets.length}</span></h2><span
                         className="muted">Originals are always preserved</span></div>
-                    <AssetGrid assets={visibleAssets} status={status} review={false} disabled={action.isPending}
+                    <AssetGrid assets={visibleAssets} status={status} review={false} disabled={action.isPending} onProcess={id=>{setProcessingAsset(id);setPage('Processing');}}
                                onAction={(asset, decision) => action.mutate(decision === 'REGENERATE' ? {
                                    path: `/assets/${asset.id}/regenerate`,
                                    body: {},
                                    key: crypto.randomUUID()
                                } : {path: '/reviews', body: {assetId: asset.id, decision, reason: ''}})}/></>}
                 {page === 'Review' && <ReviewWorkspace/>}
+                {page === 'Processing' && <ProcessingWorkspace initialAsset={processingAsset}/>}
                 {page === 'Generation Queue' && <Jobs onSelect={setSelectedGeneration} rows={jobs.data ?? []}
                                                       retry={id => action.mutate({path: `/jobs/${id}/retry`, body: {}})}
                                                       disabled={action.isPending}/>}
@@ -252,12 +255,13 @@ function Empty({text}: { text: string }) {
     return <div className="empty"><Images size={28}/><h3>A little room for possibility.</h3><p>{text}</p></div>;
 }
 
-function AssetGrid({assets, status, review = false, disabled = false, onAction}: {
+function AssetGrid({assets, status, review = false, disabled = false, onAction, onProcess}: {
     assets: Row[];
     status: (a: Row) => string;
     review?: boolean;
     disabled?: boolean;
-    onAction?: (a: Row, d: string) => void
+    onAction?: (a: Row, d: string) => void;
+    onProcess?: (id: string) => void
 }) {
     return assets.length ? <div className="asset-grid">{assets.map((a, i) => <article className="asset-card" key={a.id}>
         <div className="asset-image"><img src={`/api/assets/${a.id}/content`}
@@ -267,6 +271,7 @@ function AssetGrid({assets, status, review = false, disabled = false, onAction}:
             <div>
                 <span>{a.width} × {a.height} · {String(a.media_type ?? 'image/png').replace('image/', '').toUpperCase()}</span><Badge>{status(a)}</Badge>
             </div>
+            {onProcess && <button onClick={()=>onProcess(a.id)}><Sparkles size={14}/>Process & variants</button>}
             {review && <div className="review-actions">
                 <button disabled={disabled} onClick={() => onAction?.(a, 'APPROVED')}><Check size={14}/>Approve</button>
                 <button disabled={disabled} onClick={() => onAction?.(a, 'REJECTED')}><X size={14}/>Reject</button>

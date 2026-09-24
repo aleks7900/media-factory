@@ -123,3 +123,21 @@ Open **Embedding Jobs → Backfill originals** for existing assets, then **Colle
 See [similarity architecture](docs/similarity-engine.md), [exact model and upgrades](docs/image-embeddings.md), [duplicate policies](docs/duplicate-detection.md), [collection clustering](docs/collection-clustering.md), and [Diversity Guard](docs/diversity-guard.md).
 
 The [TASK-05 verification report](docs/task-05-report.md) contains the exact model, test results, observed performance, operating limits, and reproduction commands. Run `pwsh -File scripts/similarity-smoke.ps1`, then `cd frontend` and `node e2e/similarity-smoke.mjs` for free local end-to-end verification.
+# Image processing (TASK-06)
+
+The **Processing** dashboard creates immutable stock, wallpaper, social, preview and thumbnail variants from QA-approved originals. It includes crop preview/manual overrides, durable per-branch retries, shared neural upscaling, checksummed lineage and processing manifests.
+
+```powershell
+./scripts/provision-processing.ps1
+docker compose up -d --build
+```
+
+Optional NVIDIA CUDA build/run:
+
+```powershell
+docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
+```
+
+Model provisioning is explicit and checksum-verified; no startup model downloads or paid image calls are introduced. Worker health: [localhost:8002/health](http://localhost:8002/health). Backend: [localhost:8080/actuator/health](http://localhost:8080/actuator/health). Dashboard: [localhost:3000](http://localhost:3000).
+
+See [image processing](docs/image-processing.md), [upscaling](docs/upscaling.md), [profiles](docs/processing-profiles.md), [smart crop](docs/smart-crop.md), [lineage](docs/processing-lineage.md), [stock](docs/stock-processing.md), and [wallpaper](docs/wallpaper-processing.md). Verification and environment limitations are recorded in [TASK-06 report](docs/task-06-report.md).

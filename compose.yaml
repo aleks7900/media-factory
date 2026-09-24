@@ -14,7 +14,8 @@ services:
       timeout: 3s
       retries: 20
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    image: media-factory-minio:RELEASE.2025-04-22T22-12-26Z
+    build: ./storage/minio
     command: server /data --console-address ':9001'
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
@@ -27,7 +28,10 @@ services:
       timeout: 3s
       retries: 20
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
+    image: media-factory-mc:RELEASE.2025-04-16T18-13-26Z
+    build:
+      context: ./storage/minio
+      dockerfile: Dockerfile.mc
     depends_on:
       minio: {condition: service_healthy}
     environment:
@@ -39,6 +43,7 @@ services:
     build: ./backend
     environment:
       EMBEDDING_ENDPOINT: http://embedding:8000
+      PROCESSING_ENDPOINT: http://processing:8000
       DATABASE_URL: jdbc:postgresql://postgres:5432/mediafactory
       DATABASE_USER: ${DATABASE_USER:-mediafactory}
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:-mediafactory}
@@ -94,6 +99,17 @@ services:
       interval: 10s
       timeout: 3s
       retries: 10
+  processing:
+    build: ./workers/image-processing
+    environment:
+      PROCESSING_DEVICE: ${PROCESSING_DEVICE:-AUTO}
+      CPU_FALLBACK_ENABLED: ${PROCESSING_CPU_FALLBACK:-true}
+      UPSCALE_TILE_SIZE: ${UPSCALE_TILE_SIZE:-256}
+    volumes: ["./.tools/processing-models:/models:ro"]
+    ports: ["127.0.0.1:8002:8000"]
+    mem_limit: 6g
+    cpus: 4
+    restart: unless-stopped
   embedding:
     build: ./workers/similarity/embedding
     environment:

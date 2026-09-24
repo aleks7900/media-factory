@@ -9,6 +9,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class ApiErrors {
 
+  @ExceptionHandler(com.mediafactory.processing.ProcessingFailure.class)
+  public ProblemDetail processing(com.mediafactory.processing.ProcessingFailure e) {
+    var result=ProblemDetail.forStatusAndDetail(e.retryable()?HttpStatus.SERVICE_UNAVAILABLE:HttpStatus.UNPROCESSABLE_CONTENT,e.getMessage());
+    result.setProperty("code",e.code());return result;
+  }
+
   @ExceptionHandler(IllegalArgumentException.class)
   public ProblemDetail invalid(IllegalArgumentException e) {
     return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());

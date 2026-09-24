@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.*;
 @Tag("integration")
 @Testcontainers
 class S3StorageIntegrationTest {
- @Container static GenericContainer<?> minio=new GenericContainer<>("quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z")
+ @Container static GenericContainer<?> minio=new GenericContainer<>(System.getenv().getOrDefault("MINIO_TEST_IMAGE","media-factory-minio:RELEASE.2025-04-22T22-12-26Z"))
   .withEnv("MINIO_ROOT_USER","testaccess").withEnv("MINIO_ROOT_PASSWORD","testsecret")
   .withCommand("server","/data").withExposedPorts(9000).waitingFor(Wait.forHttp("/minio/health/live").forPort(9000));
  @Test void s3OriginalsAreCreateOnly() {
