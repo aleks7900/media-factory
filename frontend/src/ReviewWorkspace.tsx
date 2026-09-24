@@ -1,68 +1,624 @@
-import { useEffect, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, X, RotateCw, ChevronLeft, ChevronRight, ScanEye, ZoomIn } from 'lucide-react';
-import { api, type Row } from './api';
+import {useEffect, useRef, useState} from 'react';
+import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
+import {Check, ChevronLeft, ChevronRight, RotateCw, ScanEye, X, ZoomIn} from 'lucide-react';
+import {api, type Row} from './api';
 import './review.css';
 
-export type Review = {id:string;asset_id:string;generation_id:string;revision:number;execution_status:string;automatic_decision:string|null;final_decision:string;vision_provider:string;vision_model:string;collection_name:string;width:number;height:number;highest_severity:number|null;prompt_compliance:number|null;generation_provider:string;policy_id:string;policy_version:string;qa_prompt_version:string;failure_reason:string|null;created_at:string};
-type Finding={id:string;category:string;code:string;severity:string;confidence:number;detected:boolean;source:string;evidence:string};
-type Dimension={dimension:string;score:number;confidence:number;applicable:boolean;evidence:string};
-type Detail=Review & {findings:Finding[];dimensions:Dimension[];actions:{id:string;action:string;reason_code:string;reason_text:string;actor:string;created_at:string}[];history:{id:string;execution_status:string;final_decision:string;created_at:string}[];attempts:{id:string;provider:string;model:string;status:string;failure_reason:string}[];asset:{width:number;height:number;size_bytes:number;sha256:string;current_review_id:string};context_snapshot:{pipeline:string;promptSnapshot?:{canonical_positive_prompt:string;canonical_negative_prompt:string;adapted_positive_prompt:string;adapted_negative_prompt:string;variables:Record<string,unknown>}};rules_triggered:string[];costs:{operation:string;currency:string;estimated_cost:number|null;unknown_attempts:number}[]};
-const reasonCodes=['AI_FALSE_POSITIVE','AI_FALSE_NEGATIVE','INTENTIONAL_STYLE','PROMPT_CONTEXT','TECHNICAL_EXCEPTION','MANUAL_QUALITY_JUDGMENT','OTHER'];
-const text=(s:string|null|undefined)=>s?.replaceAll('_',' ')??'Not available';
-function Badge({value}:{value:string|null}){return <span className={'badge '+value?.toLowerCase()}>{text(value)}</span>;}
-function Reasons({code,setCode,reason,setReason}:{code:string;setCode:(v:string)=>void;reason:string;setReason:(v:string)=>void}){return <><label>Override reason<select value={code} onChange={e=>setCode(e.target.value)}><option value="">Choose when overriding a decision</option>{reasonCodes.map(r=><option key={r} value={r}>{text(r)}</option>)}</select></label><label>Review notes<textarea maxLength={4000} value={reason} onChange={e=>setReason(e.target.value)} placeholder="Explain the visible evidence or intentional style…"/></label></>;}
+export type Review = {
+    id: string;
+    asset_id: string;
+    generation_id: string;
+    revision: number;
+    execution_status: string;
+    automatic_decision: string | null;
+    final_decision: string;
+    vision_provider: string;
+    vision_model: string;
+    collection_name: string;
+    width: number;
+    height: number;
+    highest_severity: number | null;
+    prompt_compliance: number | null;
+    generation_provider: string;
+    policy_id: string;
+    policy_version: string;
+    qa_prompt_version: string;
+    failure_reason: string | null;
+    created_at: string
+};
+type Finding = {
+    id: string;
+    category: string;
+    code: string;
+    severity: string;
+    confidence: number;
+    detected: boolean;
+    source: string;
+    evidence: string
+};
+type Dimension = { dimension: string; score: number; confidence: number; applicable: boolean; evidence: string };
+type Detail = Review & {
+    findings: Finding[];
+    dimensions: Dimension[];
+    actions: {
+        id: string;
+        action: string;
+        reason_code: string;
+        reason_text: string;
+        actor: string;
+        created_at: string
+    }[];
+    history: { id: string; execution_status: string; final_decision: string; created_at: string }[];
+    attempts: { id: string; provider: string; model: string; status: string; failure_reason: string }[];
+    asset: { width: number; height: number; size_bytes: number; sha256: string; current_review_id: string };
+    context_snapshot: {
+        pipeline: string;
+        promptSnapshot?: {
+            canonical_positive_prompt: string;
+            canonical_negative_prompt: string;
+            adapted_positive_prompt: string;
+            adapted_negative_prompt: string;
+            variables: Record<string, unknown>
+        }
+    };
+    rules_triggered: string[];
+    costs: { operation: string; currency: string; estimated_cost: number | null; unknown_attempts: number }[]
+};
+const reasonCodes = ['AI_FALSE_POSITIVE', 'AI_FALSE_NEGATIVE', 'INTENTIONAL_STYLE', 'PROMPT_CONTEXT', 'TECHNICAL_EXCEPTION', 'MANUAL_QUALITY_JUDGMENT', 'OTHER'];
+const text = (s: string | null | undefined) => s?.replaceAll('_', ' ') ?? 'Not available';
 
-export function CollectionQaPolicies({collections}:{collections:Row[]}){const client=useQueryClient();const policies=useQuery({queryKey:['qa-policies'],queryFn:()=>api<{id:string;version:string}[]>('/v1/qa/policies')});const change=useMutation({mutationFn:({id,policyId}:{id:string;policyId:string})=>api(`/v1/collections/${id}/qa-policy`,{policyId},undefined,'PUT'),onSuccess:()=>{client.invalidateQueries({queryKey:['/collections']});}});return <section className="panel" style={{marginTop:20}}><h2>Collection QA policies</h2><p className="muted">A collection profile overrides its pipeline default for future reviews.</p>{collections.map(c=><div className="setting-row" key={c.id}><span>{c.name}</span><select aria-label={`QA policy for ${c.name}`} value={String(c.qa_policy??'')} disabled={change.isPending} onChange={e=>change.mutate({id:c.id,policyId:e.target.value})}><option value="" disabled>Pipeline default</option>{policies.data?.map(p=><option key={p.id} value={p.id}>{p.id} v{p.version}</option>)}</select></div>)}{change.error&&<p role="alert">{change.error.message}</p>}</section>;}
-export function QaJobs(){const jobs=useQuery({queryKey:['qa-jobs'],queryFn:()=>api<Row[]>('/v1/qa/jobs'),refetchInterval:5000});return <section className="panel table-wrap" style={{marginTop:24}}><h2>Quality assurance queue</h2><table><thead><tr><th>Review</th><th>Status</th><th>Attempts</th><th>Details</th></tr></thead><tbody>{jobs.data?.map(j=><tr key={j.id}><td>{String(j.review_id).slice(0,8)}</td><td><Badge value={String(j.status)}/></td><td>{j.attempts} / {j.max_attempts}</td><td>{j.failure_reason??'—'}</td></tr>)}</tbody></table>{jobs.error&&<p role="alert">{jobs.error.message}</p>}</section>;}
-
-export function QaDashboard(){const q=useQuery({queryKey:['qa-dashboard'],queryFn:()=>api<Record<string,number>>('/v1/qa/dashboard'),refetchInterval:5000});return <section className="stats qa-stats" aria-label="Quality assurance metrics">{[['pending_qa','Pending QA'],['needs_human_review','Needs human review'],['approved_today','Approved today'],['rejected_today','Rejected today'],['auto_approval_rate','AI auto-approval rate'],['human_override_rate','Human override rate'],['average_qa_seconds','Average QA duration'],['qa_cost_today','QA cost today · USD']].map(([key,label])=><article key={key}><div>{label}<ScanEye size={14}/></div><strong>{q.data?key.includes('rate')?`${(q.data[key]*100).toFixed(1)}%`:key.includes('seconds')?`${Number(q.data[key]??0).toFixed(1)}s`:key.includes('cost')?`$${Number(q.data[key]).toFixed(4)}`:q.data[key]:'—'}</strong><small>{key.includes('today')?'Since 00:00 UTC':key.includes('rate')?'Effective reviews':'Live review pipeline'}{key.includes('cost')&&!!q.data?.unknown_qa_costs?` · ${q.data.unknown_qa_costs} costs unknown`:''}</small></article>)}</section>;}
-
-export function ReviewWorkspace(){
- const client=useQueryClient();const [filters,setFilters]=useState<Record<string,string>>({});const [page,setPage]=useState(0);const [selected,setSelected]=useState<string[]>([]);const [open,setOpen]=useState<string|null>(null);const [notice,setNotice]=useState('');const [batch,setBatch]=useState<'APPROVED'|'REJECTED'|null>(null);const [code,setCode]=useState('');const [reason,setReason]=useState('');const [confirm,setConfirm]=useState(false);
- const query=new URLSearchParams({...filters,page:String(page),size:'24'}).toString();
- const queue=useQuery({queryKey:['review-queue',query],queryFn:()=>api<{items:Review[];total:number}>(`/v1/reviews/queue?${query}`),refetchInterval:5000});
- const rows=queue.data?.items??[];const candidates=rows.filter(r=>['COMPLETED','FAILED'].includes(r.execution_status));
- const batchMutation=useMutation({mutationFn:()=>api<{results:{id:string;success:boolean;error?:string}[]}>('/v1/reviews/batch',{decision:batch,items:candidates.filter(r=>selected.includes(r.id)).map(r=>({id:r.id,revision:r.revision,reasonCode:code||null,reasonText:reason}))}),onSuccess:r=>{const failed=r.results.filter(i=>!i.success);setNotice(`${r.results.length-failed.length} saved. ${failed.length} failed.${failed.map(i=>` ${i.id.slice(0,8)}: ${i.error}`).join('')}`);setSelected(failed.map(i=>i.id));setBatch(null);client.invalidateQueries();}});
- function filter(key:string,value:string){setFilters(f=>({...f,[key]:value}));setPage(0);setSelected([]);}
- return <div className="review-workspace"><div className="qa-intro"><div><span className="eyebrow">QUALITY CONTROL</span><h2>Every frame, considered.</h2><p className="muted">Evidence first. Automated findings and your final decision, side by side.</p></div><span className="qa-count">{queue.data?.total??0}<small>effective reviews</small></span></div>
-  <div className="qa-filters"><label>Decision<select value={filters.decision??''} onChange={e=>filter('decision',e.target.value)}><option value="">All decisions</option>{['NEEDS_REVIEW','APPROVED','REJECTED'].map(x=><option key={x}>{x}</option>)}</select></label><label>Execution<select value={filters.executionStatus??''} onChange={e=>filter('executionStatus',e.target.value)}><option value="">All states</option>{['PENDING','RUNNING','COMPLETED','FAILED'].map(x=><option key={x}>{x}</option>)}</select></label><label>Severity<select value={filters.severity??''} onChange={e=>filter('severity',e.target.value)}><option value="">Any severity</option>{['CRITICAL','MAJOR','MINOR','INFO'].map(x=><option key={x}>{x}</option>)}</select></label><label>Finding code<input value={filters.finding??''} onChange={e=>filter('finding',e.target.value)} placeholder="POSSIBLE_WATERMARK"/></label><label>Vision provider<input value={filters.provider??''} onChange={e=>filter('provider',e.target.value)} placeholder="mock / openai"/></label><label>Pipeline<input value={filters.pipeline??''} onChange={e=>filter('pipeline',e.target.value)} placeholder="default"/></label><label>Collection ID<input value={filters.collection??''} onChange={e=>filter('collection',e.target.value)}/></label><label>Created from<input type="date" onChange={e=>filter('createdFrom',e.target.value?`${e.target.value}T00:00:00Z`:'')}/></label></div>
-  <div className="qa-toolbar"><button onClick={()=>setSelected(candidates.map(r=>r.id))}>Select visible</button><button onClick={()=>setSelected(candidates.filter(r=>r.automatic_decision==='APPROVED').map(r=>r.id))}>Approved candidates</button><button onClick={()=>setSelected(candidates.filter(r=>r.final_decision==='NEEDS_REVIEW').map(r=>r.id))}>Review candidates</button><button onClick={()=>setSelected([])}>Clear</button><span>{selected.length} selected</span><button disabled={!selected.length} onClick={()=>{setBatch('APPROVED');setConfirm(false);}}>Batch approve</button><button disabled={!selected.length} onClick={()=>{setBatch('REJECTED');setConfirm(false);}}>Batch reject</button></div>
-  {notice&&<p role="status" className="notice">{notice}</p>}{queue.error&&<p role="alert" className="error">{queue.error.message}</p>}
-  <div className="asset-grid qa-grid">{rows.map(r=><article className="asset-card" key={r.id}><div className="asset-image"><button className="qa-image-button" onClick={()=>setOpen(r.id)} aria-label={`Review frame ${r.asset_id.slice(0,8)}`}><img loading="lazy" src={`/api/assets/${r.asset_id}/content`} alt={`Frame ${r.asset_id.slice(0,8)}`}/></button><label className="qa-select"><input type="checkbox" aria-label={`Select frame ${r.asset_id.slice(0,8)}`} disabled={!candidates.some(c=>c.id===r.id)} checked={selected.includes(r.id)} onChange={e=>setSelected(s=>e.target.checked?[...s,r.id]:s.filter(id=>id!==r.id))}/></label><span className="qa-image-status"><Badge value={r.final_decision}/></span></div><div className="asset-info"><h3>{r.collection_name} <span className="muted">/ {r.asset_id.slice(0,6)}</span></h3><div><span>{r.width} × {r.height} · {r.generation_provider}</span><Badge value={r.execution_status}/></div><div className="qa-card-meta"><span>AI: {text(r.automatic_decision)}</span><span>Prompt {r.prompt_compliance==null?'—':`${Math.round(r.prompt_compliance*100)}%`}</span><span>{r.highest_severity?['','INFO','MINOR','MAJOR','CRITICAL'][r.highest_severity]:'No findings'}</span></div><button className="qa-open" onClick={()=>setOpen(r.id)}>Inspect evidence <ChevronRight size={15}/></button></div></article>)}</div>
-  {!rows.length&&!queue.isPending&&<div className="empty"><ScanEye/><h3>No matching reviews</h3><p>New generations enter QA automatically. Try clearing your filters.</p></div>}
-  <div className="qa-pagination"><button disabled={page===0} onClick={()=>{setPage(p=>p-1);setSelected([]);}}><ChevronLeft size={16}/>Previous</button><span>Page {page+1} · {queue.data?.total??0} reviews</span><button disabled={(page+1)*24>=(queue.data?.total??0)} onClick={()=>{setPage(p=>p+1);setSelected([]);}}>Next<ChevronRight size={16}/></button></div>
-  {open&&<ReviewDetail id={open} close={()=>setOpen(null)} onHistory={setOpen} navigate={delta=>{const index=rows.findIndex(r=>r.id===open);if(rows[index+delta])setOpen(rows[index+delta].id);}}/>}
-  {batch&&<div className="modal-backdrop"><section className="modal qa-batch" role="dialog" aria-modal="true" aria-label="Batch review"><h2>{batch==='APPROVED'?'Approve':'Reject'} {selected.length} frames</h2><p>Each item is checked independently. Changed reviews and missing override reasons are reported per item.</p><Reasons code={code} setCode={setCode} reason={reason} setReason={setReason}/>{batch==='REJECTED'&&selected.length>=10&&<label><input type="checkbox" checked={confirm} onChange={e=>setConfirm(e.target.checked)}/>I confirm rejection of {selected.length} selected assets</label>}{batchMutation.error&&<p role="alert">{batchMutation.error.message}</p>}<div className="review-actions"><button onClick={()=>setBatch(null)}>Cancel</button><button className="primary" disabled={batchMutation.isPending||batch==='REJECTED'&&selected.length>=10&&!confirm} onClick={()=>batchMutation.mutate()}>Apply decisions</button></div></section></div>}
- </div>;
+function Badge({value}: { value: string | null }) {
+    return <span className={'badge ' + value?.toLowerCase()}>{text(value)}</span>;
 }
 
-export function ReviewDetail({id,close,navigate,onHistory}:{id:string;close:()=>void;navigate:(delta:number)=>void;onHistory?:(id:string)=>void}){
- const client=useQueryClient();const detail=useQuery({queryKey:['review-detail',id],queryFn:()=>api<Detail>(`/v1/reviews/${id}`),refetchInterval:5000});const r=detail.data;
- const [code,setCode]=useState('');const [reason,setReason]=useState('');const [zoom,setZoom]=useState(0);const [notice,setNotice]=useState('');const [regen,setRegen]=useState(false);const [mode,setMode]=useState('SAME_PROMPT');const [variables,setVariables]=useState('{}');const [prompt,setPrompt]=useState('');const [negative,setNegative]=useState('');const [feedback,setFeedback]=useState('');const [add,setAdd]=useState(false);const [findingCode,setFindingCode]=useState('GENERATIVE_ARTIFACT');const [severity,setSeverity]=useState('MAJOR');const [evidence,setEvidence]=useState('');const [rejectConfirm,setRejectConfirm]=useState(false);const viewport=useRef<HTMLDivElement>(null);const dialog=useRef<HTMLElement>(null);
- const mutation=useMutation({mutationFn:({action,body,key}:{action:string;body:unknown;key?:string})=>api(`/v1/reviews/${id}/${action}`,body,key),onSuccess:()=>{setNotice('Saved. Original media and automated evidence are preserved.');setRegen(false);setAdd(false);setRejectConfirm(false);client.invalidateQueries();}});
- useEffect(()=>{setCode('');setReason('');setNotice('');setRegen(false);setAdd(false);setZoom(0);setRejectConfirm(false);},[id]);
- useEffect(()=>{const previous=document.activeElement as HTMLElement|null;dialog.current?.focus();return ()=>previous?.focus();},[]);
- const locked=!r||!['COMPLETED','FAILED'].includes(r.execution_status)||r.asset.current_review_id!==id;
- function decide(decision:'APPROVED'|'REJECTED'){
-  if(!r||locked||mutation.isPending)return;
-  const override=r.automatic_decision&&r.automatic_decision!=='NEEDS_REVIEW'&&r.automatic_decision!==decision;
-  if(override&&!code){setNotice('Choose an override reason before changing the automated decision.');return;}
-  if(code==='OTHER'&&!reason.trim()){setNotice('Explain the OTHER override reason.');return;}
-  mutation.mutate({action:decision==='APPROVED'?'approve':'reject',body:{revision:r.revision,reasonCode:code||null,reasonText:reason}});
- }
- useEffect(()=>{function key(e:KeyboardEvent){
-  if(e.key==='Tab'){const nodes=dialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]');if(nodes?.length){const first=nodes[0],last=nodes[nodes.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}return;}
-  if(e.key==='Escape'){close();return;}
-  const target=e.target as HTMLElement;if(target.closest('input,textarea,select,[contenteditable="true"]')||e.ctrlKey||e.metaKey||e.altKey||regen||add)return;
-  if(e.key==='ArrowLeft'){e.preventDefault();navigate(-1);}if(e.key==='ArrowRight'){e.preventDefault();navigate(1);}
-  if(e.key.toLowerCase()==='a')decide('APPROVED');if(e.key.toLowerCase()==='r')setRejectConfirm(true);if(e.key.toLowerCase()==='g'&&!locked)setRegen(true);
- }window.addEventListener('keydown',key);return ()=>window.removeEventListener('keydown',key);});
- const snapshot=r?.context_snapshot.promptSnapshot;
- return <div className="modal-backdrop qa-backdrop"><section ref={dialog} tabIndex={-1} className="qa-detail" role="dialog" aria-modal="true" aria-label="Asset quality review"><div className="qa-detail-header"><div><span className="eyebrow">FRAME / {r?.asset_id.slice(0,8)}</span><h2>Review workspace</h2></div><div className="qa-toolbar"><button aria-label="Previous asset" onClick={()=>navigate(-1)}><ChevronLeft/></button><button aria-label="Next asset" onClick={()=>navigate(1)}><ChevronRight/></button><button aria-label="Close review" onClick={close}><X/></button></div></div>{detail.error&&<p role="alert">{detail.error.message}</p>}{!r?<p>Loading evidence…</p>:<div className="qa-detail-body"><div className="qa-visual-column"><div className="qa-toolbar"><button onClick={()=>setZoom(0)}>Fit</button><button onClick={()=>setZoom(1)}>100%</button><button onClick={()=>setZoom(z=>Math.min(4,(z||1)+.5))}><ZoomIn size={16}/>Zoom</button><span className="muted">{zoom?`${zoom*100}% · drag to pan`:'Fit to view'}</span></div><div className={'qa-image-viewport '+(!zoom?'fit':'')} ref={viewport} onPointerDown={e=>{if(!zoom||e.button!==0)return;const el=e.currentTarget;el.setPointerCapture(e.pointerId);el.dataset.x=String(e.clientX);el.dataset.y=String(e.clientY);}} onPointerMove={e=>{const el=e.currentTarget;if(!el.hasPointerCapture(e.pointerId))return;el.scrollLeft-=e.clientX-Number(el.dataset.x);el.scrollTop-=e.clientY-Number(el.dataset.y);el.dataset.x=String(e.clientX);el.dataset.y=String(e.clientY);}} onPointerUp={e=>{if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);}}><img draggable={false} src={`/api/assets/${r.asset_id}/content`} alt="Full resolution generated asset" style={zoom?{width:r.asset.width*zoom,height:r.asset.height*zoom,maxWidth:'none'}:undefined}/></div><div className="qa-metadata"><span>{r.asset.width} × {r.asset.height}</span><span>{(r.asset.size_bytes/1024).toFixed(0)} KB</span><span>{r.vision_provider} / {r.vision_model}</span><span>Policy {r.policy_id} v{r.policy_version}</span><code>SHA-256 {r.asset.sha256}</code></div><details><summary>Exact prompt comparison</summary><div className="qa-prompt-columns"><section><h3>Canonical positive</h3><pre>{snapshot?.canonical_positive_prompt??'Historical prompt unavailable'}</pre><h3>Canonical negative</h3><pre>{snapshot?.canonical_negative_prompt||'No negative constraints'}</pre></section><section><h3>Provider-adapted positive</h3><pre>{snapshot?.adapted_positive_prompt}</pre><h3>Provider-adapted negative</h3><pre>{snapshot?.adapted_negative_prompt||'No separate negative field'}</pre></section></div><h3>Resolved variables</h3><pre>{JSON.stringify(snapshot?.variables??{},null,2)}</pre><small>QA prompt {r.qa_prompt_version}</small></details><details><summary>QA attempts, production costs & history</summary>{r.attempts.map(a=><p key={a.id}>{a.provider} / {a.model} · {a.status} {a.failure_reason}</p>)}{r.costs.map(c=><p key={c.operation+c.currency}>{text(c.operation)} · {c.estimated_cost==null?'Unknown':Number(c.estimated_cost).toFixed(6)} {c.currency} · {c.unknown_attempts} unknown</p>)}{r.history.map(h=><p key={h.id}><button disabled={!onHistory||h.id===id} onClick={()=>onHistory?.(h.id)}>{h.id.slice(0,8)}</button> · {h.execution_status} · {h.final_decision} · {new Date(h.created_at).toLocaleString()}</p>)}</details></div>
- <div className="qa-evidence-column"><div className="qa-decision-pair"><div><small>Automated decision</small><Badge value={r.automatic_decision}/></div><div><small>Final decision</small><Badge value={r.final_decision}/></div></div><Badge value={r.execution_status}/>{r.failure_reason&&<p className="error">Execution failed: {r.failure_reason}. This is not a content rejection.</p>}<details><summary>Policy explanation</summary>{r.rules_triggered.map(rule=><p key={rule}>{rule}</p>)}</details><h3>Quality dimensions</h3><div className="qa-dimensions">{r.dimensions.map(d=><div key={d.dimension} title={d.evidence}><span>{text(d.dimension)}</span><strong>{d.applicable?`${Math.round(d.score*100)}%`:'N/A'}</strong><progress max={1} value={d.applicable?d.score:0}/><small>{Math.round(d.confidence*100)}% confidence · {d.evidence}</small></div>)}</div><h3>Findings <span className="muted">/ {r.findings.filter(f=>f.detected).length}</span></h3>{['CRITICAL','MAJOR','MINOR','INFO'].map(level=>{const fs=r.findings.filter(f=>f.detected&&f.severity===level);return fs.length?<section key={level} className="qa-finding-group"><h4>{level}</h4>{fs.map(f=><article className={'qa-finding '+level.toLowerCase()} key={f.id}><strong>{text(f.code)}</strong><p>{f.evidence}</p><small>{Math.round(f.confidence*100)}% confidence · {text(f.source)}</small></article>)}</section>:null;})}<details><summary>Passed technical checks</summary>{r.findings.filter(f=>!f.detected).map(f=><p key={f.id}>✓ {text(f.code)} — {f.evidence}</p>)}</details>
- <div className="qa-human-panel"><h3>Your decision</h3><small className="muted">Local workspace operator · A approve / R reject / G regenerate</small><Reasons code={code} setCode={setCode} reason={reason} setReason={setReason}/><div className="review-actions"><button className="primary" disabled={locked||mutation.isPending} onClick={()=>decide('APPROVED')}><Check size={16}/>Approve</button><button disabled={locked||mutation.isPending} onClick={()=>setRejectConfirm(true)}><X size={16}/>Reject</button><button disabled={locked||mutation.isPending} onClick={()=>setRegen(v=>!v)}><RotateCw size={16}/>Regenerate</button></div>{rejectConfirm&&<div className="notice">Reject this asset?<button disabled={mutation.isPending} onClick={()=>decide('REJECTED')}>Confirm rejection</button><button onClick={()=>setRejectConfirm(false)}>Cancel</button></div>}<div className="qa-toolbar"><button disabled={locked||mutation.isPending} onClick={()=>mutation.mutate({action:'rerun',body:{revision:r.revision}})}>Rerun QA</button><button disabled={locked||mutation.isPending} onClick={()=>setAdd(v=>!v)}>Add human finding</button></div>
- {regen&&<form onSubmit={e=>{e.preventDefault();try{mutation.mutate({action:'regenerate',key:crypto.randomUUID(),body:{revision:r.revision,mode,variables:mode==='MODIFIED_VARIABLES'?JSON.parse(variables):null,prompt:mode==='MANUAL_OVERRIDE'?prompt:null,negativePrompt:negative,feedback}});}catch{setNotice('Variables must be a valid JSON object.');}}}><h3>Regenerate a new original</h3><label>Regeneration mode<select value={mode} onChange={e=>setMode(e.target.value)}>{['SAME_PROMPT','MODIFIED_VARIABLES','MANUAL_OVERRIDE'].map(m=><option key={m}>{m}</option>)}</select></label>{mode==='MODIFIED_VARIABLES'&&<label>Variable changes (JSON)<textarea value={variables} onChange={e=>setVariables(e.target.value)}/></label>}{mode==='MANUAL_OVERRIDE'&&<><label>Manual positive prompt<textarea required value={prompt} onChange={e=>setPrompt(e.target.value)}/></label><label>Manual negative prompt<textarea value={negative} onChange={e=>setNegative(e.target.value)}/></label></>}<label>Regeneration feedback<textarea value={feedback} maxLength={4000} onChange={e=>setFeedback(e.target.value)}/></label><button type="submit" disabled={mutation.isPending}>Create regeneration</button></form>}
- {add&&<form onSubmit={e=>{e.preventDefault();mutation.mutate({action:'findings',body:{revision:r.revision,finding:{category:'OTHER',code:findingCode,severity,confidence:1,detected:true,source:'HUMAN',evidence,metadata:{}}}});}}><h3>Record visible evidence</h3><label>Finding code<select value={findingCode} onChange={e=>setFindingCode(e.target.value)}>{['GENERATIVE_ARTIFACT','MALFORMED_FACE','UNWANTED_TEXT','POSSIBLE_WATERMARK','PROMPT_REQUIREMENT_MISSING','SUBJECT_CROPPED','OTHER'].map(c=><option key={c}>{c}</option>)}</select></label><label>Severity<select value={severity} onChange={e=>setSeverity(e.target.value)}>{['INFO','MINOR','MAJOR','CRITICAL'].map(c=><option key={c}>{c}</option>)}</select></label><label>Visible evidence<textarea required value={evidence} maxLength={4000} onChange={e=>setEvidence(e.target.value)}/></label><button disabled={mutation.isPending}>Save finding</button></form>}
- {notice&&<p role="status" className="notice">{notice}</p>}{mutation.error&&<p role="alert" className="error">{mutation.error.message}</p>}</div><h3>Human audit trail</h3>{r.actions.length?r.actions.map(a=><article key={a.id} className="qa-audit"><strong>{text(a.action)}</strong><p>{text(a.reason_code)} {a.reason_text}</p><small>{a.actor} · {new Date(a.created_at).toLocaleString()}</small></article>):<p className="muted">No human actions yet.</p>}</div></div>}</section></div>;
+function Reasons({code, setCode, reason, setReason}: {
+    code: string;
+    setCode: (v: string) => void;
+    reason: string;
+    setReason: (v: string) => void
+}) {
+    return <><label>Override reason<select value={code} onChange={e => setCode(e.target.value)}>
+        <option value="">Choose when overriding a decision</option>
+        {reasonCodes.map(r => <option key={r} value={r}>{text(r)}</option>)}</select></label><label>Review
+        notes<textarea maxLength={4000} value={reason} onChange={e => setReason(e.target.value)}
+                       placeholder="Explain the visible evidence or intentional style…"/></label></>;
+}
+
+export function CollectionQaPolicies({collections}: { collections: Row[] }) {
+    const client = useQueryClient();
+    const policies = useQuery({
+        queryKey: ['qa-policies'],
+        queryFn: () => api<{ id: string; version: string }[]>('/v1/qa/policies')
+    });
+    const change = useMutation({
+        mutationFn: ({id, policyId}: {
+            id: string;
+            policyId: string
+        }) => api(`/v1/collections/${id}/qa-policy`, {policyId}, undefined, 'PUT'), onSuccess: () => {
+            client.invalidateQueries({queryKey: ['/collections']});
+        }
+    });
+    return <section className="panel" style={{marginTop: 20}}><h2>Collection QA policies</h2><p className="muted">A
+        collection profile overrides its pipeline default for future reviews.</p>{collections.map(c => <div
+        className="setting-row" key={c.id}><span>{c.name}</span><select aria-label={`QA policy for ${c.name}`}
+                                                                        value={String(c.qa_policy ?? '')}
+                                                                        disabled={change.isPending}
+                                                                        onChange={e => change.mutate({
+                                                                            id: c.id,
+                                                                            policyId: e.target.value
+                                                                        })}>
+        <option value="" disabled>Pipeline default</option>
+        {policies.data?.map(p => <option key={p.id} value={p.id}>{p.id} v{p.version}</option>)}</select>
+    </div>)}{change.error && <p role="alert">{change.error.message}</p>}</section>;
+}
+
+export function QaJobs() {
+    const jobs = useQuery({queryKey: ['qa-jobs'], queryFn: () => api<Row[]>('/v1/qa/jobs'), refetchInterval: 5000});
+    return <section className="panel table-wrap" style={{marginTop: 24}}><h2>Quality assurance queue</h2>
+        <table>
+            <thead>
+            <tr>
+                <th>Review</th>
+                <th>Status</th>
+                <th>Attempts</th>
+                <th>Details</th>
+            </tr>
+            </thead>
+            <tbody>{jobs.data?.map(j => <tr key={j.id}>
+                <td>{String(j.review_id).slice(0, 8)}</td>
+                <td><Badge value={String(j.status)}/></td>
+                <td>{j.attempts} / {j.max_attempts}</td>
+                <td>{j.failure_reason ?? '—'}</td>
+            </tr>)}</tbody>
+        </table>
+        {jobs.error && <p role="alert">{jobs.error.message}</p>}</section>;
+}
+
+export function QaDashboard() {
+    const q = useQuery({
+        queryKey: ['qa-dashboard'],
+        queryFn: () => api<Record<string, number>>('/v1/qa/dashboard'),
+        refetchInterval: 5000
+    });
+    return <section className="stats qa-stats"
+                    aria-label="Quality assurance metrics">{[['pending_qa', 'Pending QA'], ['needs_human_review', 'Needs human review'], ['approved_today', 'Approved today'], ['rejected_today', 'Rejected today'], ['auto_approval_rate', 'AI auto-approval rate'], ['human_override_rate', 'Human override rate'], ['average_qa_seconds', 'Average QA duration'], ['qa_cost_today', 'QA cost today · USD']].map(([key, label]) =>
+        <article key={key}>
+            <div>{label}<ScanEye size={14}/></div>
+            <strong>{q.data ? key.includes('rate') ? `${(q.data[key] * 100).toFixed(1)}%` : key.includes('seconds') ? `${Number(q.data[key] ?? 0).toFixed(1)}s` : key.includes('cost') ? `$${Number(q.data[key]).toFixed(4)}` : q.data[key] : '—'}</strong><small>{key.includes('today') ? 'Since 00:00 UTC' : key.includes('rate') ? 'Effective reviews' : 'Live review pipeline'}{key.includes('cost') && !!q.data?.unknown_qa_costs ? ` · ${q.data.unknown_qa_costs} costs unknown` : ''}</small>
+        </article>)}</section>;
+}
+
+export function ReviewWorkspace() {
+    const client = useQueryClient();
+    const [filters, setFilters] = useState<Record<string, string>>({});
+    const [page, setPage] = useState(0);
+    const [selected, setSelected] = useState<string[]>([]);
+    const [open, setOpen] = useState<string | null>(null);
+    const [notice, setNotice] = useState('');
+    const [batch, setBatch] = useState<'APPROVED' | 'REJECTED' | null>(null);
+    const [code, setCode] = useState('');
+    const [reason, setReason] = useState('');
+    const [confirm, setConfirm] = useState(false);
+    const query = new URLSearchParams({...filters, page: String(page), size: '24'}).toString();
+    const queue = useQuery({
+        queryKey: ['review-queue', query],
+        queryFn: () => api<{ items: Review[]; total: number }>(`/v1/reviews/queue?${query}`),
+        refetchInterval: 5000
+    });
+    const rows = queue.data?.items ?? [];
+    const candidates = rows.filter(r => ['COMPLETED', 'FAILED'].includes(r.execution_status));
+    const batchMutation = useMutation({
+        mutationFn: () => api<{
+            results: { id: string; success: boolean; error?: string }[]
+        }>('/v1/reviews/batch', {
+            decision: batch,
+            items: candidates.filter(r => selected.includes(r.id)).map(r => ({
+                id: r.id,
+                revision: r.revision,
+                reasonCode: code || null,
+                reasonText: reason
+            }))
+        }), onSuccess: r => {
+            const failed = r.results.filter(i => !i.success);
+            setNotice(`${r.results.length - failed.length} saved. ${failed.length} failed.${failed.map(i => ` ${i.id.slice(0, 8)}: ${i.error}`).join('')}`);
+            setSelected(failed.map(i => i.id));
+            setBatch(null);
+            client.invalidateQueries();
+        }
+    });
+
+    function filter(key: string, value: string) {
+        setFilters(f => ({...f, [key]: value}));
+        setPage(0);
+        setSelected([]);
+    }
+
+    return <div className="review-workspace">
+        <div className="qa-intro">
+            <div><span className="eyebrow">QUALITY CONTROL</span><h2>Every frame, considered.</h2><p
+                className="muted">Evidence first. Automated findings and your final decision, side by side.</p></div>
+            <span className="qa-count">{queue.data?.total ?? 0}<small>effective reviews</small></span></div>
+        <div className="qa-filters"><label>Decision<select value={filters.decision ?? ''}
+                                                           onChange={e => filter('decision', e.target.value)}>
+            <option value="">All decisions</option>
+            {['NEEDS_REVIEW', 'APPROVED', 'REJECTED'].map(x => <option key={x}>{x}</option>)}</select></label><label>Execution<select
+            value={filters.executionStatus ?? ''} onChange={e => filter('executionStatus', e.target.value)}>
+            <option value="">All states</option>
+            {['PENDING', 'RUNNING', 'COMPLETED', 'FAILED'].map(x => <option key={x}>{x}</option>)}
+        </select></label><label>Severity<select value={filters.severity ?? ''}
+                                                onChange={e => filter('severity', e.target.value)}>
+            <option value="">Any severity</option>
+            {['CRITICAL', 'MAJOR', 'MINOR', 'INFO'].map(x => <option key={x}>{x}</option>)}</select></label><label>Finding
+            code<input value={filters.finding ?? ''} onChange={e => filter('finding', e.target.value)}
+                       placeholder="POSSIBLE_WATERMARK"/></label><label>Vision provider<input
+            value={filters.provider ?? ''} onChange={e => filter('provider', e.target.value)}
+            placeholder="mock / openai"/></label><label>Pipeline<input value={filters.pipeline ?? ''}
+                                                                       onChange={e => filter('pipeline', e.target.value)}
+                                                                       placeholder="default"/></label><label>Collection
+            ID<input value={filters.collection ?? ''}
+                     onChange={e => filter('collection', e.target.value)}/></label><label>Created from<input type="date"
+                                                                                                             onChange={e => filter('createdFrom', e.target.value ? `${e.target.value}T00:00:00Z` : '')}/></label>
+        </div>
+        <div className="qa-toolbar">
+            <button onClick={() => setSelected(candidates.map(r => r.id))}>Select visible</button>
+            <button
+                onClick={() => setSelected(candidates.filter(r => r.automatic_decision === 'APPROVED').map(r => r.id))}>Approved
+                candidates
+            </button>
+            <button
+                onClick={() => setSelected(candidates.filter(r => r.final_decision === 'NEEDS_REVIEW').map(r => r.id))}>Review
+                candidates
+            </button>
+            <button onClick={() => setSelected([])}>Clear</button>
+            <span>{selected.length} selected</span>
+            <button disabled={!selected.length} onClick={() => {
+                setBatch('APPROVED');
+                setConfirm(false);
+            }}>Batch approve
+            </button>
+            <button disabled={!selected.length} onClick={() => {
+                setBatch('REJECTED');
+                setConfirm(false);
+            }}>Batch reject
+            </button>
+        </div>
+        {notice && <p role="status" className="notice">{notice}</p>}{queue.error &&
+        <p role="alert" className="error">{queue.error.message}</p>}
+        <div className="asset-grid qa-grid">{rows.map(r => <article className="asset-card" key={r.id}>
+            <div className="asset-image">
+                <button className="qa-image-button" onClick={() => setOpen(r.id)}
+                        aria-label={`Review frame ${r.asset_id.slice(0, 8)}`}><img loading="lazy"
+                                                                                   src={`/api/assets/${r.asset_id}/content`}
+                                                                                   alt={`Frame ${r.asset_id.slice(0, 8)}`}/>
+                </button>
+                <label className="qa-select"><input type="checkbox"
+                                                    aria-label={`Select frame ${r.asset_id.slice(0, 8)}`}
+                                                    disabled={!candidates.some(c => c.id === r.id)}
+                                                    checked={selected.includes(r.id)}
+                                                    onChange={e => setSelected(s => e.target.checked ? [...s, r.id] : s.filter(id => id !== r.id))}/></label><span
+                className="qa-image-status"><Badge value={r.final_decision}/></span></div>
+            <div className="asset-info"><h3>{r.collection_name} <span
+                className="muted">/ {r.asset_id.slice(0, 6)}</span></h3>
+                <div><span>{r.width} × {r.height} · {r.generation_provider}</span><Badge value={r.execution_status}/>
+                </div>
+                <div className="qa-card-meta">
+                    <span>AI: {text(r.automatic_decision)}</span><span>Prompt {r.prompt_compliance == null ? '—' : `${Math.round(r.prompt_compliance * 100)}%`}</span><span>{r.highest_severity ? ['', 'INFO', 'MINOR', 'MAJOR', 'CRITICAL'][r.highest_severity] : 'No findings'}</span>
+                </div>
+                <button className="qa-open" onClick={() => setOpen(r.id)}>Inspect evidence <ChevronRight size={15}/>
+                </button>
+            </div>
+        </article>)}</div>
+        {!rows.length && !queue.isPending &&
+            <div className="empty"><ScanEye/><h3>No matching reviews</h3><p>New generations enter QA automatically. Try
+                clearing your filters.</p></div>}
+        <div className="qa-pagination">
+            <button disabled={page === 0} onClick={() => {
+                setPage(p => p - 1);
+                setSelected([]);
+            }}><ChevronLeft size={16}/>Previous
+            </button>
+            <span>Page {page + 1} · {queue.data?.total ?? 0} reviews</span>
+            <button disabled={(page + 1) * 24 >= (queue.data?.total ?? 0)} onClick={() => {
+                setPage(p => p + 1);
+                setSelected([]);
+            }}>Next<ChevronRight size={16}/></button>
+        </div>
+        {open && <ReviewDetail id={open} close={() => setOpen(null)} onHistory={setOpen} navigate={delta => {
+            const index = rows.findIndex(r => r.id === open);
+            if (rows[index + delta]) setOpen(rows[index + delta].id);
+        }}/>}
+        {batch && <div className="modal-backdrop">
+            <section className="modal qa-batch" role="dialog" aria-modal="true" aria-label="Batch review">
+                <h2>{batch === 'APPROVED' ? 'Approve' : 'Reject'} {selected.length} frames</h2><p>Each item is checked
+                independently. Changed reviews and missing override reasons are reported per item.</p><Reasons
+                code={code} setCode={setCode} reason={reason}
+                setReason={setReason}/>{batch === 'REJECTED' && selected.length >= 10 &&
+                <label><input type="checkbox" checked={confirm} onChange={e => setConfirm(e.target.checked)}/>I confirm
+                    rejection of {selected.length} selected assets</label>}{batchMutation.error &&
+                <p role="alert">{batchMutation.error.message}</p>}
+                <div className="review-actions">
+                    <button onClick={() => setBatch(null)}>Cancel</button>
+                    <button className="primary"
+                            disabled={batchMutation.isPending || batch === 'REJECTED' && selected.length >= 10 && !confirm}
+                            onClick={() => batchMutation.mutate()}>Apply decisions
+                    </button>
+                </div>
+            </section>
+        </div>}
+    </div>;
+}
+
+export function ReviewDetail({id, close, navigate, onHistory}: {
+    id: string;
+    close: () => void;
+    navigate: (delta: number) => void;
+    onHistory?: (id: string) => void
+}) {
+    const client = useQueryClient();
+    const detail = useQuery({
+        queryKey: ['review-detail', id],
+        queryFn: () => api<Detail>(`/v1/reviews/${id}`),
+        refetchInterval: 5000
+    });
+    const r = detail.data;
+    const [code, setCode] = useState('');
+    const [reason, setReason] = useState('');
+    const [zoom, setZoom] = useState(0);
+    const [notice, setNotice] = useState('');
+    const [regen, setRegen] = useState(false);
+    const [mode, setMode] = useState('SAME_PROMPT');
+    const [variables, setVariables] = useState('{}');
+    const [prompt, setPrompt] = useState('');
+    const [negative, setNegative] = useState('');
+    const [feedback, setFeedback] = useState('');
+    const [add, setAdd] = useState(false);
+    const [findingCode, setFindingCode] = useState('GENERATIVE_ARTIFACT');
+    const [severity, setSeverity] = useState('MAJOR');
+    const [evidence, setEvidence] = useState('');
+    const [rejectConfirm, setRejectConfirm] = useState(false);
+    const viewport = useRef<HTMLDivElement>(null);
+    const dialog = useRef<HTMLElement>(null);
+    const mutation = useMutation({
+        mutationFn: ({action, body, key}: {
+            action: string;
+            body: unknown;
+            key?: string
+        }) => api(`/v1/reviews/${id}/${action}`, body, key), onSuccess: () => {
+            setNotice('Saved. Original media and automated evidence are preserved.');
+            setRegen(false);
+            setAdd(false);
+            setRejectConfirm(false);
+            client.invalidateQueries();
+        }
+    });
+    useEffect(() => {
+        setCode('');
+        setReason('');
+        setNotice('');
+        setRegen(false);
+        setAdd(false);
+        setZoom(0);
+        setRejectConfirm(false);
+    }, [id]);
+    useEffect(() => {
+        const previous = document.activeElement as HTMLElement | null;
+        dialog.current?.focus();
+        return () => previous?.focus();
+    }, []);
+    const locked = !r || !['COMPLETED', 'FAILED'].includes(r.execution_status) || r.asset.current_review_id !== id;
+
+    function decide(decision: 'APPROVED' | 'REJECTED') {
+        if (!r || locked || mutation.isPending) return;
+        const override = r.automatic_decision && r.automatic_decision !== 'NEEDS_REVIEW' && r.automatic_decision !== decision;
+        if (override && !code) {
+            setNotice('Choose an override reason before changing the automated decision.');
+            return;
+        }
+        if (code === 'OTHER' && !reason.trim()) {
+            setNotice('Explain the OTHER override reason.');
+            return;
+        }
+        mutation.mutate({
+            action: decision === 'APPROVED' ? 'approve' : 'reject',
+            body: {revision: r.revision, reasonCode: code || null, reasonText: reason}
+        });
+    }
+
+    useEffect(() => {
+        function key(e: KeyboardEvent) {
+            if (e.key === 'Tab') {
+                const nodes = dialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]');
+                if (nodes?.length) {
+                    const first = nodes[0], last = nodes[nodes.length - 1];
+                    if (e.shiftKey && document.activeElement === first) {
+                        e.preventDefault();
+                        last.focus();
+                    } else if (!e.shiftKey && document.activeElement === last) {
+                        e.preventDefault();
+                        first.focus();
+                    }
+                }
+                return;
+            }
+            if (e.key === 'Escape') {
+                close();
+                return;
+            }
+            const target = e.target as HTMLElement;
+            if (target.closest('input,textarea,select,[contenteditable="true"]') || e.ctrlKey || e.metaKey || e.altKey || regen || add) return;
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                navigate(-1);
+            }
+            if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                navigate(1);
+            }
+            if (e.key.toLowerCase() === 'a') decide('APPROVED');
+            if (e.key.toLowerCase() === 'r') setRejectConfirm(true);
+            if (e.key.toLowerCase() === 'g' && !locked) setRegen(true);
+        }
+
+        window.addEventListener('keydown', key);
+        return () => window.removeEventListener('keydown', key);
+    });
+    const snapshot = r?.context_snapshot.promptSnapshot;
+    return <div className="modal-backdrop qa-backdrop">
+        <section ref={dialog} tabIndex={-1} className="qa-detail" role="dialog" aria-modal="true"
+                 aria-label="Asset quality review">
+            <div className="qa-detail-header">
+                <div><span className="eyebrow">FRAME / {r?.asset_id.slice(0, 8)}</span><h2>Review workspace</h2></div>
+                <div className="qa-toolbar">
+                    <button aria-label="Previous asset" onClick={() => navigate(-1)}><ChevronLeft/></button>
+                    <button aria-label="Next asset" onClick={() => navigate(1)}><ChevronRight/></button>
+                    <button aria-label="Close review" onClick={close}><X/></button>
+                </div>
+            </div>
+            {detail.error && <p role="alert">{detail.error.message}</p>}{!r ? <p>Loading evidence…</p> :
+            <div className="qa-detail-body">
+                <div className="qa-visual-column">
+                    <div className="qa-toolbar">
+                        <button onClick={() => setZoom(0)}>Fit</button>
+                        <button onClick={() => setZoom(1)}>100%</button>
+                        <button onClick={() => setZoom(z => Math.min(4, (z || 1) + .5))}><ZoomIn size={16}/>Zoom
+                        </button>
+                        <span className="muted">{zoom ? `${zoom * 100}% · drag to pan` : 'Fit to view'}</span></div>
+                    <div className={'qa-image-viewport ' + (!zoom ? 'fit' : '')} ref={viewport} onPointerDown={e => {
+                        if (!zoom || e.button !== 0) return;
+                        const el = e.currentTarget;
+                        el.setPointerCapture(e.pointerId);
+                        el.dataset.x = String(e.clientX);
+                        el.dataset.y = String(e.clientY);
+                    }} onPointerMove={e => {
+                        const el = e.currentTarget;
+                        if (!el.hasPointerCapture(e.pointerId)) return;
+                        el.scrollLeft -= e.clientX - Number(el.dataset.x);
+                        el.scrollTop -= e.clientY - Number(el.dataset.y);
+                        el.dataset.x = String(e.clientX);
+                        el.dataset.y = String(e.clientY);
+                    }} onPointerUp={e => {
+                        if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+                    }}><img draggable={false} src={`/api/assets/${r.asset_id}/content`}
+                            alt="Full resolution generated asset" style={zoom ? {
+                        width: r.asset.width * zoom,
+                        height: r.asset.height * zoom,
+                        maxWidth: 'none'
+                    } : undefined}/></div>
+                    <div className="qa-metadata">
+                        <span>{r.asset.width} × {r.asset.height}</span><span>{(r.asset.size_bytes / 1024).toFixed(0)} KB</span><span>{r.vision_provider} / {r.vision_model}</span><span>Policy {r.policy_id} v{r.policy_version}</span><code>SHA-256 {r.asset.sha256}</code>
+                    </div>
+                    <details>
+                        <summary>Exact prompt comparison</summary>
+                        <div className="qa-prompt-columns">
+                            <section><h3>Canonical positive</h3>
+                                <pre>{snapshot?.canonical_positive_prompt ?? 'Historical prompt unavailable'}</pre>
+                                <h3>Canonical negative</h3>
+                                <pre>{snapshot?.canonical_negative_prompt || 'No negative constraints'}</pre>
+                            </section>
+                            <section><h3>Provider-adapted positive</h3>
+                                <pre>{snapshot?.adapted_positive_prompt}</pre>
+                                <h3>Provider-adapted negative</h3>
+                                <pre>{snapshot?.adapted_negative_prompt || 'No separate negative field'}</pre>
+                            </section>
+                        </div>
+                        <h3>Resolved variables</h3>
+                        <pre>{JSON.stringify(snapshot?.variables ?? {}, null, 2)}</pre>
+                        <small>QA prompt {r.qa_prompt_version}</small></details>
+                    <details>
+                        <summary>QA attempts, production costs & history</summary>
+                        {r.attempts.map(a => <p
+                            key={a.id}>{a.provider} / {a.model} · {a.status} {a.failure_reason}</p>)}{r.costs.map(c =>
+                        <p key={c.operation + c.currency}>{text(c.operation)} · {c.estimated_cost == null ? 'Unknown' : Number(c.estimated_cost).toFixed(6)} {c.currency} · {c.unknown_attempts} unknown</p>)}{r.history.map(h =>
+                        <p key={h.id}>
+                            <button disabled={!onHistory || h.id === id}
+                                    onClick={() => onHistory?.(h.id)}>{h.id.slice(0, 8)}</button>
+                            · {h.execution_status} · {h.final_decision} · {new Date(h.created_at).toLocaleString()}
+                        </p>)}</details>
+                </div>
+                <div className="qa-evidence-column">
+                    <div className="qa-decision-pair">
+                        <div><small>Automated decision</small><Badge value={r.automatic_decision}/></div>
+                        <div><small>Final decision</small><Badge value={r.final_decision}/></div>
+                    </div>
+                    <Badge value={r.execution_status}/>{r.failure_reason &&
+                    <p className="error">Execution failed: {r.failure_reason}. This is not a content rejection.</p>}
+                    <details>
+                        <summary>Policy explanation</summary>
+                        {r.rules_triggered.map(rule => <p key={rule}>{rule}</p>)}</details>
+                    <h3>Quality dimensions</h3>
+                    <div className="qa-dimensions">{r.dimensions.map(d => <div key={d.dimension} title={d.evidence}>
+                        <span>{text(d.dimension)}</span><strong>{d.applicable ? `${Math.round(d.score * 100)}%` : 'N/A'}</strong>
+                        <progress max={1} value={d.applicable ? d.score : 0}/>
+                        <small>{Math.round(d.confidence * 100)}% confidence · {d.evidence}</small></div>)}</div>
+                    <h3>Findings <span className="muted">/ {r.findings.filter(f => f.detected).length}</span>
+                    </h3>{['CRITICAL', 'MAJOR', 'MINOR', 'INFO'].map(level => {
+                    const fs = r.findings.filter(f => f.detected && f.severity === level);
+                    return fs.length ?
+                        <section key={level} className="qa-finding-group"><h4>{level}</h4>{fs.map(f => <article
+                            className={'qa-finding ' + level.toLowerCase()} key={f.id}><strong>{text(f.code)}</strong>
+                            <p>{f.evidence}</p><small>{Math.round(f.confidence * 100)}% confidence
+                                · {text(f.source)}</small></article>)}</section> : null;
+                })}
+                    <details>
+                        <summary>Passed technical checks</summary>
+                        {r.findings.filter(f => !f.detected).map(f => <p
+                            key={f.id}>✓ {text(f.code)} — {f.evidence}</p>)}</details>
+                    <div className="qa-human-panel"><h3>Your decision</h3><small className="muted">Local workspace
+                        operator · A approve / R reject / G regenerate</small><Reasons code={code} setCode={setCode}
+                                                                                       reason={reason}
+                                                                                       setReason={setReason}/>
+                        <div className="review-actions">
+                            <button className="primary" disabled={locked || mutation.isPending}
+                                    onClick={() => decide('APPROVED')}><Check size={16}/>Approve
+                            </button>
+                            <button disabled={locked || mutation.isPending} onClick={() => setRejectConfirm(true)}><X
+                                size={16}/>Reject
+                            </button>
+                            <button disabled={locked || mutation.isPending} onClick={() => setRegen(v => !v)}><RotateCw
+                                size={16}/>Regenerate
+                            </button>
+                        </div>
+                        {rejectConfirm && <div className="notice">Reject this asset?
+                            <button disabled={mutation.isPending} onClick={() => decide('REJECTED')}>Confirm rejection
+                            </button>
+                            <button onClick={() => setRejectConfirm(false)}>Cancel</button>
+                        </div>}
+                        <div className="qa-toolbar">
+                            <button disabled={locked || mutation.isPending} onClick={() => mutation.mutate({
+                                action: 'rerun',
+                                body: {revision: r.revision}
+                            })}>Rerun QA
+                            </button>
+                            <button disabled={locked || mutation.isPending} onClick={() => setAdd(v => !v)}>Add human
+                                finding
+                            </button>
+                        </div>
+                        {regen && <form onSubmit={e => {
+                            e.preventDefault();
+                            try {
+                                mutation.mutate({
+                                    action: 'regenerate',
+                                    key: crypto.randomUUID(),
+                                    body: {
+                                        revision: r.revision,
+                                        mode,
+                                        variables: mode === 'MODIFIED_VARIABLES' ? JSON.parse(variables) : null,
+                                        prompt: mode === 'MANUAL_OVERRIDE' ? prompt : null,
+                                        negativePrompt: negative,
+                                        feedback
+                                    }
+                                });
+                            } catch {
+                                setNotice('Variables must be a valid JSON object.');
+                            }
+                        }}><h3>Regenerate a new original</h3><label>Regeneration mode<select value={mode}
+                                                                                             onChange={e => setMode(e.target.value)}>{['SAME_PROMPT', 'MODIFIED_VARIABLES', 'MANUAL_OVERRIDE'].map(m =>
+                            <option key={m}>{m}</option>)}</select></label>{mode === 'MODIFIED_VARIABLES' &&
+                            <label>Variable changes (JSON)<textarea value={variables}
+                                                                    onChange={e => setVariables(e.target.value)}/></label>}{mode === 'MANUAL_OVERRIDE' && <>
+                            <label>Manual positive prompt<textarea required value={prompt}
+                                                                   onChange={e => setPrompt(e.target.value)}/></label><label>Manual
+                            negative prompt<textarea value={negative}
+                                                     onChange={e => setNegative(e.target.value)}/></label></>}<label>Regeneration
+                            feedback<textarea value={feedback} maxLength={4000}
+                                              onChange={e => setFeedback(e.target.value)}/></label>
+                            <button type="submit" disabled={mutation.isPending}>Create regeneration</button>
+                        </form>}
+                        {add && <form onSubmit={e => {
+                            e.preventDefault();
+                            mutation.mutate({
+                                action: 'findings',
+                                body: {
+                                    revision: r.revision,
+                                    finding: {
+                                        category: 'OTHER',
+                                        code: findingCode,
+                                        severity,
+                                        confidence: 1,
+                                        detected: true,
+                                        source: 'HUMAN',
+                                        evidence,
+                                        metadata: {}
+                                    }
+                                }
+                            });
+                        }}><h3>Record visible evidence</h3><label>Finding code<select value={findingCode}
+                                                                                      onChange={e => setFindingCode(e.target.value)}>{['GENERATIVE_ARTIFACT', 'MALFORMED_FACE', 'UNWANTED_TEXT', 'POSSIBLE_WATERMARK', 'PROMPT_REQUIREMENT_MISSING', 'SUBJECT_CROPPED', 'OTHER'].map(c =>
+                            <option key={c}>{c}</option>)}</select></label><label>Severity<select value={severity}
+                                                                                                  onChange={e => setSeverity(e.target.value)}>{['INFO', 'MINOR', 'MAJOR', 'CRITICAL'].map(c =>
+                            <option key={c}>{c}</option>)}</select></label><label>Visible evidence<textarea required
+                                                                                                            value={evidence}
+                                                                                                            maxLength={4000}
+                                                                                                            onChange={e => setEvidence(e.target.value)}/></label>
+                            <button disabled={mutation.isPending}>Save finding</button>
+                        </form>}
+                        {notice && <p role="status" className="notice">{notice}</p>}{mutation.error &&
+                            <p role="alert" className="error">{mutation.error.message}</p>}</div>
+                    <h3>Human audit trail</h3>{r.actions.length ? r.actions.map(a => <article key={a.id}
+                                                                                              className="qa-audit">
+                        <strong>{text(a.action)}</strong><p>{text(a.reason_code)} {a.reason_text}</p>
+                        <small>{a.actor} · {new Date(a.created_at).toLocaleString()}</small></article>) :
+                    <p className="muted">No human actions yet.</p>}</div>
+            </div>}</section>
+    </div>;
 }

@@ -1,19 +1,194 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import {afterEach, describe, expect, it, vi} from 'vitest';
+import {cleanup, render, screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ReviewDetail, ReviewWorkspace, QaDashboard } from './ReviewWorkspace';
-afterEach(()=>{cleanup();vi.restoreAllMocks();});
-function wrap(element:React.ReactNode){return render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}>{element}</QueryClientProvider>);}
-const review={id:'review-1',asset_id:'asset-1',generation_id:'gen-1',revision:2,execution_status:'COMPLETED',automatic_decision:'REJECTED',final_decision:'REJECTED',vision_provider:'mock',vision_model:'mock-vision-v1',collection_name:'Nocturne',width:1024,height:1024,highest_severity:4,prompt_compliance:.97,generation_provider:'mock',policy_id:'default',policy_version:'1',qa_prompt_version:'visual-quality/v1',failure_reason:null,created_at:'2026-09-24T00:00:00Z',findings:[{id:'f',category:'WATERMARK',code:'POSSIBLE_WATERMARK',severity:'CRITICAL',confidence:.93,detected:true,source:'VISION_MODEL',evidence:'Small translucent mark at lower right'}],dimensions:[{dimension:'PROMPT_COMPLIANCE',score:.97,confidence:.9,applicable:true,evidence:'Subject matches prompt'}],actions:[],history:[],attempts:[],asset:{width:1024,height:1024,size_bytes:12345,sha256:'abc',current_review_id:'review-1'},context_snapshot:{pipeline:'default',promptSnapshot:{canonical_positive_prompt:'A quiet lake',canonical_negative_prompt:'no text',adapted_positive_prompt:'A quiet lake, no text',adapted_negative_prompt:'',variables:{subject:'lake'}}},rules_triggered:['REJECT:POSSIBLE_WATERMARK'],costs:[]};
-function mockFetch(value:unknown=review){return vi.spyOn(globalThis,'fetch').mockImplementation(async (_url,init)=>new Response(JSON.stringify(init?.method==='POST'?{}:value),{status:200}));}
-describe('Advanced review workspace',()=>{
- it('shows dimensions, confidence and exact prompt comparison',async()=>{mockFetch();wrap(<ReviewDetail id="review-1" close={()=>{}} navigate={()=>{}}/>);expect(await screen.findByText('Small translucent mark at lower right')).toBeInTheDocument();expect(screen.getByText(/93% confidence/)).toBeInTheDocument();expect(screen.getByText('A quiet lake')).toBeInTheDocument();expect(screen.getByText('no text')).toBeInTheDocument();expect(screen.getByText('Automated decision')).toBeInTheDocument();expect(screen.getByText('Final decision')).toBeInTheDocument();});
- it('requires an override reason and submits optimistic revision',async()=>{const fetcher=mockFetch();wrap(<ReviewDetail id="review-1" close={()=>{}} navigate={()=>{}}/>);await screen.findByText('Your decision');await userEvent.click(screen.getByRole('button',{name:'Approve'}));expect(screen.getByRole('status')).toHaveTextContent('Choose an override reason');expect(fetcher.mock.calls.filter(c=>c[1]?.method==='POST')).toHaveLength(0);await userEvent.selectOptions(screen.getByLabelText('Override reason'),'AI_FALSE_POSITIVE');await userEvent.click(screen.getByRole('button',{name:'Approve'}));await waitFor(()=>expect(fetcher.mock.calls.find(c=>String(c[0]).endsWith('/approve'))).toBeTruthy());const call=fetcher.mock.calls.find(c=>String(c[0]).endsWith('/approve'))!;expect(JSON.parse(String(call[1]?.body))).toMatchObject({revision:2,reasonCode:'AI_FALSE_POSITIVE'});});
- it('OTHER requires explanatory text and typing does not fire shortcuts',async()=>{const fetcher=mockFetch();wrap(<ReviewDetail id="review-1" close={()=>{}} navigate={()=>{}}/>);await screen.findByText('Your decision');await userEvent.selectOptions(screen.getByLabelText('Override reason'),'OTHER');await userEvent.click(screen.getByRole('button',{name:'Approve'}));expect(screen.getByRole('status')).toHaveTextContent('Explain');await userEvent.type(screen.getByLabelText('Review notes'),'a r g');expect(fetcher.mock.calls.filter(c=>c[1]?.method==='POST')).toHaveLength(0);expect(screen.queryByText('Regenerate a new original')).not.toBeInTheDocument();});
- it('execution failure is visible and rerun uses the current revision',async()=>{const fetcher=mockFetch({...review,execution_status:'FAILED',automatic_decision:null,final_decision:'NEEDS_REVIEW',failure_reason:'Vision timeout'});wrap(<ReviewDetail id="review-1" close={()=>{}} navigate={()=>{}}/>);expect(await screen.findByText(/This is not a content rejection/)).toBeInTheDocument();await userEvent.click(screen.getByRole('button',{name:'Rerun QA'}));await waitFor(()=>expect(fetcher.mock.calls.some(c=>String(c[0]).endsWith('/rerun'))).toBe(true));});
- it('regeneration preserves explicit mode and feedback',async()=>{const fetcher=mockFetch();wrap(<ReviewDetail id="review-1" close={()=>{}} navigate={()=>{}}/>);await screen.findByText('Your decision');await userEvent.click(screen.getByRole('button',{name:'Regenerate'}));await userEvent.selectOptions(screen.getByLabelText('Regeneration mode'),'MANUAL_OVERRIDE');await userEvent.type(screen.getByLabelText('Manual positive prompt'),'A clear lake');await userEvent.type(screen.getByLabelText('Regeneration feedback'),'Remove mark');await userEvent.click(screen.getByRole('button',{name:'Create regeneration'}));await waitFor(()=>expect(fetcher.mock.calls.some(c=>String(c[0]).endsWith('/regenerate'))).toBe(true));const call=fetcher.mock.calls.find(c=>String(c[0]).endsWith('/regenerate'))!;expect(JSON.parse(String(call[1]?.body))).toMatchObject({mode:'MANUAL_OVERRIDE',prompt:'A clear lake',feedback:'Remove mark'});expect(call[1]?.headers).toHaveProperty('Idempotency-Key');});
- it('queue filters reach the API and candidates can be selected',async()=>{const fetcher=mockFetch({items:[review],total:1});wrap(<ReviewWorkspace/>);expect(await screen.findByText('Nocturne')).toBeInTheDocument();await userEvent.click(screen.getByRole('button',{name:'Select visible'}));expect(screen.getByText('1 selected')).toBeInTheDocument();await userEvent.selectOptions(screen.getByLabelText('Decision'),'NEEDS_REVIEW');await waitFor(()=>expect(fetcher.mock.calls.some(c=>String(c[0]).includes('decision=NEEDS_REVIEW'))).toBe(true));});
- it('shows batch partial failures without claiming all succeeded',async()=>{vi.spyOn(globalThis,'fetch').mockImplementation(async (_url,init)=>new Response(JSON.stringify(init?.method==='POST'?{results:[{id:'review-1',success:false,status:409,error:'Review changed; refresh'}]}:{items:[review],total:1}),{status:200}));wrap(<ReviewWorkspace/>);await screen.findByText('Nocturne');await userEvent.click(screen.getByRole('button',{name:'Select visible'}));await userEvent.click(screen.getByRole('button',{name:'Batch approve'}));await userEvent.click(screen.getByRole('button',{name:'Apply decisions'}));expect(await screen.findByRole('status')).toHaveTextContent('0 saved. 1 failed.');});
- it('dashboard separates review metrics and unknown QA costs',async()=>{mockFetch({pending_qa:2,needs_human_review:3,approved_today:4,rejected_today:1,auto_approval_rate:.8,human_override_rate:.1,average_qa_seconds:1.2,qa_cost_today:.01,unknown_qa_costs:2});wrap(<QaDashboard/>);expect(await screen.findByText('80.0%')).toBeInTheDocument();expect(screen.getByText(/2 costs unknown/)).toBeInTheDocument();});
+import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
+import {QaDashboard, ReviewDetail, ReviewWorkspace} from './ReviewWorkspace';
+
+afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+});
+
+function wrap(element: React.ReactNode) {
+    return render(<QueryClientProvider
+        client={new QueryClient({defaultOptions: {queries: {retry: false}}})}>{element}</QueryClientProvider>);
+}
+
+const review = {
+    id: 'review-1',
+    asset_id: 'asset-1',
+    generation_id: 'gen-1',
+    revision: 2,
+    execution_status: 'COMPLETED',
+    automatic_decision: 'REJECTED',
+    final_decision: 'REJECTED',
+    vision_provider: 'mock',
+    vision_model: 'mock-vision-v1',
+    collection_name: 'Nocturne',
+    width: 1024,
+    height: 1024,
+    highest_severity: 4,
+    prompt_compliance: .97,
+    generation_provider: 'mock',
+    policy_id: 'default',
+    policy_version: '1',
+    qa_prompt_version: 'visual-quality/v1',
+    failure_reason: null,
+    created_at: '2026-09-24T00:00:00Z',
+    findings: [{
+        id: 'f',
+        category: 'WATERMARK',
+        code: 'POSSIBLE_WATERMARK',
+        severity: 'CRITICAL',
+        confidence: .93,
+        detected: true,
+        source: 'VISION_MODEL',
+        evidence: 'Small translucent mark at lower right'
+    }],
+    dimensions: [{
+        dimension: 'PROMPT_COMPLIANCE',
+        score: .97,
+        confidence: .9,
+        applicable: true,
+        evidence: 'Subject matches prompt'
+    }],
+    actions: [],
+    history: [],
+    attempts: [],
+    asset: {width: 1024, height: 1024, size_bytes: 12345, sha256: 'abc', current_review_id: 'review-1'},
+    context_snapshot: {
+        pipeline: 'default',
+        promptSnapshot: {
+            canonical_positive_prompt: 'A quiet lake',
+            canonical_negative_prompt: 'no text',
+            adapted_positive_prompt: 'A quiet lake, no text',
+            adapted_negative_prompt: '',
+            variables: {subject: 'lake'}
+        }
+    },
+    rules_triggered: ['REJECT:POSSIBLE_WATERMARK'],
+    costs: []
+};
+
+function mockFetch(value: unknown = review) {
+    return vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => new Response(JSON.stringify(init?.method === 'POST' ? {} : value), {status: 200}));
+}
+
+describe('Advanced review workspace', () => {
+    it('shows dimensions, confidence and exact prompt comparison', async () => {
+        mockFetch();
+        wrap(<ReviewDetail id="review-1" close={() => {
+        }} navigate={() => {
+        }}/>);
+        expect(await screen.findByText('Small translucent mark at lower right')).toBeInTheDocument();
+        expect(screen.getByText(/93% confidence/)).toBeInTheDocument();
+        expect(screen.getByText('A quiet lake')).toBeInTheDocument();
+        expect(screen.getByText('no text')).toBeInTheDocument();
+        expect(screen.getByText('Automated decision')).toBeInTheDocument();
+        expect(screen.getByText('Final decision')).toBeInTheDocument();
+    });
+    it('requires an override reason and submits optimistic revision', async () => {
+        const fetcher = mockFetch();
+        wrap(<ReviewDetail id="review-1" close={() => {
+        }} navigate={() => {
+        }}/>);
+        await screen.findByText('Your decision');
+        await userEvent.click(screen.getByRole('button', {name: 'Approve'}));
+        expect(screen.getByRole('status')).toHaveTextContent('Choose an override reason');
+        expect(fetcher.mock.calls.filter(c => c[1]?.method === 'POST')).toHaveLength(0);
+        await userEvent.selectOptions(screen.getByLabelText('Override reason'), 'AI_FALSE_POSITIVE');
+        await userEvent.click(screen.getByRole('button', {name: 'Approve'}));
+        await waitFor(() => expect(fetcher.mock.calls.find(c => String(c[0]).endsWith('/approve'))).toBeTruthy());
+        const call = fetcher.mock.calls.find(c => String(c[0]).endsWith('/approve'))!;
+        expect(JSON.parse(String(call[1]?.body))).toMatchObject({revision: 2, reasonCode: 'AI_FALSE_POSITIVE'});
+    });
+    it('OTHER requires explanatory text and typing does not fire shortcuts', async () => {
+        const fetcher = mockFetch();
+        wrap(<ReviewDetail id="review-1" close={() => {
+        }} navigate={() => {
+        }}/>);
+        await screen.findByText('Your decision');
+        await userEvent.selectOptions(screen.getByLabelText('Override reason'), 'OTHER');
+        await userEvent.click(screen.getByRole('button', {name: 'Approve'}));
+        expect(screen.getByRole('status')).toHaveTextContent('Explain');
+        await userEvent.type(screen.getByLabelText('Review notes'), 'a r g');
+        expect(fetcher.mock.calls.filter(c => c[1]?.method === 'POST')).toHaveLength(0);
+        expect(screen.queryByText('Regenerate a new original')).not.toBeInTheDocument();
+    });
+    it('execution failure is visible and rerun uses the current revision', async () => {
+        const fetcher = mockFetch({
+            ...review,
+            execution_status: 'FAILED',
+            automatic_decision: null,
+            final_decision: 'NEEDS_REVIEW',
+            failure_reason: 'Vision timeout'
+        });
+        wrap(<ReviewDetail id="review-1" close={() => {
+        }} navigate={() => {
+        }}/>);
+        expect(await screen.findByText(/This is not a content rejection/)).toBeInTheDocument();
+        await userEvent.click(screen.getByRole('button', {name: 'Rerun QA'}));
+        await waitFor(() => expect(fetcher.mock.calls.some(c => String(c[0]).endsWith('/rerun'))).toBe(true));
+    });
+    it('regeneration preserves explicit mode and feedback', async () => {
+        const fetcher = mockFetch();
+        wrap(<ReviewDetail id="review-1" close={() => {
+        }} navigate={() => {
+        }}/>);
+        await screen.findByText('Your decision');
+        await userEvent.click(screen.getByRole('button', {name: 'Regenerate'}));
+        await userEvent.selectOptions(screen.getByLabelText('Regeneration mode'), 'MANUAL_OVERRIDE');
+        await userEvent.type(screen.getByLabelText('Manual positive prompt'), 'A clear lake');
+        await userEvent.type(screen.getByLabelText('Regeneration feedback'), 'Remove mark');
+        await userEvent.click(screen.getByRole('button', {name: 'Create regeneration'}));
+        await waitFor(() => expect(fetcher.mock.calls.some(c => String(c[0]).endsWith('/regenerate'))).toBe(true));
+        const call = fetcher.mock.calls.find(c => String(c[0]).endsWith('/regenerate'))!;
+        expect(JSON.parse(String(call[1]?.body))).toMatchObject({
+            mode: 'MANUAL_OVERRIDE',
+            prompt: 'A clear lake',
+            feedback: 'Remove mark'
+        });
+        expect(call[1]?.headers).toHaveProperty('Idempotency-Key');
+    });
+    it('queue filters reach the API and candidates can be selected', async () => {
+        const fetcher = mockFetch({items: [review], total: 1});
+        wrap(<ReviewWorkspace/>);
+        expect(await screen.findByText('Nocturne')).toBeInTheDocument();
+        await userEvent.click(screen.getByRole('button', {name: 'Select visible'}));
+        expect(screen.getByText('1 selected')).toBeInTheDocument();
+        await userEvent.selectOptions(screen.getByLabelText('Decision'), 'NEEDS_REVIEW');
+        await waitFor(() => expect(fetcher.mock.calls.some(c => String(c[0]).includes('decision=NEEDS_REVIEW'))).toBe(true));
+    });
+    it('shows batch partial failures without claiming all succeeded', async () => {
+        vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => new Response(JSON.stringify(init?.method === 'POST' ? {
+            results: [{
+                id: 'review-1',
+                success: false,
+                status: 409,
+                error: 'Review changed; refresh'
+            }]
+        } : {items: [review], total: 1}), {status: 200}));
+        wrap(<ReviewWorkspace/>);
+        await screen.findByText('Nocturne');
+        await userEvent.click(screen.getByRole('button', {name: 'Select visible'}));
+        await userEvent.click(screen.getByRole('button', {name: 'Batch approve'}));
+        await userEvent.click(screen.getByRole('button', {name: 'Apply decisions'}));
+        expect(await screen.findByRole('status')).toHaveTextContent('0 saved. 1 failed.');
+    });
+    it('dashboard separates review metrics and unknown QA costs', async () => {
+        mockFetch({
+            pending_qa: 2,
+            needs_human_review: 3,
+            approved_today: 4,
+            rejected_today: 1,
+            auto_approval_rate: .8,
+            human_override_rate: .1,
+            average_qa_seconds: 1.2,
+            qa_cost_today: .01,
+            unknown_qa_costs: 2
+        });
+        wrap(<QaDashboard/>);
+        expect(await screen.findByText('80.0%')).toBeInTheDocument();
+        expect(screen.getByText(/2 costs unknown/)).toBeInTheDocument();
+    });
 });
