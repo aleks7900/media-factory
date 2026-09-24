@@ -1,69 +1,450 @@
 package com.mediafactory.prompt;
 
-import com.mediafactory.prompt.PromptModels.*;
-import org.springframework.stereotype.Service;
+import com.mediafactory.prompt.PromptModels.ExperimentInput;
+import com.mediafactory.prompt.PromptModels.PresetInput;
+import com.mediafactory.prompt.PromptModels.PromptVariableDefinition;
+import com.mediafactory.prompt.PromptModels.TemplateInput;
+import com.mediafactory.prompt.PromptModels.VariableType;
+import com.mediafactory.prompt.PromptModels.VersionInput;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.http.HttpStatus;
 import tools.jackson.databind.json.JsonMapper;
-import java.util.*;
 
-/** Versioned prompt catalogue. All content writes serialize on their owning row. */
+/**
+ * Versioned prompt catalogue. All content writes serialize on their owning row.
+ */
 @Service
 public class PromptCatalog {
- private final JdbcClient db;private final PromptTemplateRenderer renderer;private final PromptVariableValidator validator;private final PromptComposer composer;
- public static final JsonMapper JSON=JsonMapper.builder().build();
- public PromptCatalog(JdbcClient db,PromptTemplateRenderer renderer,PromptVariableValidator validator,PromptComposer composer){this.db=db;this.renderer=renderer;this.validator=validator;this.composer=composer;}
- public static String text(String value){return value==null?"":value;}
- public static void require(boolean valid,String message){if(!valid)throw PromptException.invalid(message);}
- public static void bounded(String value,int max,String label,boolean required){require(value!=null||!required,label+" is required");if(value!=null)require(value.length()<=max&&(!required||!value.isBlank()),label+" is blank or too long");}
- public static void revision(Map<String,Object> row,Integer expected){if(expected==null||((Number)row.get("revision")).intValue()!=expected)throw new ResponseStatusException(HttpStatus.CONFLICT,"Revision conflict; reload before editing");}
- private void table(String name){if(!Set.of("prompt_templates","prompt_versions","prompt_presets","prompt_preset_versions","prompt_experiments","prompt_experiment_variants","rendered_prompt_snapshots").contains(name))throw new IllegalArgumentException();}
- public Map<String,Object> one(String table,UUID id){return one(table,id,false);}
- public Map<String,Object> one(String table,UUID id,boolean lock){table(table);return db.sql("select * from "+table+" where id=?"+(lock?" for update":"")).param(id).query().listOfRows().stream().findFirst().orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"Prompt record not found"));}
- public List<Map<String,Object>> list(String table){table(table);return db.sql("select * from "+table+" order by created_at desc limit 200").query().listOfRows();}
- public List<Map<String,Object>> templates(){return db.sql("select t.*, (select max(version) from prompt_versions v where v.prompt_template_id=t.id and v.status='PUBLISHED') as current_version,(select count(*) from prompt_experiments e where e.prompt_template_id=t.id and e.status='RUNNING') as running_experiments from prompt_templates t order by t.updated_at desc limit 200").query().listOfRows();}
- @Transactional public Map<String,Object> createTemplate(TemplateInput input){validateIdentity(input.key(),input.name(),input.category());UUID id=UUID.randomUUID();db.sql("insert into prompt_templates(id,key,name,description,category) values(?,?,?,?,?)").params(id,input.key(),input.name(),text(input.description()),input.category()).update();return one("prompt_templates",id);}
- @Transactional public Map<String,Object> updateTemplate(UUID id,TemplateInput input){var row=one("prompt_templates",id,true);revision(row,input.revision());String name=input.name()==null?(String)row.get("name"):input.name(),category=input.category()==null?(String)row.get("category"):input.category();validateIdentity((String)row.get("key"),name,category);String status=input.status()==null?(String)row.get("status"):input.status();require(Set.of("ACTIVE","ARCHIVED").contains(status),"Invalid template status");require(input.key()==null||input.key().equals(row.get("key")),"Template key is immutable");db.sql("update prompt_templates set name=?,description=?,category=?,status=?,revision=revision+1,updated_at=now() where id=?").params(name,input.description()==null?row.get("description"):input.description(),category,status,id).update();return one("prompt_templates",id);}
- private void validateIdentity(String key,String name,String category){require(key!=null&&key.matches("[A-Za-z0-9][A-Za-z0-9_-]{0,99}"),"Invalid key");bounded(name,200,"Name",true);bounded(category,80,"Category",true);}
- public List<Map<String,Object>> versions(UUID template){one("prompt_templates",template);return db.sql("select * from prompt_versions where prompt_template_id=? order by version desc").param(template).query().listOfRows();}
- public List<Map<String,Object>> publishedVersions(){return db.sql("select v.*,t.name as template_name from prompt_versions v join prompt_templates t on t.id=v.prompt_template_id where v.status='PUBLISHED' and t.status='ACTIVE' order by v.created_at desc limit 200").query().listOfRows();}
- public List<PromptVariableDefinition> variables(UUID version){return db.sql("select * from prompt_variable_definitions where prompt_version_id=? order by display_order,name").param(version).query().listOfRows().stream().map(r->new PromptVariableDefinition((String)r.get("name"),(String)r.get("label"),(String)r.get("description"),VariableType.valueOf((String)r.get("type")),(Boolean)r.get("required"),r.get("default_value")==null?null:JSON.readValue(r.get("default_value").toString(),Object.class),Arrays.asList(JSON.readValue(r.get("allowed_values").toString(),String[].class)),(java.math.BigDecimal)r.get("min"),(java.math.BigDecimal)r.get("max"),(Integer)r.get("min_length"),(Integer)r.get("max_length"),(Integer)r.get("display_order"))).toList();}
- public Map<String,Object> version(UUID id){var row=new LinkedHashMap<>(one("prompt_versions",id));row.put("variables",variables(id));return row;}
- @Transactional public Map<String,Object> createVersion(UUID template,VersionInput input){var owner=one("prompt_templates",template,true);require(owner.get("status").equals("ACTIVE"),"Archived template cannot accept versions");
-  if(input.copyFromVersionId()!=null){var source=one("prompt_versions",input.copyFromVersionId());require(source.get("prompt_template_id").equals(template),"Copy source belongs to another template");source=one("prompt_versions",input.copyFromVersionId(),true);input=new VersionInput((String)source.get("positive_template"),(String)source.get("negative_template"),variables(input.copyFromVersionId()),text(input.changeDescription()),null,null);}
-  validateDraft(input);UUID id=UUID.randomUUID();int number=db.sql("select coalesce(max(version),0)+1 from prompt_versions where prompt_template_id=?").param(template).query(Integer.class).single();
-  db.sql("insert into prompt_versions(id,prompt_template_id,version,positive_template,negative_template,change_description) values(?,?,?,?,?,?)").params(id,template,number,input.positiveTemplate(),text(input.negativeTemplate()),text(input.changeDescription())).update();saveVariables(id,input.variables());return version(id);
- }
- @Transactional public Map<String,Object> editVersion(UUID id,VersionInput input){var row=one("prompt_versions",id,true);revision(row,input.revision());require(row.get("status").equals("DRAFT"),"Published versions are immutable; create a draft copy");validateDraft(input);db.sql("update prompt_versions set positive_template=?,negative_template=?,change_description=?,revision=revision+1 where id=?").params(input.positiveTemplate(),text(input.negativeTemplate()),text(input.changeDescription()),id).update();db.sql("delete from prompt_variable_definitions where prompt_version_id=?").param(id).update();saveVariables(id,input.variables());return version(id);}
- private void validateDraft(VersionInput input){bounded(input.positiveTemplate(),10000,"Positive template",true);bounded(input.negativeTemplate(),10000,"Negative template",false);bounded(input.changeDescription(),2000,"Change description",false);validator.definitions(input.variables());}
- private void saveVariables(UUID version,List<PromptVariableDefinition> definitions){for(var d:definitions)db.sql("insert into prompt_variable_definitions(id,prompt_version_id,name,label,description,type,required,default_value,allowed_values,min,max,min_length,max_length,display_order) values(?,?,?,?,?,?,?,cast(? as jsonb),cast(? as jsonb),?,?,?,?,?)").params(UUID.randomUUID(),version,d.name(),d.label()==null?d.name():d.label(),text(d.description()),d.type().name(),Boolean.TRUE.equals(d.required()),d.defaultValue()==null?null:JSON.writeValueAsString(d.defaultValue()),JSON.writeValueAsString(d.allowedValues()),d.min(),d.max(),d.minLength(),d.maxLength(),d.displayOrder()==null?0:d.displayOrder()).update();}
- public List<String> validateVersion(UUID id){var v=one("prompt_versions",id);return validateContent((String)v.get("positive_template"),(String)v.get("negative_template"),variables(id));}
- public List<String> validateContent(String positive,String negative,List<PromptVariableDefinition> definitions){validator.definitions(definitions);var refs=new LinkedHashSet<>(renderer.references(positive));refs.addAll(renderer.references(negative));var names=new HashSet<String>();definitions.forEach(d->names.add(d.name()));for(String ref:refs)require(names.contains(ref),"Undefined template variable: "+ref);var warnings=new ArrayList<>(composer.lint(positive,text(negative)));for(String name:names)if(!refs.contains(name))warnings.add("Defined but unused variable: "+name);return warnings;}
- @Transactional public Map<String,Object> publish(UUID id,Integer expected){var identity=one("prompt_versions",id);one("prompt_templates",(UUID)identity.get("prompt_template_id"),true);var row=one("prompt_versions",id,true);revision(row,expected);require(row.get("status").equals("DRAFT"),"Only drafts can be published");require(one("prompt_templates",(UUID)row.get("prompt_template_id"),true).get("status").equals("ACTIVE"),"Template is archived");validateVersion(id);db.sql("update prompt_versions set status='PUBLISHED',published_at=now(),published_by='local-workspace',revision=revision+1 where id=?").param(id).update();return version(id);}
- @Transactional public Map<String,Object> deprecate(UUID id,Integer expected){var row=one("prompt_versions",id,true);revision(row,expected);require(row.get("status").equals("PUBLISHED"),"Only published versions can be deprecated");db.sql("update prompt_versions set status='DEPRECATED',deprecated_at=now(),deprecated_by='local-workspace',revision=revision+1 where id=?").param(id).update();return version(id);}
- public Map<String,Object> preset(UUID id){var row=new LinkedHashMap<>(one("prompt_presets",id));row.put("versions",db.sql("select * from prompt_preset_versions where prompt_preset_id=? order by version desc").param(id).query().listOfRows());return row;}
- public List<Map<String,Object>> presets(){return db.sql("select p.*,v.id as version_id,v.version,v.positive_fragment,v.negative_fragment from prompt_presets p join lateral(select * from prompt_preset_versions where prompt_preset_id=p.id order by version desc limit 1)v on true order by p.key limit 200").query().listOfRows();}
- @Transactional public Map<String,Object> createPreset(PresetInput input){validateIdentity(input.key(),input.name(),input.category());validateFragments(input);UUID id=UUID.randomUUID();db.sql("insert into prompt_presets(id,key,name,description,category) values(?,?,?,?,?)").params(id,input.key(),input.name(),text(input.description()),input.category()).update();presetVersion(id,1,input);return preset(id);}
- @Transactional public Map<String,Object> updatePreset(UUID id,PresetInput input){var row=one("prompt_presets",id,true);revision(row,input.revision());require(input.key()==null||input.key().equals(row.get("key")),"Preset key is immutable");String status=input.status()==null?(String)row.get("status"):input.status();require(Set.of("ACTIVE","ARCHIVED").contains(status),"Invalid preset status");String name=input.name()==null?(String)row.get("name"):input.name(),category=input.category()==null?(String)row.get("category"):input.category();validateIdentity((String)row.get("key"),name,category);
-  db.sql("update prompt_presets set name=?,description=?,category=?,status=?,revision=revision+1,updated_at=now() where id=?").params(name,input.description()==null?row.get("description"):input.description(),category,status,id).update();
-  if(input.positiveFragment()!=null||input.negativeFragment()!=null){var latest=db.sql("select * from prompt_preset_versions where prompt_preset_id=? order by version desc limit 1").param(id).query().singleRow();var content=new PresetInput(null,null,null,null,null,input.positiveFragment()==null?(String)latest.get("positive_fragment"):input.positiveFragment(),input.negativeFragment()==null?(String)latest.get("negative_fragment"):input.negativeFragment(),null);validateFragments(content);presetVersion(id,((Number)latest.get("version")).intValue()+1,content);}return preset(id);
- }
- private void validateFragments(PresetInput input){bounded(input.positiveFragment(),5000,"Preset positive",true);bounded(input.negativeFragment(),5000,"Preset negative",false);require(renderer.references(input.positiveFragment()).isEmpty()&&renderer.references(input.negativeFragment()).isEmpty(),"Presets are literal fragments; variables belong to templates");}
- private void presetVersion(UUID id,int number,PresetInput input){db.sql("insert into prompt_preset_versions(id,prompt_preset_id,version,positive_fragment,negative_fragment) values(?,?,?,?,?)").params(UUID.randomUUID(),id,number,input.positiveFragment(),text(input.negativeFragment())).update();}
- public List<Map<String,Object>> selectedPresets(List<String> keys){require(keys.size()<=20&&new HashSet<>(keys).size()==keys.size(),"Select at most 20 unique presets");var result=new ArrayList<Map<String,Object>>();for(String key:keys){var rows=db.sql("select p.id,p.key,p.name,v.id as version_id,v.version,v.positive_fragment,v.negative_fragment from prompt_presets p join lateral(select * from prompt_preset_versions where prompt_preset_id=p.id order by version desc limit 1)v on true where p.key=? and p.status='ACTIVE'").param(key).query().listOfRows();require(!rows.isEmpty(),"Unknown or archived preset: "+key);result.add(rows.getFirst());}return result;}
- public List<Map<String,Object>> variants(UUID id){return db.sql("select v.*,(select count(*) from generations g where g.experiment_variant_id=v.id) as generations from prompt_experiment_variants v where experiment_id=? order by key").param(id).query().listOfRows();}
- public Map<String,Object> experiment(UUID id){var row=new LinkedHashMap<>(one("prompt_experiments",id));row.put("variants",variants(id));return row;}
- @Transactional public Map<String,Object> createExperiment(ExperimentInput input){bounded(input.name(),200,"Experiment name",true);require(input.scope()!=null&&Set.of("PROMPT_TEMPLATE","COLLECTION","PIPELINE").contains(input.scope()),"Invalid experiment scope");
-  require(switch(input.scope()){case "PROMPT_TEMPLATE"->input.promptTemplateId()!=null&&input.collectionId()==null&&input.pipelineKey()==null;case "COLLECTION"->input.collectionId()!=null&&input.promptTemplateId()==null&&input.pipelineKey()==null;default->input.pipelineKey()!=null&&input.promptTemplateId()==null&&input.collectionId()==null;},"Supply exactly the scope target");if(input.pipelineKey()!=null)composer.constraints(input.pipelineKey());
-  require(input.variants()!=null&&input.variants().size()>=2&&input.variants().size()<=20,"Supply 2 to 20 variants");var keys=new HashSet<String>();int total=0;UUID template=null;
-  for(var v:input.variants()){validateIdentity(v.key(),v.name(),"variant");require(v.key().length()<=40&&keys.add(v.key()),"Invalid or duplicate variant key");require(v.weight()!=null&&v.weight()>0&&v.weight()<=10000,"Weights must be positive basis points");total+=v.weight();var version=one("prompt_versions",v.promptVersionId());require(version.get("status").equals("PUBLISHED"),"Variants require published versions");if(template==null)template=(UUID)version.get("prompt_template_id");require(template.equals(version.get("prompt_template_id")),"All variants must use the same logical template");}
-  require(total==10000,"Weights must total 10000 basis points");if(input.promptTemplateId()!=null)require(input.promptTemplateId().equals(template),"Variant template does not match scope");
-  UUID id=UUID.randomUUID();db.sql("insert into prompt_experiments(id,name,description,scope,prompt_template_id,collection_id,pipeline_key,allow_overrides) values(?,?,?,?,?,?,?,?)").params(id,input.name(),text(input.description()),input.scope(),input.promptTemplateId(),input.collectionId(),input.pipelineKey(),Boolean.TRUE.equals(input.allowOverrides())).update();
-  for(var v:input.variants())db.sql("insert into prompt_experiment_variants(id,experiment_id,key,name,prompt_version_id,weight) values(?,?,?,?,?,?)").params(UUID.randomUUID(),id,v.key(),v.name(),v.promptVersionId(),v.weight()).update();return experiment(id);
- }
- @Transactional public Map<String,Object> changeExperiment(UUID id,String next,Integer expected){var row=one("prompt_experiments",id,true);revision(row,expected);require(ExperimentAssignment.transition((String)row.get("status"),next),"Illegal experiment transition");if(next.equals("RUNNING")){for(var v:variants(id)){var version=one("prompt_versions",(UUID)v.get("prompt_version_id"));require(version.get("status").equals("PUBLISHED"),"All variants must remain published when starting");require(one("prompt_templates",(UUID)version.get("prompt_template_id")).get("status").equals("ACTIVE"),"Variant template is archived");}}
-  db.sql("update prompt_experiments set status=?,started_at=case when ?='RUNNING' then coalesce(started_at,now()) else started_at end,ended_at=case when ? in ('COMPLETED','CANCELLED') then now() else ended_at end,revision=revision+1 where id=?").params(next,next,next,id).update();return experiment(id);
- }
+
+  public static final JsonMapper JSON = JsonMapper.builder().build();
+  private final JdbcClient db;
+  private final PromptTemplateRenderer renderer;
+  private final PromptVariableValidator validator;
+  private final PromptComposer composer;
+
+  public PromptCatalog(JdbcClient db, PromptTemplateRenderer renderer,
+      PromptVariableValidator validator, PromptComposer composer) {
+    this.db = db;
+    this.renderer = renderer;
+    this.validator = validator;
+    this.composer = composer;
+  }
+
+  public static String text(String value) {
+    return value == null ? "" : value;
+  }
+
+  public static void require(boolean valid, String message) {
+    if (!valid) {
+      throw PromptException.invalid(message);
+    }
+  }
+
+  public static void bounded(String value, int max, String label, boolean required) {
+    require(value != null || !required, label + " is required");
+    if (value != null) {
+      require(value.length() <= max && (!required || !value.isBlank()),
+          label + " is blank or too long");
+    }
+  }
+
+  public static void revision(Map<String, Object> row, Integer expected) {
+    if (expected == null || ((Number) row.get("revision")).intValue() != expected) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT,
+          "Revision conflict; reload before editing");
+    }
+  }
+
+  private void table(String name) {
+    if (!Set.of("prompt_templates", "prompt_versions", "prompt_presets", "prompt_preset_versions",
+            "prompt_experiments", "prompt_experiment_variants", "rendered_prompt_snapshots")
+        .contains(name)) {
+      throw new IllegalArgumentException();
+    }
+  }
+
+  public Map<String, Object> one(String table, UUID id) {
+    return one(table, id, false);
+  }
+
+  public Map<String, Object> one(String table, UUID id, boolean lock) {
+    table(table);
+    return db.sql("select * from " + table + " where id=?" + (lock ? " for update" : "")).param(id)
+        .query().listOfRows().stream().findFirst().orElseThrow(
+            () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Prompt record not found"));
+  }
+
+  public List<Map<String, Object>> list(String table) {
+    table(table);
+    return db.sql("select * from " + table + " order by created_at desc limit 200").query()
+        .listOfRows();
+  }
+
+  public List<Map<String, Object>> templates() {
+    return db.sql(
+            "select t.*, (select max(version) from prompt_versions v where v.prompt_template_id=t.id and v.status='PUBLISHED') as current_version,(select count(*) from prompt_experiments e where e.prompt_template_id=t.id and e.status='RUNNING') as running_experiments from prompt_templates t order by t.updated_at desc limit 200")
+        .query().listOfRows();
+  }
+
+  @Transactional
+  public Map<String, Object> createTemplate(TemplateInput input) {
+    validateIdentity(input.key(), input.name(), input.category());
+    UUID id = UUID.randomUUID();
+    db.sql("insert into prompt_templates(id,key,name,description,category) values(?,?,?,?,?)")
+        .params(id, input.key(), input.name(), text(input.description()), input.category())
+        .update();
+    return one("prompt_templates", id);
+  }
+
+  @Transactional
+  public Map<String, Object> updateTemplate(UUID id, TemplateInput input) {
+    var row = one("prompt_templates", id, true);
+    revision(row, input.revision());
+    String name = input.name() == null ? (String) row.get("name") : input.name(), category =
+        input.category() == null ? (String) row.get("category") : input.category();
+    validateIdentity((String) row.get("key"), name, category);
+    String status = input.status() == null ? (String) row.get("status") : input.status();
+    require(Set.of("ACTIVE", "ARCHIVED").contains(status), "Invalid template status");
+    require(input.key() == null || input.key().equals(row.get("key")), "Template key is immutable");
+    db.sql(
+            "update prompt_templates set name=?,description=?,category=?,status=?,revision=revision+1,updated_at=now() where id=?")
+        .params(name, input.description() == null ? row.get("description") : input.description(),
+            category, status, id).update();
+    return one("prompt_templates", id);
+  }
+
+  private void validateIdentity(String key, String name, String category) {
+    require(key != null && key.matches("[A-Za-z0-9][A-Za-z0-9_-]{0,99}"), "Invalid key");
+    bounded(name, 200, "Name", true);
+    bounded(category, 80, "Category", true);
+  }
+
+  public List<Map<String, Object>> versions(UUID template) {
+    one("prompt_templates", template);
+    return db.sql("select * from prompt_versions where prompt_template_id=? order by version desc")
+        .param(template).query().listOfRows();
+  }
+
+  public List<Map<String, Object>> publishedVersions() {
+    return db.sql(
+            "select v.*,t.name as template_name from prompt_versions v join prompt_templates t on t.id=v.prompt_template_id where v.status='PUBLISHED' and t.status='ACTIVE' order by v.created_at desc limit 200")
+        .query().listOfRows();
+  }
+
+  public List<PromptVariableDefinition> variables(UUID version) {
+    return db.sql(
+            "select * from prompt_variable_definitions where prompt_version_id=? order by display_order,name")
+        .param(version).query().listOfRows().stream().map(
+            r -> new PromptVariableDefinition((String) r.get("name"), (String) r.get("label"),
+                (String) r.get("description"), VariableType.valueOf((String) r.get("type")),
+                (Boolean) r.get("required"), r.get("default_value") == null ? null
+                : JSON.readValue(r.get("default_value").toString(), Object.class),
+                Arrays.asList(JSON.readValue(r.get("allowed_values").toString(), String[].class)),
+                (java.math.BigDecimal) r.get("min"), (java.math.BigDecimal) r.get("max"),
+                (Integer) r.get("min_length"), (Integer) r.get("max_length"),
+                (Integer) r.get("display_order"))).toList();
+  }
+
+  public Map<String, Object> version(UUID id) {
+    var row = new LinkedHashMap<>(one("prompt_versions", id));
+    row.put("variables", variables(id));
+    return row;
+  }
+
+  @Transactional
+  public Map<String, Object> createVersion(UUID template, VersionInput input) {
+    var owner = one("prompt_templates", template, true);
+    require(owner.get("status").equals("ACTIVE"), "Archived template cannot accept versions");
+    if (input.copyFromVersionId() != null) {
+      var source = one("prompt_versions", input.copyFromVersionId());
+      require(source.get("prompt_template_id").equals(template),
+          "Copy source belongs to another template");
+      source = one("prompt_versions", input.copyFromVersionId(), true);
+      input = new VersionInput((String) source.get("positive_template"),
+          (String) source.get("negative_template"), variables(input.copyFromVersionId()),
+          text(input.changeDescription()), null, null);
+    }
+    validateDraft(input);
+    UUID id = UUID.randomUUID();
+    int number = db.sql(
+            "select coalesce(max(version),0)+1 from prompt_versions where prompt_template_id=?")
+        .param(template).query(Integer.class).single();
+    db.sql(
+            "insert into prompt_versions(id,prompt_template_id,version,positive_template,negative_template,change_description) values(?,?,?,?,?,?)")
+        .params(id, template, number, input.positiveTemplate(), text(input.negativeTemplate()),
+            text(input.changeDescription())).update();
+    saveVariables(id, input.variables());
+    return version(id);
+  }
+
+  @Transactional
+  public Map<String, Object> editVersion(UUID id, VersionInput input) {
+    var row = one("prompt_versions", id, true);
+    revision(row, input.revision());
+    require(row.get("status").equals("DRAFT"),
+        "Published versions are immutable; create a draft copy");
+    validateDraft(input);
+    db.sql(
+            "update prompt_versions set positive_template=?,negative_template=?,change_description=?,revision=revision+1 where id=?")
+        .params(input.positiveTemplate(), text(input.negativeTemplate()),
+            text(input.changeDescription()), id).update();
+    db.sql("delete from prompt_variable_definitions where prompt_version_id=?").param(id).update();
+    saveVariables(id, input.variables());
+    return version(id);
+  }
+
+  private void validateDraft(VersionInput input) {
+    bounded(input.positiveTemplate(), 10000, "Positive template", true);
+    bounded(input.negativeTemplate(), 10000, "Negative template", false);
+    bounded(input.changeDescription(), 2000, "Change description", false);
+    validator.definitions(input.variables());
+  }
+
+  private void saveVariables(UUID version, List<PromptVariableDefinition> definitions) {
+    for (var d : definitions) {
+      db.sql(
+              "insert into prompt_variable_definitions(id,prompt_version_id,name,label,description,type,required,default_value,allowed_values,min,max,min_length,max_length,display_order) values(?,?,?,?,?,?,?,cast(? as jsonb),cast(? as jsonb),?,?,?,?,?)")
+          .params(UUID.randomUUID(), version, d.name(), d.label() == null ? d.name() : d.label(),
+              text(d.description()), d.type().name(), Boolean.TRUE.equals(d.required()),
+              d.defaultValue() == null ? null : JSON.writeValueAsString(d.defaultValue()),
+              JSON.writeValueAsString(d.allowedValues()), d.min(), d.max(), d.minLength(),
+              d.maxLength(), d.displayOrder() == null ? 0 : d.displayOrder()).update();
+    }
+  }
+
+  public List<String> validateVersion(UUID id) {
+    var v = one("prompt_versions", id);
+    return validateContent((String) v.get("positive_template"), (String) v.get("negative_template"),
+        variables(id));
+  }
+
+  public List<String> validateContent(String positive, String negative,
+      List<PromptVariableDefinition> definitions) {
+    validator.definitions(definitions);
+    var refs = new LinkedHashSet<>(renderer.references(positive));
+    refs.addAll(renderer.references(negative));
+    var names = new HashSet<String>();
+    definitions.forEach(d -> names.add(d.name()));
+    for (String ref : refs) {
+      require(names.contains(ref), "Undefined template variable: " + ref);
+    }
+    var warnings = new ArrayList<>(composer.lint(positive, text(negative)));
+    for (String name : names) {
+      if (!refs.contains(name)) {
+        warnings.add("Defined but unused variable: " + name);
+      }
+    }
+    return warnings;
+  }
+
+  @Transactional
+  public Map<String, Object> publish(UUID id, Integer expected) {
+    var identity = one("prompt_versions", id);
+    one("prompt_templates", (UUID) identity.get("prompt_template_id"), true);
+    var row = one("prompt_versions", id, true);
+    revision(row, expected);
+    require(row.get("status").equals("DRAFT"), "Only drafts can be published");
+    require(one("prompt_templates", (UUID) row.get("prompt_template_id"), true).get("status")
+        .equals("ACTIVE"), "Template is archived");
+    validateVersion(id);
+    db.sql(
+            "update prompt_versions set status='PUBLISHED',published_at=now(),published_by='local-workspace',revision=revision+1 where id=?")
+        .param(id).update();
+    return version(id);
+  }
+
+  @Transactional
+  public Map<String, Object> deprecate(UUID id, Integer expected) {
+    var row = one("prompt_versions", id, true);
+    revision(row, expected);
+    require(row.get("status").equals("PUBLISHED"), "Only published versions can be deprecated");
+    db.sql(
+            "update prompt_versions set status='DEPRECATED',deprecated_at=now(),deprecated_by='local-workspace',revision=revision+1 where id=?")
+        .param(id).update();
+    return version(id);
+  }
+
+  public Map<String, Object> preset(UUID id) {
+    var row = new LinkedHashMap<>(one("prompt_presets", id));
+    row.put("versions", db.sql(
+            "select * from prompt_preset_versions where prompt_preset_id=? order by version desc")
+        .param(id).query().listOfRows());
+    return row;
+  }
+
+  public List<Map<String, Object>> presets() {
+    return db.sql(
+            "select p.*,v.id as version_id,v.version,v.positive_fragment,v.negative_fragment from prompt_presets p join lateral(select * from prompt_preset_versions where prompt_preset_id=p.id order by version desc limit 1)v on true order by p.key limit 200")
+        .query().listOfRows();
+  }
+
+  @Transactional
+  public Map<String, Object> createPreset(PresetInput input) {
+    validateIdentity(input.key(), input.name(), input.category());
+    validateFragments(input);
+    UUID id = UUID.randomUUID();
+    db.sql("insert into prompt_presets(id,key,name,description,category) values(?,?,?,?,?)")
+        .params(id, input.key(), input.name(), text(input.description()), input.category())
+        .update();
+    presetVersion(id, 1, input);
+    return preset(id);
+  }
+
+  @Transactional
+  public Map<String, Object> updatePreset(UUID id, PresetInput input) {
+    var row = one("prompt_presets", id, true);
+    revision(row, input.revision());
+    require(input.key() == null || input.key().equals(row.get("key")), "Preset key is immutable");
+    String status = input.status() == null ? (String) row.get("status") : input.status();
+    require(Set.of("ACTIVE", "ARCHIVED").contains(status), "Invalid preset status");
+    String name = input.name() == null ? (String) row.get("name") : input.name(), category =
+        input.category() == null ? (String) row.get("category") : input.category();
+    validateIdentity((String) row.get("key"), name, category);
+    db.sql(
+            "update prompt_presets set name=?,description=?,category=?,status=?,revision=revision+1,updated_at=now() where id=?")
+        .params(name, input.description() == null ? row.get("description") : input.description(),
+            category, status, id).update();
+    if (input.positiveFragment() != null || input.negativeFragment() != null) {
+      var latest = db.sql(
+              "select * from prompt_preset_versions where prompt_preset_id=? order by version desc limit 1")
+          .param(id).query().singleRow();
+      var content = new PresetInput(null, null, null, null, null,
+          input.positiveFragment() == null ? (String) latest.get("positive_fragment")
+              : input.positiveFragment(),
+          input.negativeFragment() == null ? (String) latest.get("negative_fragment")
+              : input.negativeFragment(), null);
+      validateFragments(content);
+      presetVersion(id, ((Number) latest.get("version")).intValue() + 1, content);
+    }
+    return preset(id);
+  }
+
+  private void validateFragments(PresetInput input) {
+    bounded(input.positiveFragment(), 5000, "Preset positive", true);
+    bounded(input.negativeFragment(), 5000, "Preset negative", false);
+    require(renderer.references(input.positiveFragment()).isEmpty() && renderer.references(
+            input.negativeFragment()).isEmpty(),
+        "Presets are literal fragments; variables belong to templates");
+  }
+
+  private void presetVersion(UUID id, int number, PresetInput input) {
+    db.sql(
+            "insert into prompt_preset_versions(id,prompt_preset_id,version,positive_fragment,negative_fragment) values(?,?,?,?,?)")
+        .params(UUID.randomUUID(), id, number, input.positiveFragment(),
+            text(input.negativeFragment())).update();
+  }
+
+  public List<Map<String, Object>> selectedPresets(List<String> keys) {
+    require(keys.size() <= 20 && new HashSet<>(keys).size() == keys.size(),
+        "Select at most 20 unique presets");
+    var result = new ArrayList<Map<String, Object>>();
+    for (String key : keys) {
+      var rows = db.sql(
+              "select p.id,p.key,p.name,v.id as version_id,v.version,v.positive_fragment,v.negative_fragment from prompt_presets p join lateral(select * from prompt_preset_versions where prompt_preset_id=p.id order by version desc limit 1)v on true where p.key=? and p.status='ACTIVE'")
+          .param(key).query().listOfRows();
+      require(!rows.isEmpty(), "Unknown or archived preset: " + key);
+      result.add(rows.getFirst());
+    }
+    return result;
+  }
+
+  public List<Map<String, Object>> variants(UUID id) {
+    return db.sql(
+            "select v.*,(select count(*) from generations g where g.experiment_variant_id=v.id) as generations from prompt_experiment_variants v where experiment_id=? order by key")
+        .param(id).query().listOfRows();
+  }
+
+  public Map<String, Object> experiment(UUID id) {
+    var row = new LinkedHashMap<>(one("prompt_experiments", id));
+    row.put("variants", variants(id));
+    return row;
+  }
+
+  @Transactional
+  public Map<String, Object> createExperiment(ExperimentInput input) {
+    bounded(input.name(), 200, "Experiment name", true);
+    require(input.scope() != null && Set.of("PROMPT_TEMPLATE", "COLLECTION", "PIPELINE")
+        .contains(input.scope()), "Invalid experiment scope");
+    require(switch (input.scope()) {
+      case "PROMPT_TEMPLATE" -> input.promptTemplateId() != null && input.collectionId() == null
+          && input.pipelineKey() == null;
+      case "COLLECTION" -> input.collectionId() != null && input.promptTemplateId() == null
+          && input.pipelineKey() == null;
+      default -> input.pipelineKey() != null && input.promptTemplateId() == null
+          && input.collectionId() == null;
+    }, "Supply exactly the scope target");
+    if (input.pipelineKey() != null) {
+      composer.constraints(input.pipelineKey());
+    }
+    require(
+        input.variants() != null && input.variants().size() >= 2 && input.variants().size() <= 20,
+        "Supply 2 to 20 variants");
+    var keys = new HashSet<String>();
+    int total = 0;
+    UUID template = null;
+    for (var v : input.variants()) {
+      validateIdentity(v.key(), v.name(), "variant");
+      require(v.key().length() <= 40 && keys.add(v.key()), "Invalid or duplicate variant key");
+      require(v.weight() != null && v.weight() > 0 && v.weight() <= 10000,
+          "Weights must be positive basis points");
+      total += v.weight();
+      var version = one("prompt_versions", v.promptVersionId());
+      require(version.get("status").equals("PUBLISHED"), "Variants require published versions");
+      if (template == null) {
+        template = (UUID) version.get("prompt_template_id");
+      }
+      require(template.equals(version.get("prompt_template_id")),
+          "All variants must use the same logical template");
+    }
+    require(total == 10000, "Weights must total 10000 basis points");
+    if (input.promptTemplateId() != null) {
+      require(input.promptTemplateId().equals(template), "Variant template does not match scope");
+    }
+    UUID id = UUID.randomUUID();
+    db.sql(
+            "insert into prompt_experiments(id,name,description,scope,prompt_template_id,collection_id,pipeline_key,allow_overrides) values(?,?,?,?,?,?,?,?)")
+        .params(id, input.name(), text(input.description()), input.scope(),
+            input.promptTemplateId(), input.collectionId(), input.pipelineKey(),
+            Boolean.TRUE.equals(input.allowOverrides())).update();
+    for (var v : input.variants()) {
+      db.sql(
+              "insert into prompt_experiment_variants(id,experiment_id,key,name,prompt_version_id,weight) values(?,?,?,?,?,?)")
+          .params(UUID.randomUUID(), id, v.key(), v.name(), v.promptVersionId(), v.weight())
+          .update();
+    }
+    return experiment(id);
+  }
+
+  @Transactional
+  public Map<String, Object> changeExperiment(UUID id, String next, Integer expected) {
+    var row = one("prompt_experiments", id, true);
+    revision(row, expected);
+    require(ExperimentAssignment.transition((String) row.get("status"), next),
+        "Illegal experiment transition");
+    if (next.equals("RUNNING")) {
+      for (var v : variants(id)) {
+        var version = one("prompt_versions", (UUID) v.get("prompt_version_id"));
+        require(version.get("status").equals("PUBLISHED"),
+            "All variants must remain published when starting");
+        require(one("prompt_templates", (UUID) version.get("prompt_template_id")).get("status")
+            .equals("ACTIVE"), "Variant template is archived");
+      }
+    }
+    db.sql(
+            "update prompt_experiments set status=?,started_at=case when ?='RUNNING' then coalesce(started_at,now()) else started_at end,ended_at=case when ? in ('COMPLETED','CANCELLED') then now() else ended_at end,revision=revision+1 where id=?")
+        .params(next, next, next, id).update();
+    return experiment(id);
+  }
 }
