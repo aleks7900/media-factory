@@ -20,6 +20,7 @@ public class GenerationAttemptRepository {
   private final JdbcClient db;
   private final TransactionTemplate tx;
   private final PricingService pricing;
+
   public GenerationAttemptRepository(JdbcClient db, TransactionTemplate tx,
       PricingService pricing) {
     this.db = db;

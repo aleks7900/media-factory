@@ -30,6 +30,7 @@ public class OpenAiImageClient implements AutoCloseable {
   private final OpenAiImageProperties secrets;
   private final ImageGenerationProperties properties;
   private final HttpClient client;
+
   public OpenAiImageClient(OpenAiImageProperties secrets, ImageGenerationProperties properties) {
     this.secrets = secrets;
     this.properties = properties;

@@ -11,8 +11,11 @@ public class ApiErrors {
 
   @ExceptionHandler(com.mediafactory.processing.ProcessingFailure.class)
   public ProblemDetail processing(com.mediafactory.processing.ProcessingFailure e) {
-    var result=ProblemDetail.forStatusAndDetail(e.retryable()?HttpStatus.SERVICE_UNAVAILABLE:HttpStatus.UNPROCESSABLE_CONTENT,e.getMessage());
-    result.setProperty("code",e.code());return result;
+    var result = ProblemDetail.forStatusAndDetail(
+        e.retryable() ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.UNPROCESSABLE_CONTENT,
+        e.getMessage());
+    result.setProperty("code", e.code());
+    return result;
   }
 
   @ExceptionHandler(IllegalArgumentException.class)
@@ -24,9 +27,9 @@ public class ApiErrors {
   public ProblemDetail prompt(com.mediafactory.prompt.PromptException e) {
     var p = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
     p.setProperty("code", e.code());
-      if (e.variable() != null) {
-          p.setProperty("variable", e.variable());
-      }
+    if (e.variable() != null) {
+      p.setProperty("variable", e.variable());
+    }
     return p;
   }
 

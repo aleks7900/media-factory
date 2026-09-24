@@ -1,15 +1,24 @@
 package com.mediafactory.processing;
 
-import static com.mediafactory.processing.ProcessingJson.*;
+import static com.mediafactory.processing.ProcessingJson.integer;
+import static com.mediafactory.processing.ProcessingJson.map;
+import static com.mediafactory.processing.ProcessingJson.write;
 
 import com.mediafactory.storage.MediaStorage;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class ProcessingService {
+
   final JdbcClient db;
   final TransactionTemplate tx;
   final ProcessingPlanner planner;
@@ -22,13 +31,13 @@ public class ProcessingService {
       TransactionTemplate tx,
       ProcessingPlanner planner,
       MediaStorage storage,
-      ProcessingProvider provider,com.mediafactory.quality.QaConfiguration qa) {
+      ProcessingProvider provider, com.mediafactory.quality.QaConfiguration qa) {
     this.db = db;
     this.tx = tx;
     this.planner = planner;
     this.storage = storage;
     this.provider = provider;
-    this.qa=qa;
+    this.qa = qa;
   }
 
   public List<Map<String, Object>> profiles() {
@@ -66,8 +75,9 @@ public class ProcessingService {
   }
 
   public Map<String, Object> draft(String key, Map<String, Object> definition) {
-    if (!key.matches("[A-Z][A-Z0-9_]{1,79}"))
+    if (!key.matches("[A-Z][A-Z0-9_]{1,79}")) {
       throw new IllegalArgumentException("Invalid profile key");
+    }
     planner.validate(definition);
     return tx.execute(
         s -> {
@@ -94,8 +104,9 @@ public class ProcessingService {
   }
 
   public Object transition(UUID id, String status) {
-    if (!Set.of("PUBLISHED", "DEPRECATED").contains(status))
+    if (!Set.of("PUBLISHED", "DEPRECATED").contains(status)) {
       throw new IllegalArgumentException("Invalid profile status");
+    }
     return db
         .sql(
             "update processing_profile_versions set status=?,published_at=case when ?='PUBLISHED'"
@@ -124,29 +135,38 @@ public class ProcessingService {
 
   public Map<String, Object> request(
       UUID id, List<String> keys, Map<String, Object> manual, String key, int priority) {
-    if (keys.isEmpty() || keys.size() > 16 || new HashSet<>(keys).size() != keys.size())
+    if (keys.isEmpty() || keys.size() > 16 || new HashSet<>(keys).size() != keys.size()) {
       throw new IllegalArgumentException("Select 1–16 distinct profiles");
-    if (key != null && (key.isBlank() || key.length() > 200))
+    }
+    if (key != null && (key.isBlank() || key.length() > 200)) {
       throw new IllegalArgumentException("Invalid idempotency key");
+    }
     return tx.execute(
         s -> {
           var a = asset(id);
-          if (!"APPROVED".equals(a.get("final_decision")))
+          if (!"APPROVED".equals(a.get("final_decision"))) {
             throw new IllegalArgumentException("Only QA-approved master assets can be processed");
-          if (!a.get("media_type").toString().startsWith("image/"))
+          }
+          if (!a.get("media_type").toString().startsWith("image/")) {
             throw new IllegalArgumentException("Only images are supported");
+          }
           if (((Number) a.get("width")).longValue() * ((Number) a.get("height")).longValue()
-                  > 20000000
-              || ((Number) a.get("size_bytes")).longValue() > 67108864)
+              > 20000000
+              || ((Number) a.get("size_bytes")).longValue() > 67108864) {
             throw new IllegalArgumentException("Source exceeds input resource limits");
-          var profiles = keys.stream().sorted().map(this::profile).map(p->{
-            var definition=new LinkedHashMap<>(map(p.get("definition")));
-            if(Boolean.TRUE.equals(definition.get("visualQa"))) {
-              String vision=definition.getOrDefault("visionProvider","mock").toString();
-              definition.put("visionModel",qa.model(vision));definition.put("visionScenario",qa.scenario());
-              definition.put("qaPolicySnapshot",map(write(qa.policy(definition.getOrDefault("qaPolicy","default").toString()))));
+          }
+          var profiles = keys.stream().sorted().map(this::profile).map(p -> {
+            var definition = new LinkedHashMap<>(map(p.get("definition")));
+            if (Boolean.TRUE.equals(definition.get("visualQa"))) {
+              String vision = definition.getOrDefault("visionProvider", "mock").toString();
+              definition.put("visionModel", qa.model(vision));
+              definition.put("visionScenario", qa.scenario());
+              definition.put("qaPolicySnapshot",
+                  map(write(qa.policy(definition.getOrDefault("qaPolicy", "default").toString()))));
             }
-            var frozen=new LinkedHashMap<>(p);frozen.put("definition",definition);return (Map<String,Object>)frozen;
+            var frozen = new LinkedHashMap<>(p);
+            frozen.put("definition", definition);
+            return (Map<String, Object>) frozen;
           }).toList();
           var plan = new LinkedHashMap<>(
               planner.plan(
@@ -156,7 +176,7 @@ public class ProcessingService {
                   ((Number) a.get("height")).intValue(),
                   profiles,
                   manual));
-          plan.put("focalRegions",focalRegions(id));
+          plan.put("focalRegions", focalRegions(id));
           String hash = ProcessingPlanner.hash(plan),
               actualKey = key == null ? "processing:" + hash : key;
           UUID run = UUID.randomUUID();
@@ -171,16 +191,18 @@ public class ProcessingService {
                   .param(actualKey)
                   .query()
                   .singleRow();
-          if (!hash.equals(row.get("request_hash").toString()))
+          if (!hash.equals(row.get("request_hash").toString())) {
             throw new IllegalArgumentException(
                 "Idempotency key was already used for a different request");
+          }
           return Map.of("processingRunId", row.get("id"), "status", row.get("status"));
         });
   }
 
   public Object batch(List<UUID> ids, List<String> profiles) {
-    if (ids.isEmpty() || ids.size() > 100)
+    if (ids.isEmpty() || ids.size() > 100) {
       throw new IllegalArgumentException("Batch supports 1–100 assets");
+    }
     return ids.stream()
         .distinct()
         .map(
@@ -281,11 +303,12 @@ public class ProcessingService {
                     + " ('PENDING','RUNNING')")
             .param(id)
             .update();
-    if (changed > 0)
+    if (changed > 0) {
       try {
         provider.cancel(id);
       } catch (ProcessingFailure ignored) {
       }
+    }
     return Map.of("cancelRequested", changed > 0);
   }
 
@@ -326,15 +349,17 @@ public class ProcessingService {
             .listOfRows()) {
       var metadata = map(row.get("metadata"));
       Object focal = metadata.get("focalRegion");
-      if (focal != null)
+      if (focal != null) {
         try {
           var region = map(focal);
           if (region
               .keySet()
-              .containsAll(Set.of("x", "y", "width", "height", "type", "confidence")))
+              .containsAll(Set.of("x", "y", "width", "height", "type", "confidence"))) {
             results.add(region);
+          }
         } catch (Exception ignored) {
         }
+      }
     }
     return results;
   }
@@ -360,8 +385,9 @@ public class ProcessingService {
   }
 
   public Object target(String key, Map<String, Object> definition) {
-    if (!key.matches("[A-Z][A-Z0-9_]{1,79}"))
+    if (!key.matches("[A-Z][A-Z0-9_]{1,79}")) {
       throw new IllegalArgumentException("Invalid target key");
+    }
     planner.validate(definition);
     db.sql(
             "insert into wallpaper_targets(key,width,height,crop_mode,quality,format)"

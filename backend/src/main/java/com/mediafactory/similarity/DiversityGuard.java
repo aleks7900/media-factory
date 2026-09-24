@@ -3,15 +3,36 @@ package com.mediafactory.similarity;
 import static com.mediafactory.similarity.SimilarityService.JSON;
 
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 @Service
 public class DiversityGuard {
+
   private final SimilarityService similarity;
 
   public DiversityGuard(SimilarityService similarity) {
     this.similarity = similarity;
+  }
+
+  static String normalize(String value) {
+    return value.toLowerCase(Locale.ROOT).trim().replaceAll("\\s+", " ");
+  }
+
+  static double jaccard(String a, String b) {
+    var left = new HashSet<>(Arrays.asList(a.split("\\W+")));
+    var right = new HashSet<>(Arrays.asList(b.split("\\W+")));
+    var union = new HashSet<>(left);
+    union.addAll(right);
+    left.retainAll(right);
+    return union.isEmpty() ? 0 : (double) left.size() / union.size();
   }
 
   public Map<String, Object> evaluate(UUID concept, String prompt, boolean regeneration) {
@@ -60,29 +81,33 @@ public class DiversityGuard {
         high
             ? "HIGH_REPETITION_RISK"
             : related > 0 || largest > ((Number) c.get("saturation_threshold")).doubleValue()
-                ? "WARNING"
+              ? "WARNING"
                 : "CLEAR";
     var recommendations = new ArrayList<String>();
-    if (exact > 0)
+    if (exact > 0) {
       recommendations.add(
           "The same frozen prompt appears "
               + exact
               + " times in the recent "
               + recent.size()
               + " generations. Change subject, composition, or viewpoint.");
-    if (related > exact)
+    }
+    if (related > exact) {
       recommendations.add(
           "Related prompt wording appears "
               + related
               + " times; vary lighting or environment while preserving the collection theme.");
-    if (largest > 0.5)
+    }
+    if (largest > 0.5) {
       recommendations.add(
           "The largest visual family contains "
               + Math.round(largest * 100)
               + "% of the last analyzed collection. Review its representative before adding more"
               + " images.");
-    if (regeneration)
+    }
+    if (regeneration) {
       recommendations.add("Regeneration lineage is expected to repeat the source prompt.");
+    }
     return Map.of(
         "decision",
         decision,
@@ -106,10 +131,11 @@ public class DiversityGuard {
 
   public Map<String, Object> enforce(UUID concept, String prompt, boolean regeneration) {
     var result = evaluate(concept, prompt, regeneration);
-    if (Boolean.TRUE.equals(result.get("blocked")))
+    if (Boolean.TRUE.equals(result.get("blocked"))) {
       throw SimilarityService.conflict(
           "Diversity Guard: repeated frozen prompt exceeds strict policy. Change the prompt or"
               + " collection policy before spending.");
+    }
     return result;
   }
 
@@ -152,18 +178,5 @@ public class DiversityGuard {
     result.put("semanticCandidates", similarity.nearest(vector, model, 10));
     result.put("semanticEvidenceIsAdvisory", true);
     return result;
-  }
-
-  static String normalize(String value) {
-    return value.toLowerCase(Locale.ROOT).trim().replaceAll("\\s+", " ");
-  }
-
-  static double jaccard(String a, String b) {
-    var left = new HashSet<>(Arrays.asList(a.split("\\W+")));
-    var right = new HashSet<>(Arrays.asList(b.split("\\W+")));
-    var union = new HashSet<>(left);
-    union.addAll(right);
-    left.retainAll(right);
-    return union.isEmpty() ? 0 : (double) left.size() / union.size();
   }
 }

@@ -3,14 +3,29 @@ package com.mediafactory.api;
 import static com.mediafactory.similarity.SimilarityService.JSON;
 
 import com.mediafactory.quality.ReviewActor;
-import com.mediafactory.similarity.*;
-import java.util.*;
+import com.mediafactory.similarity.CollectionClusteringService;
+import com.mediafactory.similarity.EmbeddingModelService;
+import com.mediafactory.similarity.SimilarityReviewService;
+import com.mediafactory.similarity.SimilarityService;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1")
 public class SimilarityController {
+
   private final SimilarityService similarity;
   private final SimilarityReviewService reviews;
   private final EmbeddingModelService models;
@@ -39,9 +54,12 @@ public class SimilarityController {
       m.forEach((k, v) -> out.put(k.toString(), clean(v)));
       return out;
     }
-    if (value instanceof List<?> l) return l.stream().map(SimilarityController::clean).toList();
-    if (value != null && value.getClass().getName().equals("org.postgresql.util.PGobject"))
+    if (value instanceof List<?> l) {
+      return l.stream().map(SimilarityController::clean).toList();
+    }
+    if (value != null && value.getClass().getName().equals("org.postgresql.util.PGobject")) {
       return JSON.readValue(value.toString(), Object.class);
+    }
     return value;
   }
 
@@ -64,8 +82,6 @@ public class SimilarityController {
             similarity.similar(id, scope, limit, minimumSimilarity, classification)));
   }
 
-  public record Search(String query, int limit) {}
-
   @PostMapping("/assets/search/semantic")
   public Object semantic(@RequestBody Search request) {
     return clean(similarity.semantic(request.query(), request.limit()));
@@ -78,7 +94,9 @@ public class SimilarityController {
       @RequestParam(required = false) UUID collection,
       @RequestParam(required = false) String generationModel,
       @RequestParam(required = false) String after) {
-    if (page < 0 || page > 100000) throw new IllegalArgumentException("Invalid page");
+    if (page < 0 || page > 100000) {
+      throw new IllegalArgumentException("Invalid page");
+    }
     return clean(
         db.sql(
                 "select distinct s.* from similarity_comparisons s join assets a on"
@@ -103,8 +121,6 @@ public class SimilarityController {
             .listOfRows());
   }
 
-  public record Review(int revision, String classification, String reason) {}
-
   @PostMapping("/similarity-comparisons/{id}/confirm")
   public Object confirm(@PathVariable UUID id, @RequestBody Review input) {
     return clean(
@@ -128,7 +144,9 @@ public class SimilarityController {
 
   @GetMapping("/duplicate-groups")
   public Object groups(@RequestParam(defaultValue = "0") int page) {
-    if (page < 0 || page > 100000) throw new IllegalArgumentException("Invalid page");
+    if (page < 0 || page > 100000) {
+      throw new IllegalArgumentException("Invalid page");
+    }
     return clean(
         db.sql(
                 "select g.*,(select count(*) from duplicate_group_members m where m.group_id=g.id)"
@@ -154,8 +172,6 @@ public class SimilarityController {
                 .listOfRows()));
   }
 
-  public record Canonical(UUID assetId, int revision, String reason) {}
-
   @PostMapping("/duplicate-groups/{id}/canonical")
   public Object canonical(@PathVariable UUID id, @RequestBody Canonical input) {
     return clean(
@@ -172,8 +188,6 @@ public class SimilarityController {
     return clean(db.sql("select * from embedding_models order by created_at").query().listOfRows());
   }
 
-  public record Registration(String provider) {}
-
   @PostMapping("/embedding-models")
   public Object register(@RequestBody Registration input) {
     return models.register(input.provider());
@@ -186,15 +200,15 @@ public class SimilarityController {
 
   @GetMapping("/embedding-jobs")
   public Object jobs(@RequestParam(defaultValue = "0") int page) {
-    if (page < 0 || page > 100000) throw new IllegalArgumentException("Invalid page");
+    if (page < 0 || page > 100000) {
+      throw new IllegalArgumentException("Invalid page");
+    }
     return clean(
         db.sql("select * from similarity_jobs order by created_at desc limit 50 offset ?")
             .param(page * 50)
             .query()
             .listOfRows());
   }
-
-  public record Job(String type, UUID modelId, UUID collectionId) {}
 
   @PostMapping("/embedding-jobs")
   public Object enqueue(@RequestBody Job input, @RequestHeader("Idempotency-Key") String key) {
@@ -215,7 +229,9 @@ public class SimilarityController {
                     + " where id=? and status='FAILED'")
             .param(id)
             .update();
-    if (n != 1) throw SimilarityService.conflict("Only failed jobs can be retried");
+    if (n != 1) {
+      throw SimilarityService.conflict("Only failed jobs can be retried");
+    }
     return Map.of("id", id, "status", "QUEUED");
   }
 
@@ -223,17 +239,6 @@ public class SimilarityController {
   public Object profiles() {
     return db.sql("select * from similarity_profiles order by id").query().listOfRows();
   }
-
-  public record Profile(
-      int revision,
-      int duplicateDistance,
-      int nearDistance,
-      double nearSimilarity,
-      double similarThreshold,
-      boolean blockDuplicates,
-      boolean blockNear,
-      String guardMode,
-      double saturationThreshold) {}
 
   @PutMapping("/similarity-profiles/{id}")
   public Object profile(@PathVariable String id, @RequestBody Profile input) {
@@ -254,11 +259,11 @@ public class SimilarityController {
                 id,
                 input.revision())
             .update();
-    if (n != 1) throw SimilarityService.conflict("Profile changed; reload");
+    if (n != 1) {
+      throw SimilarityService.conflict("Profile changed; reload");
+    }
     return db.sql("select * from similarity_profiles where id=?").param(id).query().singleRow();
   }
-
-  public record CollectionProfile(String profile) {}
 
   @PutMapping("/collections/{id}/similarity-profile")
   public Object collectionProfile(@PathVariable UUID id, @RequestBody CollectionProfile input) {
@@ -290,5 +295,42 @@ public class SimilarityController {
             similarity.activeModel().id())
         .query()
         .singleRow();
+  }
+
+  public record Search(String query, int limit) {
+
+  }
+
+  public record Review(int revision, String classification, String reason) {
+
+  }
+
+  public record Canonical(UUID assetId, int revision, String reason) {
+
+  }
+
+  public record Registration(String provider) {
+
+  }
+
+  public record Job(String type, UUID modelId, UUID collectionId) {
+
+  }
+
+  public record Profile(
+      int revision,
+      int duplicateDistance,
+      int nearDistance,
+      double nearSimilarity,
+      double similarThreshold,
+      boolean blockDuplicates,
+      boolean blockNear,
+      String guardMode,
+      double saturationThreshold) {
+
+  }
+
+  public record CollectionProfile(String profile) {
+
   }
 }

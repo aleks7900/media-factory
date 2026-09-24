@@ -1,10 +1,12 @@
 package com.mediafactory.processing;
 
-import java.util.*;
+import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Service;
 
 @Service
 public class SmartCropService {
+
   private final SubjectDetectionProvider provider;
 
   public SmartCropService(SubjectDetectionProvider provider) {

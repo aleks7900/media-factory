@@ -1,13 +1,24 @@
 package com.mediafactory.processing;
 
-import com.mediafactory.quality.*;
-import java.util.*;
+import com.mediafactory.quality.QaConfiguration;
+import com.mediafactory.quality.QaPolicy;
+import com.mediafactory.quality.QualityModels;
+import com.mediafactory.quality.QualityPolicyEngine;
+import com.mediafactory.quality.VisionQualityProvider;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
-/** Reuses TASK-04 evidence and policy engine. It does not create a new master asset/review. */
+/**
+ * Reuses TASK-04 evidence and policy engine. It does not create a new master asset/review.
+ */
 @Component
 public class PostProcessingQa {
+
   private final List<VisionQualityProvider> providers;
   private final QaConfiguration config;
   private final QualityPolicyEngine engine;
@@ -32,15 +43,16 @@ public class PostProcessingQa {
       Map<String, Object> profile) {
     String providerId = profile.getOrDefault("visionProvider", "mock").toString();
     // Explicit profile and global opt-in are both required for paid QA.
-    if (!providerId.equals("mock") && !providerId.equals(config.provider()))
+    if (!providerId.equals("mock") && !providerId.equals(config.provider())) {
       throw new ProcessingFailure("VISUAL_QA_PROVIDER_DISABLED");
+    }
     var provider =
         providers.stream()
             .filter(p -> p.providerId().equals(providerId))
             .findFirst()
             .orElseThrow(() -> new ProcessingFailure("VISUAL_QA_PROVIDER_DISABLED"));
     long start = System.nanoTime();
-    String model=profile.getOrDefault("visionModel",config.model(providerId)).toString();
+    String model = profile.getOrDefault("visionModel", config.model(providerId)).toString();
     var result =
         provider.analyze(
             new VisionQualityProvider.Request(
@@ -49,13 +61,17 @@ public class PostProcessingQa {
                 output.bytes(),
                 "image/" + output.validation().get("format").toString().toLowerCase(),
                 model,
-                profile.getOrDefault("visionScenario",config.scenario()).toString(),
+                profile.getOrDefault("visionScenario", config.scenario()).toString(),
                 Map.of(
                     "processingRunId",
                     runId.toString(),
                     "purpose",
                     "post-processing artifact QA")));
-    var policy = profile.containsKey("qaPolicySnapshot")?tools.jackson.databind.json.JsonMapper.builder().build().readValue(ProcessingJson.write(profile.get("qaPolicySnapshot")),QaPolicy.class):config.policy(profile.getOrDefault("qaPolicy", "default").toString());
+    var policy =
+        profile.containsKey("qaPolicySnapshot") ? tools.jackson.databind.json.JsonMapper.builder()
+            .build()
+            .readValue(ProcessingJson.write(profile.get("qaPolicySnapshot")), QaPolicy.class)
+            : config.policy(profile.getOrDefault("qaPolicy", "default").toString());
     var evaluation =
         engine.evaluate(
             policy, result.evidence().findings(), result.evidence().dimensions(), true, true);
@@ -87,8 +103,9 @@ public class PostProcessingQa {
             result.currency(),
             ProcessingJson.write(evidence))
         .update();
-    if (evaluation.finalDecision() != QualityModels.Decision.APPROVED)
+    if (evaluation.finalDecision() != QualityModels.Decision.APPROVED) {
       throw new ProcessingFailure("POST_PROCESSING_QA_" + evaluation.finalDecision());
+    }
     var metadata = new LinkedHashMap<>(output.metadata());
     metadata.put("visualQa", evidence);
     return new ProcessingProvider.Output(

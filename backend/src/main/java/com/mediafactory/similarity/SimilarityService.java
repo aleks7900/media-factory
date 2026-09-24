@@ -1,10 +1,23 @@
 package com.mediafactory.similarity;
 
-import static com.mediafactory.quality.QualityModels.*;
+import static com.mediafactory.quality.QualityModels.Category;
+import static com.mediafactory.quality.QualityModels.Code;
+import static com.mediafactory.quality.QualityModels.Finding;
+import static com.mediafactory.quality.QualityModels.Severity;
+import static com.mediafactory.quality.QualityModels.Source;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -16,13 +29,14 @@ import tools.jackson.databind.json.JsonMapper;
 
 @Service
 public class SimilarityService {
+
   public static final JsonMapper JSON = JsonMapper.builder().build();
+  public final boolean enabled;
   final JdbcClient db;
   final TransactionTemplate tx;
   final MeterRegistry metrics;
   private final SimilarityPolicy policy;
   private final Map<String, ImageEmbeddingProvider> providers;
-  public final boolean enabled;
   private final int topK;
   private final double minimum;
 
@@ -78,7 +92,9 @@ public class SimilarityService {
 
   public ImageEmbeddingProvider provider(ImageEmbeddingProvider.Model model) {
     var p = providers.get(model.provider());
-    if (p == null) throw new IllegalArgumentException("Embedding provider unavailable");
+    if (p == null) {
+      throw new IllegalArgumentException("Embedding provider unavailable");
+    }
     return p;
   }
 
@@ -269,7 +285,9 @@ public class SimilarityService {
   }
 
   public void analyzeExact(UUID asset, ImageEmbeddingProvider.Model model) {
-    for (UUID other : exactCandidates(asset)) compare(asset, other, model, null);
+    for (UUID other : exactCandidates(asset)) {
+      compare(asset, other, model, null);
+    }
   }
 
   public void analyze(UUID asset, ImageEmbeddingProvider.Model model) {
@@ -282,7 +300,7 @@ public class SimilarityService {
             .params(asset, PerceptualHash.VERSION)
             .query(String.class)
             .list();
-    if (!hashes.isEmpty())
+    if (!hashes.isEmpty()) {
       db.sql(
               "select asset_id from (select asset_id,phash_bits <~> cast(? as bit(64)) as distance"
                   + " from asset_fingerprints where type='PHASH' and algorithm_version=? and"
@@ -292,17 +310,21 @@ public class SimilarityService {
           .query(UUID.class)
           .list()
           .forEach(id -> candidates.putIfAbsent(id, null));
+    }
     var vectors =
         db.sql("select embedding::text from asset_embeddings where asset_id=? and model_id=?")
             .params(asset, model.id())
             .query(String.class)
             .list();
-    if (!vectors.isEmpty())
+    if (!vectors.isEmpty()) {
       for (var row : nearest(JSON.readValue(vectors.getFirst(), float[].class), model, topK + 1)) {
         UUID id = (UUID) row.get("asset_id");
         double similarity = ((Number) row.get("embedding_similarity")).doubleValue();
-        if (!id.equals(asset) && similarity >= minimum) candidates.put(id, similarity);
+        if (!id.equals(asset) && similarity >= minimum) {
+          candidates.put(id, similarity);
+        }
       }
+    }
     candidates.forEach((id, cosine) -> compare(asset, id, model, cosine));
   }
 
@@ -329,12 +351,12 @@ public class SimilarityService {
           Integer distance =
               hashes.size() == 2
                   ? PerceptualHash.distance(
-                      hashes.get(0).get("bits").toString(), hashes.get(1).get("bits").toString())
+                  hashes.get(0).get("bits").toString(), hashes.get(1).get("bits").toString())
                   : null;
           boolean low =
               hashes.stream().anyMatch(r -> Boolean.TRUE.equals(r.get("low_information")));
           Double sim = cosine;
-          if (sim == null)
+          if (sim == null) {
             sim =
                 db.sql(
                         "select 1-(x.embedding <=> y.embedding) from asset_embeddings x join"
@@ -344,6 +366,7 @@ public class SimilarityService {
                     .query(Double.class)
                     .optional()
                     .orElse(null);
+          }
           boolean family =
               root((UUID) source.get("generation_id"))
                   .equals(root((UUID) target.get("generation_id")));
@@ -376,7 +399,9 @@ public class SimilarityService {
             Map<String, Object> evaluationProfile =
                 frozen.isPresent() ? JSON.readValue(frozen.get(), Map.class) : p;
             var decision = policy.evaluate(context, evaluationProfile);
-            if (decision.classification().equals("DISTINCT")) continue;
+            if (decision.classification().equals("DISTINCT")) {
+              continue;
+            }
             UUID id = UUID.randomUUID();
             // A later stage may fill missing metrics; human state and previous classification
             // remain audited.
@@ -461,7 +486,7 @@ public class SimilarityService {
                     .query()
                     .singleRow();
             id = (UUID) row.get("id");
-            for (UUID asset : List.of(a, b))
+            for (UUID asset : List.of(a, b)) {
               db.sql(
                       "insert into similarity_findings(id,comparison_id,asset_id,code,metadata)"
                           + " values(?,?,?,?,cast(? as jsonb)) on conflict do nothing")
@@ -473,16 +498,19 @@ public class SimilarityService {
                       JSON.writeValueAsString(
                           Map.of("similarAssetId", asset.equals(a) ? b : a, "comparisonId", id)))
                   .update();
+            }
             if (inserted > 0) {
               db.sql(
                       "insert into similarity_evaluation_history(id,comparison_id,evidence)"
                           + " values(?,?,cast(? as jsonb))")
                   .params(UUID.randomUUID(), id, JSON.writeValueAsString(row))
                   .update();
-              if ("EXACT_DUPLICATE".equals(row.get("automatic_classification")))
+              if ("EXACT_DUPLICATE".equals(row.get("automatic_classification"))) {
                 metrics.counter("media_factory_exact_duplicates_total").increment();
-              if ("NEAR_DUPLICATE".equals(row.get("automatic_classification")))
+              }
+              if ("NEAR_DUPLICATE".equals(row.get("automatic_classification"))) {
                 metrics.counter("media_factory_near_duplicates_total").increment();
+              }
               groupPair(row);
             }
           }
@@ -509,7 +537,9 @@ public class SimilarityService {
           case "NEAR_DUPLICATE" -> "NEAR_DUPLICATE";
           default -> null;
         };
-    if (type == null) return;
+    if (type == null) {
+      return;
+    }
     var groups =
         db.sql(
                 "select distinct g.id from duplicate_groups g join duplicate_group_members m on"
@@ -520,12 +550,15 @@ public class SimilarityService {
             .query(UUID.class)
             .list();
     UUID group = groups.isEmpty() ? UUID.randomUUID() : groups.getFirst();
-    if (groups.isEmpty())
+    if (groups.isEmpty()) {
       db.sql("insert into duplicate_groups(id,model_id,type) values(?,?,?)")
           .params(group, row.get("model_id"), type)
           .update();
+    }
     for (UUID other : groups) {
-      if (other.equals(group)) continue;
+      if (other.equals(group)) {
+        continue;
+      }
       db.sql(
               "insert into duplicate_group_members(group_id,asset_id,relationship) select"
                   + " ?,asset_id,relationship from duplicate_group_members where group_id=? on"
@@ -538,18 +571,19 @@ public class SimilarityService {
           .param(other)
           .update();
     }
-    for (String key : List.of("source_asset_id", "target_asset_id"))
+    for (String key : List.of("source_asset_id", "target_asset_id")) {
       db.sql(
               "insert into duplicate_group_members(group_id,asset_id,relationship) values(?,?,?) on"
                   + " conflict do nothing")
           .params(group, row.get(key), classification)
           .update();
+    }
   }
 
   public List<Finding> qaFindings(UUID asset) {
     UUID model = activeModel().id();
     var result = new ArrayList<Finding>();
-    if (!"READY".equals(state(asset, model)))
+    if (!"READY".equals(state(asset, model))) {
       result.add(
           new Finding(
               Category.SIMILARITY,
@@ -560,6 +594,7 @@ public class SimilarityService {
               Source.SIMILARITY,
               "Similarity analysis is " + state(asset, model) + "; uniqueness is unknown.",
               Map.of()));
+    }
     for (var row :
         db.sql(
                 "select * from similarity_comparisons where model_id=? and profile_id=? and"
@@ -574,8 +609,8 @@ public class SimilarityService {
       metadata.put(
           "similarAssetId",
           (asset.equals(row.get("source_asset_id"))
-                  ? row.get("target_asset_id")
-                  : row.get("source_asset_id"))
+              ? row.get("target_asset_id")
+              : row.get("source_asset_id"))
               .toString());
       metadata.put("phashDistance", Objects.toString(row.get("phash_distance"), "unknown"));
       metadata.put(
@@ -586,7 +621,7 @@ public class SimilarityService {
               c.equals("EXACT_DUPLICATE")
                   ? Code.DUPLICATE_SHA256
                   : c.equals("PERCEPTUAL_DUPLICATE")
-                      ? Code.PERCEPTUAL_DUPLICATE
+                    ? Code.PERCEPTUAL_DUPLICATE
                       : Code.NEAR_DUPLICATE,
               Severity.MAJOR,
               1,
@@ -605,7 +640,9 @@ public class SimilarityService {
         || limit > 100
         || !Double.isFinite(minimum)
         || minimum < 0
-        || minimum > 1) throw new IllegalArgumentException("Invalid similarity filters");
+        || minimum > 1) {
+      throw new IllegalArgumentException("Invalid similarity filters");
+    }
     long start = System.nanoTime();
     try {
       var a = asset(asset);
@@ -625,20 +662,26 @@ public class SimilarityService {
           .query(UUID.class)
           .list()
           .forEach(ids::add);
-      if (!vectors.isEmpty())
+      if (!vectors.isEmpty()) {
         nearest(JSON.readValue(vectors.getFirst(), float[].class), model, 201, scope, asset)
             .forEach(
                 r -> {
-                  if (((Number) r.get("embedding_similarity")).doubleValue() >= minimum)
+                  if (((Number) r.get("embedding_similarity")).doubleValue() >= minimum) {
                     ids.add((UUID) r.get("asset_id"));
+                  }
                 });
+      }
       var output = new ArrayList<Map<String, Object>>();
       for (UUID id : ids) {
-        if (id.equals(asset)) continue;
+        if (id.equals(asset)) {
+          continue;
+        }
         var b = asset(id);
         if (scope.equals("PROJECT") && !a.get("project_id").equals(b.get("project_id"))
             || scope.equals("SAME_COLLECTION")
-                && !a.get("collection_id").equals(b.get("collection_id"))) continue;
+            && !a.get("collection_id").equals(b.get("collection_id"))) {
+          continue;
+        }
         var comparisons =
             db.sql(
                     "select * from similarity_comparisons where model_id=? and profile_id=? and"
@@ -662,9 +705,12 @@ public class SimilarityService {
         item.put("embeddingSimilarity", similarity);
         if (classification != null
             && (comparisons.isEmpty()
-                || !classification.equals(comparisons.getFirst().get("final_classification"))))
+            || !classification.equals(comparisons.getFirst().get("final_classification")))) {
           continue;
-        if (similarity != null && similarity < minimum && comparisons.isEmpty()) continue;
+        }
+        if (similarity != null && similarity < minimum && comparisons.isEmpty()) {
+          continue;
+        }
         output.add(item);
       }
       output.sort(
@@ -684,8 +730,9 @@ public class SimilarityService {
   }
 
   public Object semantic(String query, int limit) {
-    if (query == null || query.isBlank() || query.length() > 16000 || limit < 1 || limit > 100)
+    if (query == null || query.isBlank() || query.length() > 16000 || limit < 1 || limit > 100) {
       throw new IllegalArgumentException("Invalid semantic search");
+    }
     var model = activeModel();
     var output = textEmbedding(List.of(query), model);
     return nearest(output.vectors().getFirst(), model, limit).stream()

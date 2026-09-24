@@ -1,16 +1,34 @@
 package com.mediafactory.api;
 
-import com.mediafactory.processing.*;
+import com.mediafactory.processing.ProcessingService;
 import com.mediafactory.storage.MediaStorage;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.*;
-import java.util.*;
-import org.springframework.http.*;
-import org.springframework.web.bind.annotation.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1")
 public class ProcessingController {
+
   private final ProcessingService service;
   private final MediaStorage storage;
 
@@ -18,13 +36,6 @@ public class ProcessingController {
     this.service = service;
     this.storage = storage;
   }
-
-  public record ProcessRequest(
-      @NotEmpty @Size(max = 16) List<@NotBlank String> profiles, Map<String, Object> manualCrops) {}
-
-  public record BatchRequest(
-      @NotEmpty @Size(max = 100) List<@NotNull UUID> assetIds,
-      @NotEmpty @Size(max = 16) List<@NotBlank String> profiles) {}
 
   @PostMapping("/assets/{id}/process")
   @ResponseStatus(HttpStatus.ACCEPTED)
@@ -138,5 +149,16 @@ public class ProcessingController {
         .cacheControl(
             CacheControl.maxAge(java.time.Duration.ofDays(365)).cachePrivate().immutable())
         .body(storage.read(v.get("storage_key").toString()));
+  }
+
+  public record ProcessRequest(
+      @NotEmpty @Size(max = 16) List<@NotBlank String> profiles, Map<String, Object> manualCrops) {
+
+  }
+
+  public record BatchRequest(
+      @NotEmpty @Size(max = 100) List<@NotNull UUID> assetIds,
+      @NotEmpty @Size(max = 16) List<@NotBlank String> profiles) {
+
   }
 }

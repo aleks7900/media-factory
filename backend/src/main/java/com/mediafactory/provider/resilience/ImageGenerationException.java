@@ -11,6 +11,7 @@ public class ImageGenerationException extends RuntimeException {
   private final Duration retryAfter;
   private final boolean outcomeUnknown;
   private final String requestId;
+
   public ImageGenerationException(Type type, String safeMessage) {
     this(type, safeMessage, Duration.ZERO, false, null);
   }

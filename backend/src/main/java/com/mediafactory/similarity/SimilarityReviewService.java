@@ -2,12 +2,15 @@ package com.mediafactory.similarity;
 
 import static com.mediafactory.similarity.SimilarityService.JSON;
 
-import java.util.*;
+import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class SimilarityReviewService {
+
   private final SimilarityService similarity;
 
   public SimilarityReviewService(SimilarityService similarity) {
@@ -16,8 +19,9 @@ public class SimilarityReviewService {
 
   @Transactional
   public Object decide(UUID id, int revision, String classification, String reason, String actor) {
-    if (!Set.of("DISTINCT", "NEAR_DUPLICATE", "PERCEPTUAL_DUPLICATE").contains(classification))
+    if (!Set.of("DISTINCT", "NEAR_DUPLICATE", "PERCEPTUAL_DUPLICATE").contains(classification)) {
       throw new IllegalArgumentException("Unsupported human classification");
+    }
     validateReason(reason);
     var initial =
         similarity
@@ -39,8 +43,9 @@ public class SimilarityReviewService {
             .param(id)
             .query()
             .singleRow();
-    if (((Number) before.get("revision")).intValue() != revision)
+    if (((Number) before.get("revision")).intValue() != revision) {
       throw SimilarityService.conflict("Comparison changed; reload before reviewing");
+    }
     similarity
         .db()
         .sql("select pg_advisory_xact_lock(hashtextextended(?,0))")
@@ -152,7 +157,7 @@ public class SimilarityReviewService {
           .param(group)
           .update();
     }
-    for (UUID member : members)
+    for (UUID member : members) {
       for (var pair :
           similarity
               .db()
@@ -162,7 +167,10 @@ public class SimilarityReviewService {
                       + " ('EXACT_DUPLICATE','PERCEPTUAL_DUPLICATE','NEAR_DUPLICATE')")
               .params(before.get("model_id"), member, member)
               .query()
-              .listOfRows()) similarity.groupPair(pair);
+              .listOfRows()) {
+        similarity.groupPair(pair);
+      }
+    }
     similarity.groupPair(after);
     similarity
         .metrics()
@@ -182,14 +190,17 @@ public class SimilarityReviewService {
             .query()
             .singleRow();
     if (((Number) before.get("revision")).intValue() != revision
-        || !"OPEN".equals(before.get("status")))
+        || !"OPEN".equals(before.get("status"))) {
       throw SimilarityService.conflict("Duplicate group changed; reload");
+    }
     if (!similarity
         .db()
         .sql("select exists(select 1 from duplicate_group_members where group_id=? and asset_id=?)")
         .params(group, asset)
         .query(Boolean.class)
-        .single()) throw new IllegalArgumentException("Canonical asset must be a group member");
+        .single()) {
+      throw new IllegalArgumentException("Canonical asset must be a group member");
+    }
     similarity
         .db()
         .sql(
@@ -222,7 +233,8 @@ public class SimilarityReviewService {
   }
 
   private void validateReason(String reason) {
-    if (reason == null || reason.isBlank() || reason.length() > 2000)
+    if (reason == null || reason.isBlank() || reason.length() > 2000) {
       throw new IllegalArgumentException("Review reason must contain 1–2000 characters");
+    }
   }
 }

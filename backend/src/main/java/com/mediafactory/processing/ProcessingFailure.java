@@ -1,6 +1,7 @@
 package com.mediafactory.processing;
 
 public class ProcessingFailure extends RuntimeException {
+
   private final String code;
 
   public ProcessingFailure(String code) {

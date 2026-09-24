@@ -1,12 +1,17 @@
 package com.mediafactory.similarity;
 
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
 import org.springframework.stereotype.Component;
 
-/** Deterministic test fixture, deliberately not a semantic model. Explicit opt-in only. */
+/**
+ * Deterministic test fixture, deliberately not a semantic model. Explicit opt-in only.
+ */
 @Component
 public class MockEmbeddingProvider implements ImageEmbeddingProvider {
+
   public String providerId() {
     return "mock-embedding";
   }
@@ -24,7 +29,9 @@ public class MockEmbeddingProvider implements ImageEmbeddingProvider {
       v[i] = (float) random.nextGaussian();
       norm += v[i] * v[i];
     }
-    for (int i = 0; i < v.length; i++) v[i] /= (float) Math.sqrt(norm);
+    for (int i = 0; i < v.length; i++) {
+      v[i] /= (float) Math.sqrt(norm);
+    }
     return v;
   }
 

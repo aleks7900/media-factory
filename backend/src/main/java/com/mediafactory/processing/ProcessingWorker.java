@@ -2,8 +2,11 @@ package com.mediafactory.processing;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PreDestroy;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.Arrays;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -13,6 +16,7 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(name = "media.worker.enabled", havingValue = "true", matchIfMissing = true)
 public class ProcessingWorker {
+
   private final ProcessingExecutor executor;
   private final ProcessingService service;
   private final JdbcClient db;
@@ -43,7 +47,9 @@ public class ProcessingWorker {
 
   @Scheduled(fixedDelay = 2000)
   public void poll() {
-    if (active != null) return;
+    if (active != null) {
+      return;
+    }
     executor
         .claim()
         .ifPresent(
@@ -63,19 +69,23 @@ public class ProcessingWorker {
   @Scheduled(fixedDelay = 15000)
   public void heartbeat() {
     var run = active;
-    if (run != null) executor.heartbeat((UUID) run.get("id"), (UUID) run.get("lease_token"));
+    if (run != null) {
+      executor.heartbeat((UUID) run.get("id"), (UUID) run.get("lease_token"));
+    }
   }
 
   @Scheduled(fixedDelay = 30000)
   public void automatic() {
-    if (autoProfiles.isBlank()) return;
+    if (autoProfiles.isBlank()) {
+      return;
+    }
     for (UUID id :
         db.sql(
                 "select a.id from assets a join quality_reviews q on q.id=a.current_review_id where"
                     + " q.final_decision='APPROVED' and not exists(select 1 from processing_runs r"
                     + " where r.source_asset_id=a.id) order by a.created_at limit 20")
             .query(UUID.class)
-            .list())
+            .list()) {
       try {
         service.request(
             id,
@@ -85,6 +95,7 @@ public class ProcessingWorker {
             0);
       } catch (IllegalArgumentException ignored) {
       }
+    }
   }
 
   @PreDestroy

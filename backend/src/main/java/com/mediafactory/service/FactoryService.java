@@ -34,7 +34,8 @@ public class FactoryService {
 
   public FactoryService(JdbcClient db, ImageProviderRoutingStrategy routing,
       ImageGenerationProperties properties, PromptEngine prompts,
-      com.mediafactory.quality.QualityReviewService quality, com.mediafactory.similarity.DiversityGuard diversity) {
+      com.mediafactory.quality.QualityReviewService quality,
+      com.mediafactory.similarity.DiversityGuard diversity) {
     this.db = db;
     this.routing = routing;
     this.properties = properties;

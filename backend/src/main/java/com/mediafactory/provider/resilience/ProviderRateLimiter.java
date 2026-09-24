@@ -16,6 +16,7 @@ public class ProviderRateLimiter {
   private final JdbcClient db;
   private final TransactionTemplate tx;
   private final ImageGenerationProperties properties;
+
   public ProviderRateLimiter(JdbcClient db, TransactionTemplate tx,
       ImageGenerationProperties properties) {
     this.db = db;
@@ -33,7 +34,8 @@ public class ProviderRateLimiter {
     return acquireOwned(provider, jobId, qaJob ? "qa_job_id" : "job_id", rate, lease);
   }
 
-  public Admission acquireSimilarity(String provider, UUID jobId, ImageGenerationProperties.RateLimit rate, Duration lease) {
+  public Admission acquireSimilarity(String provider, UUID jobId,
+      ImageGenerationProperties.RateLimit rate, Duration lease) {
     return acquireOwned(provider, jobId, "similarity_job_id", rate, lease);
   }
 

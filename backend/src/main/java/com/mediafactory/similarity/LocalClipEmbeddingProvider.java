@@ -2,19 +2,27 @@ package com.mediafactory.similarity;
 
 import com.mediafactory.provider.resilience.ImageGenerationException;
 import java.net.URI;
-import java.net.http.*;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
 @Component
 public class LocalClipEmbeddingProvider implements ImageEmbeddingProvider {
+
+  private static final JsonMapper JSON = JsonMapper.builder().build();
   private final URI endpoint;
   private final HttpClient http =
       HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
-  private static final JsonMapper JSON = JsonMapper.builder().build();
 
   public LocalClipEmbeddingProvider(
       @Value("${media.similarity.embedding.endpoint:http://localhost:8001}") String endpoint) {
@@ -40,8 +48,9 @@ public class LocalClipEmbeddingProvider implements ImageEmbeddingProvider {
   }
 
   public Result embed(List<Input> inputs, Model expected) {
-    if (inputs.isEmpty() || inputs.size() > 16)
+    if (inputs.isEmpty() || inputs.size() > 16) {
       throw new IllegalArgumentException("Embedding batch must contain 1–16 images");
+    }
     return result(
         call(
             "/v1/images/embed",
@@ -70,17 +79,21 @@ public class LocalClipEmbeddingProvider implements ImageEmbeddingProvider {
         || !actual.model().equals(expected.model())
         || !actual.version().equals(expected.version())
         || actual.dimension() != expected.dimension()
-        || !actual.preprocessing().equals(expected.preprocessing()))
+        || !actual.preprocessing().equals(expected.preprocessing())) {
       throw new IllegalArgumentException(
           "Worker model identity differs from requested immutable model");
+    }
     @SuppressWarnings("unchecked")
     var rows = (List<List<Number>>) body.remove("vectors");
-    if (rows == null || rows.size() != count)
+    if (rows == null || rows.size() != count) {
       throw new IllegalArgumentException("Incomplete embedding batch");
+    }
     var vectors = new ArrayList<float[]>();
     for (var row : rows) {
       float[] v = new float[row.size()];
-      for (int i = 0; i < v.length; i++) v[i] = row.get(i).floatValue();
+      for (int i = 0; i < v.length; i++) {
+        v[i] = row.get(i).floatValue();
+      }
       vectors.add(ImageEmbeddingProvider.validate(v, expected.dimension()));
     }
     return new Result(List.copyOf(vectors), expected, Collections.unmodifiableMap(body));
@@ -90,24 +103,28 @@ public class LocalClipEmbeddingProvider implements ImageEmbeddingProvider {
   private Map<String, Object> call(String path, Object body) {
     try {
       var builder = HttpRequest.newBuilder(endpoint.resolve(path)).timeout(Duration.ofSeconds(120));
-      if (body != null)
+      if (body != null) {
         builder
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(body)));
-      else builder.GET();
+      } else {
+        builder.GET();
+      }
       var response = http.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
       byte[] bytes;
       try (var stream = response.body()) {
         bytes = stream.readNBytes(2 * 1024 * 1024 + 1);
       }
-      if (bytes.length > 2 * 1024 * 1024)
+      if (bytes.length > 2 * 1024 * 1024) {
         throw new IllegalArgumentException("Embedding response too large");
-      if (response.statusCode() != 200)
+      }
+      if (response.statusCode() != 200) {
         throw new ImageGenerationException(
             response.statusCode() < 500
                 ? ImageGenerationException.Type.INVALID_REQUEST
                 : ImageGenerationException.Type.UNAVAILABLE,
             "Local embedding worker returned HTTP " + response.statusCode());
+      }
       return new LinkedHashMap<>(JSON.readValue(bytes, Map.class));
     } catch (ImageGenerationException e) {
       throw e;

@@ -27,12 +27,13 @@ public class QualityReviewService {
       "INTENTIONAL_STYLE", "PROMPT_CONTEXT", "TECHNICAL_EXCEPTION", "MANUAL_QUALITY_JUDGMENT",
       "OTHER");
   static final JsonMapper JSON = JsonMapper.builder().build();
+  public final com.mediafactory.similarity.SimilarityService similarity;
   private final JdbcClient db;
   private final QaConfiguration config;
   private final MeterRegistry metrics;
-  public final com.mediafactory.similarity.SimilarityService similarity;
 
-  public QualityReviewService(JdbcClient db, QaConfiguration config, MeterRegistry metrics, com.mediafactory.similarity.SimilarityService similarity) {
+  public QualityReviewService(JdbcClient db, QaConfiguration config, MeterRegistry metrics,
+      com.mediafactory.similarity.SimilarityService similarity) {
     this.db = db;
     this.config = config;
     this.metrics = metrics;
@@ -44,10 +45,13 @@ public class QualityReviewService {
         .addKeyValue("event", name).addKeyValue("review_id", review).addKeyValue("details", details)
         .log("Quality assurance event");
   }
-  public com.mediafactory.similarity.SimilarityService similarity() { return similarity; }
 
   public static ResponseStatusException conflict(String message) {
     return new ResponseStatusException(HttpStatus.CONFLICT, message);
+  }
+
+  public com.mediafactory.similarity.SimilarityService similarity() {
+    return similarity;
   }
 
   public Map<String, Object> review(UUID id) {
@@ -63,9 +67,9 @@ public class QualityReviewService {
             "select a.*,g.status,g.width as expected_width,g.height as expected_height,g.final_provider,g.model,g.result_metadata,c.collection_id,col.qa_policy,col.name as collection_name from assets a join generations g on g.id=a.generation_id join concepts c on c.id=g.concept_id join collections col on col.id=c.collection_id where a.id=? for update of a,g")
         .param(assetId).query().listOfRows().stream().findFirst()
         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Asset not found"));
-      if ("PUBLISHED".equals(a.get("status"))) {
-          throw conflict("Published assets cannot be re-reviewed; regenerate a new asset");
-      }
+    if ("PUBLISHED".equals(a.get("status"))) {
+      throw conflict("Published assets cannot be re-reviewed; regenerate a new asset");
+    }
     var snapshots = db.sql(
             "select * from rendered_prompt_snapshots where generation_id=? order by case when provider=? then 0 else 1 end,rendered_at")
         .params(a.get("generation_id"), Objects.toString(a.get("final_provider"), "mock")).query()
@@ -84,16 +88,16 @@ public class QualityReviewService {
     String pipeline = "default";
     if (!snapshots.isEmpty()) {
       var snapshot = new LinkedHashMap<>(snapshots.getFirst());
-        for (String field : List.of("variables", "presets", "composition", "warnings")) {
-            if (snapshot.get(field) != null) {
-                snapshot.put(field, JSON.readTree(snapshot.get(field).toString()));
-            }
+      for (String field : List.of("variables", "presets", "composition", "warnings")) {
+        if (snapshot.get(field) != null) {
+          snapshot.put(field, JSON.readTree(snapshot.get(field).toString()));
         }
+      }
       context.put("promptSnapshot", snapshot);
-        if (snapshot.get("composition") != null) {
-            pipeline = JSON.valueToTree(snapshot.get("composition")).path("pipeline")
-                    .asText("default");
-        }
+      if (snapshot.get("composition") != null) {
+        pipeline = JSON.valueToTree(snapshot.get("composition")).path("pipeline")
+            .asText("default");
+      }
     } else {
       context.put("legacyContextUnavailable", true);
     }
@@ -107,12 +111,12 @@ public class QualityReviewService {
             + PROMPT_VERSION;
     if (a.get("current_review_id") != null) {
       var current = review((UUID) a.get("current_review_id"));
-        if (Set.of("PENDING", "RUNNING").contains(current.get("execution_status"))) {
-            return current;
-        }
-        if (!rerun && identity.equals(current.get("idempotency_key"))) {
-            return current;
-        }
+      if (Set.of("PENDING", "RUNNING").contains(current.get("execution_status"))) {
+        return current;
+      }
+      if (!rerun && identity.equals(current.get("idempotency_key"))) {
+        return current;
+      }
     }
     String mockScenario = scenario == null ? config.scenario() : scenario;
     MockVisionQualityProvider.Scenario.valueOf(mockScenario);
@@ -135,31 +139,31 @@ public class QualityReviewService {
   }
 
   public void findings(UUID review, List<Finding> findings) {
-      for (var f : findings) {
-          db.sql(
-                          "insert into quality_findings(id,review_id,category,code,severity,confidence,detected,source,evidence,metadata) values(?,?,?,?,?,?,?,?,?,cast(? as jsonb))")
-                  .params(UUID.randomUUID(), review, f.category().name(), f.code().name(),
-                          f.severity().name(), f.confidence(), f.detected(), f.source().name(),
-                          f.evidence(),
-                          JSON.writeValueAsString(f.metadata())).update();
-      }
+    for (var f : findings) {
+      db.sql(
+              "insert into quality_findings(id,review_id,category,code,severity,confidence,detected,source,evidence,metadata) values(?,?,?,?,?,?,?,?,?,cast(? as jsonb))")
+          .params(UUID.randomUUID(), review, f.category().name(), f.code().name(),
+              f.severity().name(), f.confidence(), f.detected(), f.source().name(),
+              f.evidence(),
+              JSON.writeValueAsString(f.metadata())).update();
+    }
   }
 
   public void dimensions(UUID review, List<Dimension> dimensions) {
-      for (var d : dimensions) {
-          db.sql(
-                          "insert into quality_dimension_results(id,review_id,dimension,score,confidence,applicable,evidence) values(?,?,?,?,?,?,?)")
-                  .params(UUID.randomUUID(), review, d.dimension().name(), d.score(),
-                          d.confidence(),
-                          d.applicable(), d.evidence()).update();
-      }
+    for (var d : dimensions) {
+      db.sql(
+              "insert into quality_dimension_results(id,review_id,dimension,score,confidence,applicable,evidence) values(?,?,?,?,?,?,?)")
+          .params(UUID.randomUUID(), review, d.dimension().name(), d.score(),
+              d.confidence(),
+              d.applicable(), d.evidence()).update();
+    }
   }
 
   public Map<String, Object> detail(UUID id) {
     var r = new LinkedHashMap<>(review(id));
-      for (String field : List.of("policy_snapshot", "context_snapshot", "rules_triggered")) {
-          r.put(field, JSON.readTree(r.get(field).toString()));
-      }
+    for (String field : List.of("policy_snapshot", "context_snapshot", "rules_triggered")) {
+      r.put(field, JSON.readTree(r.get(field).toString()));
+    }
     r.put("findings", db.sql(
             "select * from quality_findings where review_id=? order by case severity when 'CRITICAL' then 0 when 'MAJOR' then 1 when 'MINOR' then 2 else 3 end,created_at")
         .param(id).query().listOfRows());
@@ -184,9 +188,9 @@ public class QualityReviewService {
   }
 
   public Map<String, Object> queue(Map<String, String> filters, int page, int size) {
-      if (page < 0 || page > 100000 || size < 1 || size > 100) {
-          throw new IllegalArgumentException("Invalid page size");
-      }
+    if (page < 0 || page > 100000 || size < 1 || size > 100) {
+      throw new IllegalArgumentException("Invalid page size");
+    }
     StringBuilder where = new StringBuilder(" where a.current_review_id=r.id");
     var args = new ArrayList<Object>();
     Map<String, String> columns = Map.of("decision", "r.final_decision", "executionStatus",
@@ -209,13 +213,13 @@ public class QualityReviewService {
           " and exists(select 1 from quality_findings f where f.review_id=r.id and f.detected and f.severity=?)");
       args.add(filters.get("severity"));
     }
-      for (String key : List.of("createdFrom", "createdTo")) {
-          if (filters.containsKey(key) && !filters.get(key).isBlank()) {
-              where.append(" and r.created_at ").append(key.equals("createdFrom") ? ">=" : "<=")
-                      .append(" cast(? as timestamptz)");
-              args.add(java.time.Instant.parse(filters.get(key)).toString());
-          }
+    for (String key : List.of("createdFrom", "createdTo")) {
+      if (filters.containsKey(key) && !filters.get(key).isBlank()) {
+        where.append(" and r.created_at ").append(key.equals("createdFrom") ? ">=" : "<=")
+            .append(" cast(? as timestamptz)");
+        args.add(java.time.Instant.parse(filters.get(key)).toString());
       }
+    }
     String from = " from quality_reviews r join assets a on a.id=r.asset_id join generations g on g.id=a.generation_id join concepts c on c.id=g.concept_id join collections col on col.id=c.collection_id";
     long total = db.sql("select count(*)" + from + where).params(args).query(Long.class).single();
     var paged = new ArrayList<>(args);
@@ -231,27 +235,27 @@ public class QualityReviewService {
   @Transactional
   public Map<String, Object> decide(UUID id, Decision decision, HumanCommand command,
       String actor) {
-      if (decision == Decision.NEEDS_REVIEW) {
-          throw new IllegalArgumentException("Choose approve or reject");
-      }
+    if (decision == Decision.NEEDS_REVIEW) {
+      throw new IllegalArgumentException("Choose approve or reject");
+    }
     var r = lockCurrent(id, command.revision());
     boolean override =
         r.get("automatic_decision") != null && !r.get("automatic_decision").equals("NEEDS_REVIEW")
             && !r.get("automatic_decision").equals(decision.name());
     boolean changing =
         r.get("reviewed_at") != null && !Objects.equals(r.get("final_decision"), decision.name());
-      if ((override || changing) && (command.reasonCode() == null || !REASONS.contains(
-              command.reasonCode()))) {
-          throw new IllegalArgumentException("An override reason is required");
-      }
-      if (command.reasonCode() != null && !command.reasonCode().isBlank() && !REASONS.contains(
-              command.reasonCode())) {
-          throw new IllegalArgumentException("Unknown override reason");
-      }
+    if ((override || changing) && (command.reasonCode() == null || !REASONS.contains(
+        command.reasonCode()))) {
+      throw new IllegalArgumentException("An override reason is required");
+    }
+    if (command.reasonCode() != null && !command.reasonCode().isBlank() && !REASONS.contains(
+        command.reasonCode())) {
+      throw new IllegalArgumentException("Unknown override reason");
+    }
     String text = Objects.toString(command.reasonText(), "");
-      if (text.length() > 4000 || "OTHER".equals(command.reasonCode()) && text.isBlank()) {
-          throw new IllegalArgumentException("OTHER requires a reason, up to 4000 characters");
-      }
+    if (text.length() > 4000 || "OTHER".equals(command.reasonCode()) && text.isBlank()) {
+      throw new IllegalArgumentException("OTHER requires a reason, up to 4000 characters");
+    }
     String action =
         override ? (decision == Decision.APPROVED ? "OVERRIDE_APPROVAL" : "OVERRIDE_REJECTION")
             : (decision == Decision.APPROVED ? "APPROVE" : "REJECT");
@@ -262,11 +266,11 @@ public class QualityReviewService {
         .params(decision.name(), decision.name(), override, id).update();
     db.sql("update generations set status=?,updated_at=now() where id=?")
         .params(decision.name(), r.get("generation_id")).update();
-      if (override) {
-          metrics.counter("media_factory_qa_human_override_total", "policy",
-                          Objects.toString(r.get("policy_id"), "legacy"), "decision", decision.name())
-                  .increment();
-      }
+    if (override) {
+      metrics.counter("media_factory_qa_human_override_total", "policy",
+              Objects.toString(r.get("policy_id"), "legacy"), "decision", decision.name())
+          .increment();
+    }
     event("qa_human_decision", id, Map.of("action", action));
     return detail(id);
   }
@@ -280,25 +284,25 @@ public class QualityReviewService {
         .param(initial.get("asset_id")).query().singleRow();
     var r = db.sql("select * from quality_reviews where id=? for update").param(id).query()
         .singleRow();
-      if (!Objects.equals(a.get("current_review_id"), id)
-              || ((Number) r.get("revision")).intValue() != revision) {
-          throw conflict("Review changed; refresh before applying this action");
-      }
-      if ("PUBLISHED".equals(g)) {
-          throw conflict("Published assets cannot be changed");
-      }
-      if (Set.of("PENDING", "RUNNING").contains(r.get("execution_status"))) {
-          throw conflict("Wait for QA execution to finish before human review");
-      }
+    if (!Objects.equals(a.get("current_review_id"), id)
+        || ((Number) r.get("revision")).intValue() != revision) {
+      throw conflict("Review changed; refresh before applying this action");
+    }
+    if ("PUBLISHED".equals(g)) {
+      throw conflict("Published assets cannot be changed");
+    }
+    if (Set.of("PENDING", "RUNNING").contains(r.get("execution_status"))) {
+      throw conflict("Wait for QA execution to finish before human review");
+    }
     return r;
   }
 
   @Transactional
   public Map<String, Object> addFinding(UUID id, int revision, Finding finding, String actor) {
     var r = lockCurrent(id, revision);
-      if (finding.source() != Source.HUMAN) {
-          throw new IllegalArgumentException("Human finding must identify its source");
-      }
+    if (finding.source() != Source.HUMAN) {
+      throw new IllegalArgumentException("Human finding must identify its source");
+    }
     findings(id, List.of(finding));
     audit(id, "ADD_FINDING", r.get("final_decision").toString(), "NEEDS_REVIEW", null,
         finding.evidence(), actor, Map.of("code", finding.code()));

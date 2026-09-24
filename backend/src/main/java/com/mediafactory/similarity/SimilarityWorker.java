@@ -3,19 +3,29 @@ package com.mediafactory.similarity;
 import static com.mediafactory.similarity.SimilarityService.JSON;
 
 import com.mediafactory.provider.ImageGenerationProperties;
-import com.mediafactory.provider.resilience.*;
+import com.mediafactory.provider.resilience.ImageGenerationException;
+import com.mediafactory.provider.resilience.ProviderRateLimiter;
+import com.mediafactory.provider.resilience.RetryDecisionService;
 import com.mediafactory.storage.MediaStorage;
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-/** Durable leases and idempotent immutable writes. Inference/storage never run in a transaction. */
+/**
+ * Durable leases and idempotent immutable writes. Inference/storage never run in a transaction.
+ */
 @Component
 @ConditionalOnProperty(name = "media.worker.enabled", havingValue = "true", matchIfMissing = true)
 public class SimilarityWorker {
+
   private final SimilarityService service;
   private final MediaStorage storage;
   private final ProviderRateLimiter limiter;
@@ -44,13 +54,20 @@ public class SimilarityWorker {
 
   @Scheduled(fixedDelayString = "${media.similarity.poll-delay-ms:1500}")
   public void tick() {
-    if (!service.enabled()) return;
+    if (!service.enabled()) {
+      return;
+    }
     try {
       recover();
       var jobs = claim();
-      if (jobs.isEmpty()) return;
-      if (jobs.getFirst().get("type").equals("GENERATE_ASSET_EMBEDDING")) execute(jobs);
-      else executeControl(jobs.getFirst());
+      if (jobs.isEmpty()) {
+        return;
+      }
+      if (jobs.getFirst().get("type").equals("GENERATE_ASSET_EMBEDDING")) {
+        execute(jobs);
+      } else {
+        executeControl(jobs.getFirst());
+      }
     } catch (Exception e) {
       org.slf4j.LoggerFactory.getLogger(getClass())
           .error("Similarity dispatch failed: {}", e.getClass().getSimpleName());
@@ -72,20 +89,22 @@ public class SimilarityWorker {
                               + " update skip locked limit 1")
                       .query()
                       .listOfRows();
-              if (first.isEmpty()) return List.of();
+              if (first.isEmpty()) {
+                return List.of();
+              }
               var row = first.getFirst();
               var jobs =
                   row.get("type").equals("GENERATE_ASSET_EMBEDDING")
                       ? service
-                          .db()
-                          .sql(
-                              "select * from similarity_jobs where status='QUEUED' and"
-                                  + " available_at<=now() and type='GENERATE_ASSET_EMBEDDING' and"
-                                  + " model_id=? order by created_at for update skip locked limit"
-                                  + " 8")
-                          .param(row.get("model_id"))
-                          .query()
-                          .listOfRows()
+                      .db()
+                      .sql(
+                          "select * from similarity_jobs where status='QUEUED' and"
+                          + " available_at<=now() and type='GENERATE_ASSET_EMBEDDING' and"
+                          + " model_id=? order by created_at for update skip locked limit"
+                          + " 8")
+                      .param(row.get("model_id"))
+                      .query()
+                      .listOfRows()
                       : first;
               var result = new ArrayList<Map<String, Object>>();
               for (var j : jobs) {
@@ -128,18 +147,22 @@ public class SimilarityWorker {
       var batchJobs = new ArrayList<Map<String, Object>>();
       int bytes = 0;
       for (var job : jobs) {
-        if (!start(job, model)) continue;
+        if (!start(job, model)) {
+          continue;
+        }
         startedJobs.add(job);
         UUID asset = (UUID) job.get("asset_id");
         service.analyzeExact(asset, model); // authoritative evidence survives an embedding outage
         byte[] data;
         try {
           data = storage.read(service.asset(asset).get("storage_key").toString());
-          if (data.length > 25 * 1024 * 1024)
+          if (data.length > 25 * 1024 * 1024) {
             throw new IllegalArgumentException("Asset exceeds embedding byte limit");
+          }
           var fingerprint = new PerceptualHash().extract(data);
-          if (!fingerprint.sha256().equals(service.asset(asset).get("sha256")))
+          if (!fingerprint.sha256().equals(service.asset(asset).get("sha256"))) {
             throw new IllegalArgumentException("Stored asset checksum mismatch");
+          }
           service.fingerprints(asset, fingerprint);
         } catch (RuntimeException failure) {
           fail(
@@ -172,7 +195,9 @@ public class SimilarityWorker {
         batchJobs.add(job);
         bytes += data.length;
       }
-      if (!batch.isEmpty()) infer(batch, batchJobs, model);
+      if (!batch.isEmpty()) {
+        infer(batch, batchJobs, model);
+      }
       limiter.observe("embedding:" + model.provider(), null, circuit);
     } catch (Exception error) {
       var failure =
@@ -180,7 +205,7 @@ public class SimilarityWorker {
               ? classified
               : new ImageGenerationException(
                   error instanceof IllegalArgumentException
-                      ? ImageGenerationException.Type.INVALID_REQUEST
+                  ? ImageGenerationException.Type.INVALID_REQUEST
                       : ImageGenerationException.Type.UNAVAILABLE,
                   "Embedding processing failed: " + error.getClass().getSimpleName());
       limiter.observe("embedding:" + model.provider(), failure, circuit);
@@ -220,7 +245,9 @@ public class SimilarityWorker {
             .tx()
             .execute(
                 s -> {
-                  if (!owns(job)) return false;
+                  if (!owns(job)) {
+                    return false;
+                  }
                   int attempt =
                       service
                           .db()
@@ -254,17 +281,20 @@ public class SimilarityWorker {
       List<Map<String, Object>> jobs,
       ImageEmbeddingProvider.Model model) {
     var result = service.provider(model).embed(List.copyOf(inputs), model);
-    if (result.vectors().size() != inputs.size())
+    if (result.vectors().size() != inputs.size()) {
       throw new IllegalArgumentException("Incomplete provider batch");
+    }
     // Commit the whole batch before retrieval so its members can find each other.
     service
         .tx()
         .executeWithoutResult(
             s -> {
-              for (int i = 0; i < jobs.size(); i++)
-                if (owns(jobs.get(i)))
+              for (int i = 0; i < jobs.size(); i++) {
+                if (owns(jobs.get(i))) {
                   service.persistEmbedding(
                       inputs.get(i).assetId(), model, result.vectors().get(i), result.metadata());
+                }
+              }
             });
     for (int i = 0; i < jobs.size(); i++) {
       var job = jobs.get(i);
@@ -273,7 +303,9 @@ public class SimilarityWorker {
           .tx()
           .executeWithoutResult(
               s -> {
-                if (!owns(job)) return;
+                if (!owns(job)) {
+                  return;
+                }
                 service
                     .db()
                     .sql(
@@ -348,7 +380,9 @@ public class SimilarityWorker {
         .tx()
         .executeWithoutResult(
             s -> {
-              if (!owns(job)) return;
+              if (!owns(job)) {
+                return;
+              }
               int attempts = ((Number) job.get("attempts")).intValue();
               var decision =
                   retry.decide(
@@ -427,15 +461,19 @@ public class SimilarityWorker {
           .tx()
           .executeWithoutResult(
               s -> {
-                if (!owns(job)) return;
-                for (UUID id : rows)
+                if (!owns(job)) {
+                  return;
+                }
+                for (UUID id : rows) {
                   service.enqueue(id, (UUID) job.get("model_id"), (UUID) job.get("id"));
-                if (!rows.isEmpty())
+                }
+                if (!rows.isEmpty()) {
                   service
                       .db()
                       .sql("update similarity_jobs set cursor_id=?,progress=progress+? where id=?")
                       .params(rows.getLast(), rows.size(), job.get("id"))
                       .update();
+                }
               });
       if (rows.isEmpty()) {
         // Assets created during a non-active-model backfill can sort before the UUID cursor.
@@ -451,7 +489,9 @@ public class SimilarityWorker {
                         + " j.asset_id=a.id and j.model_id=?) order by a.id limit 500")
                 .params(collection, collection, job.get("model_id"))
                 .query(UUID.class)
-                .list()) service.enqueue(missing, (UUID) job.get("model_id"), (UUID) job.get("id"));
+                .list()) {
+          service.enqueue(missing, (UUID) job.get("model_id"), (UUID) job.get("id"));
+        }
         int remaining =
             service
                 .db()
@@ -475,8 +515,9 @@ public class SimilarityWorker {
                 .params(job.get("model_id"), collection, collection)
                 .query(Integer.class)
                 .single();
-        if (remaining == 0) complete(job, Map.of("coverage", "complete"));
-        else
+        if (remaining == 0) {
+          complete(job, Map.of("coverage", "complete"));
+        } else {
           reschedule(
               job,
               Duration.ofSeconds(3),
@@ -484,7 +525,10 @@ public class SimilarityWorker {
                   ? "Child embedding failures require retry"
                   : "Waiting for child embeddings",
               failed > 0);
-      } else reschedule(job, Duration.ofMillis(200), "Backfill page queued", false);
+        }
+      } else {
+        reschedule(job, Duration.ofMillis(200), "Backfill page queued", false);
+      }
     } catch (Exception e) {
       int count =
           service

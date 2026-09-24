@@ -154,13 +154,16 @@ public class QualityWorker implements AutoCloseable {
           .singleRow();
       @SuppressWarnings("unchecked") Map<String, Object> context = JSON.readValue(
           review.get("context_snapshot").toString(), Map.class);
-      if (reviews.similarity().enabled() && "PENDING".equals(reviews.similarity().state((UUID) asset.get("id"), reviews.similarity().activeModel().id()))) {
-        reviews.similarity().enqueue((UUID) asset.get("id"), reviews.similarity().activeModel().id(), null);
+      if (reviews.similarity().enabled() && "PENDING".equals(reviews.similarity()
+          .state((UUID) asset.get("id"), reviews.similarity().activeModel().id()))) {
+        reviews.similarity()
+            .enqueue((UUID) asset.get("id"), reviews.similarity().activeModel().id(), null);
         schedule(job, Duration.ofSeconds(3), false, "Waiting for similarity analysis");
         return;
       }
       byte[] bytes = storage.read((String) asset.get("storage_key"));
-      boolean duplicate = !reviews.similarity().enabled() && reviews.similarity().exactDuplicate((UUID) asset.get("id"));
+      boolean duplicate = !reviews.similarity().enabled() && reviews.similarity()
+          .exactDuplicate((UUID) asset.get("id"));
       var tech = technical.inspectStructured(bytes, asset.get("media_type").toString(),
           ((Number) context.get("expectedWidth")).intValue(),
           ((Number) context.get("expectedHeight")).intValue(), duplicate, policy);
@@ -219,7 +222,9 @@ public class QualityWorker implements AutoCloseable {
       succeedAttempt(attemptId, result, elapsed(start));
       limiter.observe("vision:" + provider, null, config.circuit());
       var findings = new ArrayList<>(tech.findings());
-      if (reviews.similarity().enabled()) findings.addAll(reviews.similarity().qaFindings((UUID) asset.get("id")));
+      if (reviews.similarity().enabled()) {
+        findings.addAll(reviews.similarity().qaFindings((UUID) asset.get("id")));
+      }
       findings.addAll(result.evidence().findings());
       var dimensions = new ArrayList<>(result.evidence().dimensions());
       dimensions.removeIf(d -> d.dimension() == DimensionName.TECHNICAL_INTEGRITY);

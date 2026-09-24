@@ -1,15 +1,22 @@
 package com.mediafactory.processing;
 
 import java.net.URI;
-import java.net.http.*;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Duration;
-import java.util.*;
+import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
 public class LocalProcessingProvider
     implements ProcessingProvider, ImageUpscaleProvider, SubjectDetectionProvider {
+
   private final URI endpoint;
   private final HttpClient client =
       HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
@@ -75,20 +82,25 @@ public class LocalProcessingProvider
     try {
       var builder =
           HttpRequest.newBuilder(endpoint.resolve(path)).timeout(Duration.ofSeconds(seconds));
-      if (body == null) builder.GET();
-      else
+      if (body == null) {
+        builder.GET();
+      } else {
         builder
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(ProcessingJson.write(body)));
+      }
       var response = client.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
       byte[] data;
       try (var stream = response.body()) {
         data = stream.readNBytes(90 * 1024 * 1024 + 1);
       }
-      if (data.length > 90 * 1024 * 1024) throw new ProcessingFailure("OUTPUT_TOO_LARGE");
+      if (data.length > 90 * 1024 * 1024) {
+        throw new ProcessingFailure("OUTPUT_TOO_LARGE");
+      }
       var result = ProcessingJson.map(new String(data, java.nio.charset.StandardCharsets.UTF_8));
-      if (response.statusCode() != 200)
+      if (response.statusCode() != 200) {
         throw new ProcessingFailure(result.getOrDefault("code", "WORKER_FAILURE").toString());
+      }
       return result;
     } catch (ProcessingFailure e) {
       throw e;

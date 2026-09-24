@@ -1,9 +1,12 @@
 package com.mediafactory.processing;
 
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import tools.jackson.databind.json.JsonMapper;
 
 public final class ProcessingJson {
+
   private static final JsonMapper JSON = JsonMapper.builder().build();
 
   public static String write(Object value) {
@@ -27,7 +30,9 @@ public final class ProcessingJson {
       m.forEach((k, v) -> result.put(k.toString(), sorted(v)));
       return result;
     }
-    if (value instanceof List<?> l) return l.stream().map(ProcessingJson::sorted).toList();
+    if (value instanceof List<?> l) {
+      return l.stream().map(ProcessingJson::sorted).toList();
+    }
     return value;
   }
 

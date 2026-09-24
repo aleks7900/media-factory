@@ -2,12 +2,21 @@ package com.mediafactory.similarity;
 
 import static com.mediafactory.similarity.SimilarityService.JSON;
 
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.springframework.stereotype.Service;
 
 @Service
 public class CollectionClusteringService {
+
   private final SimilarityService similarity;
 
   public CollectionClusteringService(SimilarityService similarity) {
@@ -22,7 +31,9 @@ public class CollectionClusteringService {
     var labels = new LinkedHashMap<UUID, Integer>();
     int cluster = 0;
     for (UUID point : ordered) {
-      if (labels.containsKey(point)) continue;
+      if (labels.containsKey(point)) {
+        continue;
+      }
       var near = neighbors.getOrDefault(point, List.of());
       if (near.size() + 1 < minimum) {
         labels.put(point, -1);
@@ -35,20 +46,39 @@ public class CollectionClusteringService {
       while (!queue.isEmpty()) {
         UUID other = queue.removeFirst();
         Integer old = labels.get(other);
-        if (old != null && old == -1) labels.put(other, label);
-        if (old != null) continue;
+        if (old != null && old == -1) {
+          labels.put(other, label);
+        }
+        if (old != null) {
+          continue;
+        }
         labels.put(other, label);
         var next = neighbors.getOrDefault(other, List.of());
-        if (next.size() + 1 >= minimum) for (UUID id : next) if (queued.add(id)) queue.addLast(id);
+        if (next.size() + 1 >= minimum) {
+          for (UUID id : next) {
+            if (queued.add(id)) {
+              queue.addLast(id);
+            }
+          }
+        }
       }
     }
     return labels;
   }
 
+  static double distance(float[] a, float[] b) {
+    double dot = 0;
+    for (int i = 0; i < a.length; i++) {
+      dot += a[i] * b[i];
+    }
+    return Math.max(0, 1 - dot);
+  }
+
   public UUID cluster(
       UUID collection, ImageEmbeddingProvider.Model model, double epsilon, int minPoints) {
-    if (epsilon <= 0 || epsilon >= 1 || minPoints < 2 || minPoints > 50)
+    if (epsilon <= 0 || epsilon >= 1 || minPoints < 2 || minPoints > 50) {
       throw new IllegalArgumentException("Invalid clustering parameters");
+    }
     long started = System.nanoTime();
     try {
       var ids =
@@ -61,9 +91,10 @@ public class CollectionClusteringService {
               .param(collection)
               .query(UUID.class)
               .list();
-      if (ids.size() > 5000)
+      if (ids.size() > 5000) {
         throw new IllegalArgumentException(
             "Collection exceeds 5000-asset clustering run limit; split into collections");
+      }
       var graph = new LinkedHashMap<UUID, List<UUID>>();
       var vectors = new LinkedHashMap<UUID, float[]>();
       double nearestSum = 0;
@@ -77,8 +108,9 @@ public class CollectionClusteringService {
                 .params(id, model.id())
                 .query(String.class)
                 .list();
-        if (values.isEmpty())
+        if (values.isEmpty()) {
           throw SimilarityService.conflict("Backfill collection embeddings before clustering");
+        }
         vectors.put(id, JSON.readValue(values.getFirst(), float[].class));
       }
       String expr = "e.embedding::vector(" + model.dimension() + ")";
@@ -188,13 +220,20 @@ public class CollectionClusteringService {
                   if (!noise) {
                     for (UUID id : entry.getValue()) {
                       float[] v = vectors.get(id);
-                      for (int i = 0; i < v.length; i++) centroid[i] += v[i];
+                      for (int i = 0; i < v.length; i++) {
+                        centroid[i] += v[i];
+                      }
                     }
                     double norm = 0;
-                    for (float f : centroid) norm += f * f;
-                    if (norm == 0) throw new IllegalArgumentException("Zero cluster centroid");
-                    for (int i = 0; i < centroid.length; i++)
+                    for (float f : centroid) {
+                      norm += f * f;
+                    }
+                    if (norm == 0) {
+                      throw new IllegalArgumentException("Zero cluster centroid");
+                    }
+                    for (int i = 0; i < centroid.length; i++) {
                       centroid[i] /= (float) Math.sqrt(norm);
+                    }
                   }
                   UUID representative =
                       noise
@@ -218,7 +257,7 @@ public class CollectionClusteringService {
                           representative,
                           noise)
                       .update();
-                  for (UUID id : entry.getValue())
+                  for (UUID id : entry.getValue()) {
                     similarity
                         .db()
                         .sql(
@@ -227,6 +266,7 @@ public class CollectionClusteringService {
                                 + " values(?,?,?)")
                         .params(cluster, id, noise ? null : distance(vectors.get(id), centroid))
                         .update();
+                  }
                 }
               });
       return run;
@@ -241,12 +281,6 @@ public class CollectionClusteringService {
               model.version())
           .record(System.nanoTime() - started, TimeUnit.NANOSECONDS);
     }
-  }
-
-  static double distance(float[] a, float[] b) {
-    double dot = 0;
-    for (int i = 0; i < a.length; i++) dot += a[i] * b[i];
-    return Math.max(0, 1 - dot);
   }
 
   public Map<String, Object> diversity(UUID collection) {
@@ -264,7 +298,7 @@ public class CollectionClusteringService {
             .listOfRows();
     output.put("run", runs.isEmpty() ? null : runs.getFirst());
     var clusters = new ArrayList<Map<String, Object>>();
-    if (!runs.isEmpty())
+    if (!runs.isEmpty()) {
       for (var row :
           similarity
               .db()
@@ -287,6 +321,7 @@ public class CollectionClusteringService {
                 .listOfRows());
         clusters.add(item);
       }
+    }
     output.put("clusters", clusters);
     output.put(
         "embeddingCoverage",

@@ -2,8 +2,13 @@ package com.mediafactory.similarity;
 
 import java.util.Map;
 
-/** Classification is separate from retrieval and feature extraction. */
+/**
+ * Classification is separate from retrieval and feature extraction.
+ */
 public interface SimilarityPolicy {
+
+  Decision evaluate(Context context, Map<String, Object> profile);
+
   record Context(
       boolean exact,
       Integer phash,
@@ -12,9 +17,11 @@ public interface SimilarityPolicy {
       boolean sameCollection,
       boolean sameConcept,
       boolean samePromptVersion,
-      boolean sameGenerationFamily) {}
+      boolean sameGenerationFamily) {
 
-  record Decision(String classification, String explanation) {}
+  }
 
-  Decision evaluate(Context context, Map<String, Object> profile);
+  record Decision(String classification, String explanation) {
+
+  }
 }

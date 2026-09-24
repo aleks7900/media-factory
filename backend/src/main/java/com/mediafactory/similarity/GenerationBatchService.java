@@ -5,37 +5,34 @@ import static com.mediafactory.similarity.SimilarityService.JSON;
 import com.mediafactory.prompt.PromptModels.PromptRenderRequest;
 import com.mediafactory.provider.ImageOptions;
 import com.mediafactory.service.FactoryService;
-import java.util.*;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class GenerationBatchService {
-  public record Request(
-      UUID conceptId,
-      int total,
-      int batchSize,
-      int width,
-      int height,
-      ImageOptions options,
-      PromptRenderRequest prompt) {}
 
   private final SimilarityService similarity;
   private final FactoryService factory;
   private final CollectionClusteringService clustering;
   private final boolean worker;
-
   public GenerationBatchService(
       SimilarityService similarity,
       FactoryService factory,
       CollectionClusteringService clustering,
       @org.springframework.beans.factory.annotation.Value("${media.worker.enabled:true}")
-          boolean worker) {
+      boolean worker) {
     this.similarity = similarity;
     this.factory = factory;
     this.clustering = clustering;
     this.worker = worker;
+  }
+
+  public static boolean shouldPause(int dispatched, double largestShare, double threshold) {
+    return dispatched > 0 && largestShare >= threshold;
   }
 
   @Transactional
@@ -51,7 +48,9 @@ public class GenerationBatchService {
         || request.height() > 4096
         || key == null
         || key.isBlank()
-        || key.length() > 150) throw new IllegalArgumentException("Invalid generation batch");
+        || key.length() > 150) {
+      throw new IllegalArgumentException("Invalid generation batch");
+    }
     var concept = factory.one("concepts", request.conceptId());
     String body = JSON.writeValueAsString(request);
     UUID id = UUID.randomUUID();
@@ -77,14 +76,17 @@ public class GenerationBatchService {
             .param(key)
             .query()
             .singleRow();
-    if (!JSON.readTree(row.get("request").toString()).equals(JSON.readTree(body)))
+    if (!JSON.readTree(row.get("request").toString()).equals(JSON.readTree(body))) {
       throw SimilarityService.conflict("Batch key already used with another request");
+    }
     return row;
   }
 
   @Scheduled(fixedDelayString = "${media.similarity.batch-poll-ms:5000}")
   public void tick() {
-    if (!worker || !similarity.enabled()) return;
+    if (!worker || !similarity.enabled()) {
+      return;
+    }
     for (UUID id :
         similarity
             .db()
@@ -92,11 +94,11 @@ public class GenerationBatchService {
                 "select id from generation_batches where status='RUNNING' order by created_at limit"
                     + " 5")
             .query(UUID.class)
-            .list())
+            .list()) {
       try {
         advance(id);
       } catch (org.springframework.web.server.ResponseStatusException
-          | IllegalArgumentException e) {
+               | IllegalArgumentException e) {
         var current =
             similarity
                 .db()
@@ -109,15 +111,16 @@ public class GenerationBatchService {
             "Generation request or diversity policy requires a changed prompt/preset or resolved"
                 + " analysis: "
                 + Objects.toString(e.getMessage(), "validation failure")
-                    .substring(
-                        0,
-                        Math.min(
-                            1000, Objects.toString(e.getMessage(), "validation failure").length())),
+                .substring(
+                    0,
+                    Math.min(
+                        1000, Objects.toString(e.getMessage(), "validation failure").length())),
             current);
       } catch (Exception e) {
         org.slf4j.LoggerFactory.getLogger(getClass())
             .warn("Batch dispatch deferred: {}", e.getClass().getSimpleName());
       }
+    }
   }
 
   public void advance(UUID id) {
@@ -128,7 +131,9 @@ public class GenerationBatchService {
             .param(id)
             .query()
             .singleRow();
-    if (!row.get("status").equals("RUNNING")) return;
+    if (!row.get("status").equals("RUNNING")) {
+      return;
+    }
     int dispatched = ((Number) row.get("dispatched")).intValue();
     UUID collection = (UUID) row.get("collection_id");
     if (dispatched > 0) {
@@ -144,7 +149,9 @@ public class GenerationBatchService {
               .params(id, similarity.activeModel().id())
               .query(Integer.class)
               .single();
-      if (missing > 0) return;
+      if (missing > 0) {
+        return;
+      }
       boolean failed =
           similarity
               .db()
@@ -208,7 +215,9 @@ public class GenerationBatchService {
                       .query()
                       .singleRow();
               if (!locked.get("status").equals("RUNNING")
-                  || !locked.get("revision").equals(row.get("revision"))) return;
+                  || !locked.get("revision").equals(row.get("revision"))) {
+                return;
+              }
               int total = ((Number) locked.get("total")).intValue();
               if (dispatched >= total) {
                 similarity
@@ -251,10 +260,6 @@ public class GenerationBatchService {
             });
   }
 
-  public static boolean shouldPause(int dispatched, double largestShare, double threshold) {
-    return dispatched > 0 && largestShare >= threshold;
-  }
-
   private void pause(UUID id, String reason, int revision) {
     similarity
         .db()
@@ -277,7 +282,9 @@ public class GenerationBatchService {
     if (!Set.of("CONTINUE", "STOP", "CHANGE_PROMPT").contains(action)
         || reason == null
         || reason.isBlank()
-        || reason.length() > 2000) throw new IllegalArgumentException("Action and reason required");
+        || reason.length() > 2000) {
+      throw new IllegalArgumentException("Action and reason required");
+    }
     var row =
         similarity
             .db()
@@ -285,11 +292,14 @@ public class GenerationBatchService {
             .param(id)
             .query()
             .singleRow();
-    if (!row.get("revision").equals(revision) || !row.get("status").equals("PAUSED_DIVERSITY"))
+    if (!row.get("revision").equals(revision) || !row.get("status").equals("PAUSED_DIVERSITY")) {
       throw SimilarityService.conflict("Batch must be paused at the current revision");
+    }
     var input = JSON.readValue(row.get("request").toString(), Request.class);
     if (action.equals("CHANGE_PROMPT")) {
-      if (changed == null) throw new IllegalArgumentException("Changed prompt/presets required");
+      if (changed == null) {
+        throw new IllegalArgumentException("Changed prompt/presets required");
+      }
       input =
           new Request(
               input.conceptId(),
@@ -328,5 +338,16 @@ public class GenerationBatchService {
         .param(id)
         .query()
         .singleRow();
+  }
+
+  public record Request(
+      UUID conceptId,
+      int total,
+      int batchSize,
+      int width,
+      int height,
+      ImageOptions options,
+      PromptRenderRequest prompt) {
+
   }
 }

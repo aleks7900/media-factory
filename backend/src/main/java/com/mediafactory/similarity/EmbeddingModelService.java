@@ -1,11 +1,15 @@
 package com.mediafactory.similarity;
 
-import java.util.*;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class EmbeddingModelService {
+
   private final SimilarityService similarity;
   private final List<ImageEmbeddingProvider> providers;
 
@@ -16,7 +20,8 @@ public class EmbeddingModelService {
   }
 
   /**
-   * Discover outside a transaction. Configuration controls the endpoint, never a user-supplied URL.
+   * Discover outside a transaction. Configuration controls the endpoint, never a user-supplied
+   * URL.
    */
   public Object register(String provider) {
     var adapter =
@@ -25,8 +30,9 @@ public class EmbeddingModelService {
             .findFirst()
             .orElseThrow(() -> new IllegalArgumentException("Unknown provider"));
     var model = adapter.modelMetadata();
-    if (model.dimension() < 1 || model.dimension() > 2000)
+    if (model.dimension() < 1 || model.dimension() > 2000) {
       throw new IllegalArgumentException("HNSW supports up to 2000 dimensions here");
+    }
     return similarity
         .tx()
         .execute(
@@ -57,9 +63,10 @@ public class EmbeddingModelService {
                       .single();
               var existing = similarity.model(persisted);
               if (existing.dimension() != model.dimension()
-                  || !existing.preprocessing().equals(model.preprocessing()))
+                  || !existing.preprocessing().equals(model.preprocessing())) {
                 throw SimilarityService.conflict(
                     "Model identity reused with incompatible preprocessing or dimension");
+              }
               similarity
                   .db()
                   .sql(
@@ -88,9 +95,10 @@ public class EmbeddingModelService {
                 + " and j.status='SUCCEEDED'))")
         .param(id)
         .query(Boolean.class)
-        .single())
+        .single()) {
       throw SimilarityService.conflict(
           "Backfill and analyze all originals before model activation");
+    }
     similarity.db().sql("update embedding_models set active=false where active").update();
     similarity.db().sql("update embedding_models set active=true where id=?").param(id).update();
     return model;
@@ -99,11 +107,16 @@ public class EmbeddingModelService {
   @Transactional
   public Object enqueue(String type, UUID model, UUID collection, String key) {
     if (!Set.of("BACKFILL", "REINDEX", "CLUSTER_COLLECTION", "ANALYZE_COLLECTION_DIVERSITY")
-        .contains(type)) throw new IllegalArgumentException("Unsupported similarity job type");
-    if (key == null || key.isBlank() || key.length() > 150)
+        .contains(type)) {
+      throw new IllegalArgumentException("Unsupported similarity job type");
+    }
+    if (key == null || key.isBlank() || key.length() > 150) {
       throw new IllegalArgumentException("Idempotency key required (1–150 characters)");
+    }
     if ((type.equals("CLUSTER_COLLECTION") || type.equals("ANALYZE_COLLECTION_DIVERSITY"))
-        && collection == null) throw new IllegalArgumentException("Collection required");
+        && collection == null) {
+      throw new IllegalArgumentException("Collection required");
+    }
     similarity.model(model);
     similarity
         .db()
@@ -121,8 +134,9 @@ public class EmbeddingModelService {
             .singleRow();
     if (!Objects.equals(job.get("collection_id"), collection)
         || !job.get("model_id").equals(model)
-        || !job.get("type").equals(type))
+        || !job.get("type").equals(type)) {
       throw SimilarityService.conflict("Idempotency key reused with another request");
+    }
     return job;
   }
 }
