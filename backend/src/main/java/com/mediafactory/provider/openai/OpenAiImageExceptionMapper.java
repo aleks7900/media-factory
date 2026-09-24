@@ -5,9 +5,9 @@ import tools.jackson.databind.json.JsonMapper;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 
-final class OpenAiImageExceptionMapper {
+public final class OpenAiImageExceptionMapper {
  private OpenAiImageExceptionMapper() {}
- static ImageGenerationException map(int status,byte[] body,String retryAfter,String requestId) {
+ public static ImageGenerationException map(int status,byte[] body,String retryAfter,String requestId) {
   String code="";
   try { code=JsonMapper.builder().build().readTree(body).path("error").path("code").asText(""); } catch(Exception ignored) {}
   Type type;

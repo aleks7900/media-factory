@@ -1,0 +1,6 @@
+id: visual-quality
+version: v1
+runtime_artifact: backend/src/main/resources/qa/visual-quality-v1.txt
+contract: com.mediafactory.quality.QualityModels.Evidence
+purpose: Evidence-only visual inspection with contextual prompt comparison
+change_policy: Add a new version and update the persisted QA prompt version; never silently replace historical context.

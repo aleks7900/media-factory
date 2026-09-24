@@ -19,8 +19,8 @@ $deadline=(Get-Date).AddSeconds(60)
 do {
   Start-Sleep -Seconds 1
   $result=Invoke-RestMethod "$BaseUrl/api/generations/$($generation.id)"
-} while($result.status -notin @('QA_PENDING','FAILED','REJECTED') -and (Get-Date) -lt $deadline)
-if($result.status -ne 'QA_PENDING') { throw "Generation did not pass QA: $($result.status)" }
+} while($result.status -notin @('APPROVED','NEEDS_REVIEW','FAILED','REJECTED') -and (Get-Date) -lt $deadline)
+if($result.status -notin @('APPROVED','NEEDS_REVIEW')) { throw "Generation did not pass QA: $($result.status)" }
 $assets=Invoke-RestMethod "$BaseUrl/api/assets"
 $asset=$assets | Where-Object generation_id -eq $generation.id
 $media=Invoke-WebRequest "$BaseUrl/api/assets/$($asset.id)/content"
@@ -29,7 +29,7 @@ $review=Post '/reviews' @{assetId=$asset.id;decision='APPROVED';reason='Smoke te
 $regenerated=Post "/assets/$($asset.id)/regenerate" @{} ([guid]::NewGuid().ToString())
 if($regenerated.parent_id -ne $generation.id) { throw 'Regeneration lineage failure' }
 $ledger=Invoke-RestMethod "$BaseUrl/api/costs"
-$cost=$ledger | Where-Object generation_id -eq $generation.id
+$cost=$ledger | Where-Object { $_.generation_id -eq $generation.id -and $_.operation -eq 'IMAGE_GENERATION' }
 if(!$cost -or [decimal]$cost.estimated_cost -ne 0) { throw 'Mock cost ledger failure' }
 Write-Output "PASS: health, project hierarchy, generation, idempotency, S3 media, QA, approval, regeneration, and cost ledger."
 Write-Output "Generation: $($generation.id); asset: $($asset.id)"

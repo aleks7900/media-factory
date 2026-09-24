@@ -65,3 +65,6 @@ The seven core resource routes also support GET by ID. Deletion is deliberately 
 ## Operations
 
 Actuator exposes health/info and liveness/readiness. Compose health gates PostgreSQL, MinIO, initialization, backend and frontend startup. App images run non-root. PostgreSQL and MinIO data use named volumes. API authentication and multi-tenant access are not part of this foundation: keep the supplied localhost binding or add a trusted authenticated gateway.
+# TASK-04 extension
+
+Advanced QA now runs as a durable stage after immutable asset storage. See [quality assurance](quality-assurance.md) for the authoritative execution/decision model, normalized evidence, shared resilience, costs and publication gate. [TASK-04 report](task-04-report.md) records verification. Earlier foundation QA descriptions below describe the initial implementation; the advanced stage supersedes the immediate technical pass/fail flow.

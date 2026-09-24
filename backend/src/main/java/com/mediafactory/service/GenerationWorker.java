@@ -90,17 +90,16 @@ public class GenerationWorker implements AutoCloseable {
   byte[] bytes=result.output().bytes();String checksum=TechnicalQa.checksum(bytes);UUID assetId=UUID.randomUUID();
   String key="originals/"+generation.get("id")+"/"+assetId+(result.output().contentType().equals("image/jpeg")?".jpeg":".png");
   storage.putOriginal(key,bytes,result.output().contentType());telemetry.event("asset_stored",attempt.generationId(),attempt.id(),hop.provider(),hop.model(),0);
+  var report=qa.inspect(bytes,request.width(),request.height(),false);
   var metadata=new LinkedHashMap<String,Object>();metadata.put("provider",hop.provider());metadata.put("model",hop.model());metadata.put("requestedPrompt",request.prompt());metadata.put("options",request.options());metadata.put("width",request.width());metadata.put("height",request.height());metadata.put("generatedAt",Instant.now().toString());metadata.put("details",result.metadata());
   tx.executeWithoutResult(s->{
    if(!ownsLease(job)) return;
    db.sql("select pg_advisory_xact_lock(hashtextextended(?,0))").param(checksum).query().singleRow();
-   boolean duplicate=db.sql("select exists(select 1 from assets where sha256=?)").param(checksum).query(Boolean.class).single();var report=qa.inspect(bytes,request.width(),request.height(),duplicate);
    service.transition(attempt.generationId(),GenerationStatus.GENERATED);
    db.sql("insert into assets(id,generation_id,storage_key,sha256,media_type,size_bytes,width,height) values(?,?,?,?,?,?,?,?)").params(assetId,generation.get("id"),key,checksum,result.output().contentType(),bytes.length,report.width(),report.height()).update();
    service.transition(attempt.generationId(),GenerationStatus.QA_PENDING);
-   db.sql("insert into quality_reviews(id,asset_id,kind,decision,reasons) values(?,?,'TECHNICAL',?,?)").params(UUID.randomUUID(),assetId,report.passed()?"PASSED":"REJECTED",String.join("; ",report.failures())).update();
-   if(!report.passed()) service.transition(attempt.generationId(),GenerationStatus.REJECTED);
    db.sql("update generations set final_provider=?,model=?,result_metadata=cast(? as jsonb),completed_at=now() where id=?").params(hop.provider(),hop.model(),JSON.writeValueAsString(metadata),generation.get("id")).update();
+   service.enqueueQuality(assetId);
    db.sql("update jobs set status='SUCCEEDED',failure_reason=null,provider_metadata=cast(? as jsonb),finished_at=now(),updated_at=now(),lease_token=null where id=?").params(JSON.writeValueAsString(Map.of("provider",hop.provider(),"model",hop.model(),"details",result.metadata())),job.get("id")).update();
    telemetry.count("image_generation_success",hop.provider(),hop.model());telemetry.event("generation_completed",attempt.generationId(),attempt.id(),hop.provider(),hop.model(),0);
   });

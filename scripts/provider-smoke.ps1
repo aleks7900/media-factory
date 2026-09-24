@@ -19,8 +19,8 @@ $deadline=(Get-Date).AddSeconds(60)
 do {
   Start-Sleep -Seconds 1
   $detail=Invoke-RestMethod "$BaseUrl/api/v1/generations/$($created.generationId)"
-} while($detail.status -notin @('QA_PENDING','FAILED','REJECTED') -and (Get-Date) -lt $deadline)
-if($detail.status -ne 'QA_PENDING') { throw "Unexpected status: $($detail.status)" }
+} while($detail.status -notin @('QA_PENDING','QA_RUNNING','APPROVED','NEEDS_REVIEW','FAILED','REJECTED') -and (Get-Date) -lt $deadline)
+if($detail.status -notin @('QA_PENDING','QA_RUNNING','APPROVED','NEEDS_REVIEW')) { throw "Unexpected status: $($detail.status)" }
 if($detail.attempts.Count -ne 1 -or $detail.attempts[0].status -ne 'SUCCEEDED') { throw 'Attempt ledger mismatch' }
 if($detail.final_provider -ne 'mock' -or $detail.costs[0].estimated_total -ne 0) { throw 'Provider or cost mismatch' }
 $asset=$detail.assets[0]

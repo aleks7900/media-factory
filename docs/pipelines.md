@@ -28,3 +28,6 @@ Provider/storage failures retry up to three attempts. Backoff is 10s, 20s, then 
 Add vendor adapters behind the existing ports. Keep vendor DTOs, pricing lookup, credentials, timeouts, usage parsing, and provider error translation inside adapters. Introduce persisted operation accounting for any newly activated text/vision/upscale/video steps and reconcile unknown usage after failures. Real paid providers need tested idempotency, cancellation/timeout handling, lease heartbeats for long tasks, rate limits, and spend controls before activation.
 
 Keep originals immutable. Derived thumbnails/upscales use AssetVariant records and new object keys. New publishing pipelines should commit Publication and the APPROVED → PUBLISHED transition atomically and ingest metrics independently.
+# Advanced QA pipeline stage
+
+After image generation, immutable asset storage enqueues QA: technical inspection → provider-neutral Vision evidence → versioned policy → APPROVED / NEEDS_REVIEW / REJECTED. Vision infrastructure failures remain FAILED execution with NEEDS_REVIEW. Collection policy references override pipeline mapping; wallpaper and stock map to their respective profiles. Only effective final approval permits publication. See [policies](qa-policies.md), [QA architecture](quality-assurance.md) and [regeneration](regeneration.md).

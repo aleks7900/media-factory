@@ -19,8 +19,10 @@ public class FactoryService {
  private final ImageProviderRoutingStrategy routing;
  private final ImageGenerationProperties properties;
  private final PromptEngine prompts;
+ private final com.mediafactory.quality.QualityReviewService quality;
  private static final JsonMapper JSON=JsonMapper.builder().build();
- public FactoryService(JdbcClient db,ImageProviderRoutingStrategy routing,ImageGenerationProperties properties,PromptEngine prompts) { this.db=db;this.routing=routing;this.properties=properties;this.prompts=prompts; }
+ public FactoryService(JdbcClient db,ImageProviderRoutingStrategy routing,ImageGenerationProperties properties,PromptEngine prompts,com.mediafactory.quality.QualityReviewService quality) { this.db=db;this.routing=routing;this.properties=properties;this.prompts=prompts;this.quality=quality; }
+ public void enqueueQuality(UUID asset){quality.enqueue(asset,false,null,null);}
  public Map<String,Object> one(String table,UUID id) {
    if(!Set.of("projects","collections","concepts","generations","assets","jobs","quality_reviews").contains(table)) throw new IllegalArgumentException();
    return db.sql("select * from "+table+" where id=:id").param("id",id).query().listOfRows().stream().findFirst().orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"Record not found"));
@@ -48,6 +50,10 @@ public class FactoryService {
  }
  @Transactional
  public Map<String,Object> generatePrompt(UUID concept,int width,int height,String key,UUID parent,ImageOptions options,PromptRenderRequest input) {
+   return generatePrompt(concept,width,height,key,parent,options,input,true);
+ }
+ @Transactional
+ public Map<String,Object> generatePrompt(UUID concept,int width,int height,String key,UUID parent,ImageOptions options,PromptRenderRequest input,boolean reuseParent) {
    String serialized=JSON.writeValueAsString(options);
    // Serialize identical request keys across all application instances before checking/replaying.
    db.sql("select pg_advisory_xact_lock(hashtextextended(?,0))").param(key).query().singleRow();
@@ -60,14 +66,14 @@ public class FactoryService {
      return row;
    }
    one("concepts",concept); UUID id=UUID.randomUUID();
-   var resolved=parent==null?prompts.resolve(input,concept,key,true):prompts.historical(parent);String prompt=resolved.canonical().positivePrompt();
+   var resolved=parent==null||!reuseParent?prompts.resolve(input,concept,key,true):prompts.historical(parent);String prompt=resolved.canonical().positivePrompt();
    var route=parent==null?routing.resolve(new Request(id.toString(),prompt,width,height,prompts.adaptedOptions(options,null))):new ProviderRoute("REGENERATE",route(one("generations",parent)));
    db.sql("insert into generations(id,concept_id,parent_id,status,prompt,width,height) values(:id,:concept,:parent,'CREATED',:prompt,:width,:height)")
      .param("id",id).param("concept",concept).param("parent",parent).param("prompt",prompt).param("width",width).param("height",height).update();
    db.sql("update generations set request_options=cast(? as jsonb),provider_route=cast(? as jsonb),routing_mode=?,selected_provider=?,model=? where id=?")
     .params(serialized,JSON.writeValueAsString(route.providers()),route.mode(),route.providers().getFirst().provider(),route.providers().getFirst().model(),id).update();
    UUID firstSnapshot=null;
-   for(var hop:route.providers()){var snapshot=parent==null?prompts.snapshot(id,resolved,hop.provider()):prompts.copySnapshot(parent,id,resolved,hop.provider());if(firstSnapshot==null)firstSnapshot=snapshot;}
+   for(var hop:route.providers()){var snapshot=parent==null||!reuseParent?prompts.snapshot(id,resolved,hop.provider()):prompts.copySnapshot(parent,id,resolved,hop.provider());if(firstSnapshot==null)firstSnapshot=snapshot;}
    db.sql("update generations set prompt_request=cast(? as jsonb),prompt_version_id=?,experiment_id=?,experiment_variant_id=?,prompt_snapshot_id=? where id=?")
     .params(JSON.writeValueAsString(input),resolved.versionId(),resolved.experimentId(),resolved.variantId(),firstSnapshot,id).update();
    transition(id,GenerationStatus.QUEUED);
@@ -82,15 +88,15 @@ public class FactoryService {
  }
  @Transactional
  public Map<String,Object> review(UUID asset,String decision,String reason) {
-   var a=one("assets",asset); UUID generation=(UUID)a.get("generation_id");
-   transition(generation,GenerationStatus.valueOf(decision));
-   UUID id=UUID.randomUUID(); db.sql("insert into quality_reviews(id,asset_id,kind,decision,reasons) values(?,?,'HUMAN',?,?)").params(id,asset,decision,reason).update();
-   return one("quality_reviews",id);
+   var a=one("assets",asset);if(a.get("current_review_id")==null)throw new ResponseStatusException(HttpStatus.CONFLICT,"Run QA before reviewing this asset");
+   var r=quality.review((UUID)a.get("current_review_id"));
+   return quality.decide((UUID)r.get("id"),com.mediafactory.quality.QualityModels.Decision.valueOf(decision),new com.mediafactory.quality.QualityReviewService.HumanCommand(((Number)r.get("revision")).intValue(),null,reason),"local-workspace");
  }
  @Transactional
  public Map<String,Object> regenerate(UUID asset,String key) {
    var a=one("assets",asset); var g=one("generations",(UUID)a.get("generation_id"));
-   return generateImage((UUID)g.get("concept_id"),(String)g.get("prompt"),((Number)g.get("width")).intValue(),((Number)g.get("height")).intValue(),key,(UUID)g.get("id"),options(g));
+   var input=g.get("prompt_request")==null?PromptRenderRequest.adHoc((String)g.get("prompt"),options(g).negativePrompt()):JSON.readValue(g.get("prompt_request").toString(),PromptRenderRequest.class);
+   return generatePrompt((UUID)g.get("concept_id"),((Number)g.get("width")).intValue(),((Number)g.get("height")).intValue(),key,(UUID)g.get("id"),options(g),input);
  }
  @Transactional
  public Map<String,Object> retry(UUID id) {
@@ -123,15 +129,15 @@ public class FactoryService {
  }
  public Request promptRequest(Map<String,Object> generation,ProviderRoute.Hop hop) {return prompts.executionRequest(generation,hop,options(generation));}
  public Map<String,Object> dashboard() {
-   return db.sql("""
+   var result=new LinkedHashMap<>(db.sql("""
     select (select count(*) from assets where created_at >= date_trunc('day',now() at time zone 'UTC') at time zone 'UTC') as generated_today,
     (select count(*) from quality_reviews where decision='APPROVED' and created_at >= date_trunc('day',now() at time zone 'UTC') at time zone 'UTC') as approved_today,
     (select count(*) from quality_reviews where decision='REJECTED' and created_at >= date_trunc('day',now() at time zone 'UTC') at time zone 'UTC') as rejected_today,
-    (select count(*) from generations where status='QA_PENDING') as pending_review,
+    (select count(*) from generations where status in ('QA_PENDING','QA_RUNNING','NEEDS_REVIEW')) as pending_review,
     (select coalesce(sum(estimated_cost),0) from generation_costs where currency='USD') as generation_cost,
     (select count(*) from generation_costs where estimated_cost is null) as unknown_cost_attempts,
-    (select count(*) from jobs where status in ('QUEUED','RUNNING')) as active_jobs,
-    (select count(*) from jobs where status='FAILED') as failed_jobs
-   """).query().singleRow();
+    (select count(*) from jobs where status in ('QUEUED','RUNNING'))+(select count(*) from qa_jobs where status in ('QUEUED','RUNNING')) as active_jobs,
+    (select count(*) from jobs where status='FAILED')+(select count(*) from qa_jobs where status='FAILED') as failed_jobs
+   """).query().singleRow());result.putAll(quality.dashboard());return result;
  }
 }

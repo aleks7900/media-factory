@@ -4,6 +4,12 @@ A Java 21 / Spring Boot 4.1.1 and React media production foundation. TASK-02 add
 
 TASK-03 adds a production prompt domain: immutable published versions, typed variables, reusable preset revisions, canonical/provider previews, frozen generation snapshots, and deterministic weighted experiments. See [prompt engine](docs/prompt-engine.md), [versioning](docs/prompt-versioning.md), [presets](docs/prompt-presets.md), and [experiments](docs/prompt-experiments.md).
 
+TASK-04 adds [Advanced Visual QA](docs/quality-assurance.md): structured technical/Vision evidence, versioned [policies](docs/qa-policies.md), durable QA jobs, review history, audited [human overrides](docs/human-review.md), batch review, and [regeneration modes](docs/regeneration.md). Mock Vision is the default; the [OpenAI Vision adapter](docs/visual-qa.md) is independently opt-in. The Review workspace shows individual dimensions and confidence, full-resolution inspection and exact prompt comparison. Publication records and PUBLISHED transitions require effective approval server-side.
+
+Run `pwsh -File scripts/qa-smoke.ps1` after Compose is healthy to exercise free automatic approval/rejection, human overrides, reruns, regeneration, batch conflicts and publication gating. See the [TASK-04 verification report](docs/task-04-report.md).
+
+For browser verification after seeding sample data: `cd frontend`, `npx playwright install chromium`, then `npm run test:e2e`. It checks the deployed UI without invoking generation; screenshots go to the ignored `frontend/test-results/` directory.
+
 ## Run the complete system
 
 Prerequisite: Docker Desktop with its Linux engine running and Docker Compose v2.
@@ -105,6 +111,6 @@ On Windows use `gradlew.bat`. Integration tests require Docker and run real Post
 
 ## Deployment boundary
 
-This is a private, single-workspace foundation. It has no user authentication or tenant authorization; do not expose it publicly without an authenticated gateway, TLS, managed secrets, backup/restore procedures, and infrastructure hardening—especially with a paid provider enabled. Compose database/storage defaults are local development defaults. Lists return the newest 200 records. Video orchestration, publishing, metric ingestion, embeddings, and AI-powered upscale remain extension points. Publication and performance schemas are ready for later integration.
+This is a private, single-workspace foundation. It has no user authentication or tenant authorization; do not expose it publicly without an authenticated gateway, TLS, managed secrets, backup/restore procedures, and infrastructure hardening—especially with a paid provider enabled. Compose database/storage defaults are local development defaults. The review queue is paginated; other lists return the newest 200 records. Video orchestration, external publishing delivery, metric ingestion, embeddings, and AI-powered upscale remain extension points. Publication records now enforce QA approval; performance schemas are ready for later integration.
 
 MinIO's community repository is archived and old Docker Hub images are unavailable; Compose pins official Quay releases for reproducible local development. For production, use a maintained S3 service through `S3MediaStorage` and review your storage lifecycle and retention requirements. See the [official MinIO repository](https://github.com/minio/minio) and [container documentation](https://min.io/docs/minio/container/index.html).

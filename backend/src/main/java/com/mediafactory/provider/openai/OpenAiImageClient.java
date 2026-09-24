@@ -46,9 +46,9 @@ public class OpenAiImageClient implements AutoCloseable {
  }
  private static ImageGenerationException timeout() { return new ImageGenerationException(Type.TIMEOUT,"Image provider request timed out",Duration.ZERO,true,null); }
  public void close() { client.close(); }
- private static final class BoundedBody implements HttpResponse.BodySubscriber<byte[]> {
+ public static final class BoundedBody implements HttpResponse.BodySubscriber<byte[]> {
   private final CompletableFuture<byte[]> body=new CompletableFuture<>();private final ByteArrayOutputStream bytes=new ByteArrayOutputStream();private final int limit;private Flow.Subscription subscription;
-  BoundedBody(int limit) { this.limit=limit; }
+  public BoundedBody(int limit) { this.limit=limit; }
   public CompletionStage<byte[]> getBody() { return body; }
   public void onSubscribe(Flow.Subscription subscription) { this.subscription=subscription;subscription.request(1); }
   public void onNext(List<ByteBuffer> buffers) {

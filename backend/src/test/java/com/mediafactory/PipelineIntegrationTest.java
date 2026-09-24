@@ -32,6 +32,8 @@ class PipelineIntegrationTest {
  @Autowired com.mediafactory.provider.resilience.RetryDecisionService retry;
  @Autowired GenerationAttemptRepository attempts;
  @Autowired ProviderObservability telemetry;
+ @Autowired QualityReviewService qualityReviews;@Autowired QaConfiguration qaConfig;@Autowired QualityPolicyEngine policyEngine;@Autowired io.micrometer.core.instrument.MeterRegistry metrics;
+ void runQa(){try(var w=new QualityWorker(db,tx,qualityReviews,qaConfig,qa,policyEngine,storage,limiter,retry,List.of(new MockVisionQualityProvider()),metrics)){w.execute(w.claim());}}
  GenerationWorker worker(ImageGenerationProvider provider) { return new GenerationWorker(db,tx,service,new com.mediafactory.provider.routing.ImageProviderRouter(List.of(provider),properties),properties,limiter,retry,attempts,telemetry,storage,qa); }
  UUID concept() {
    var p=service.project("Integration studio","");var c=service.collection((UUID)p.get("id"),"Test collection");
@@ -47,8 +49,9 @@ class PipelineIntegrationTest {
    assertThat(service.one("generations",(UUID)g.get("id")).get("status")).isEqualTo("QA_PENDING");
    var asset=service.list("assets").getFirst();assertThat(storage.read((String)asset.get("storage_key"))).isNotEmpty();
    assertThat(service.list("generation_costs")).hasSize(1);
+   runQa();
    service.review((UUID)asset.get("id"),"APPROVED","Good");
-   assertThatThrownBy(()->service.review((UUID)asset.get("id"),"REJECTED","Late")).hasMessageContaining("Cannot transition");
+   assertThatThrownBy(()->service.review((UUID)asset.get("id"),"REJECTED","Late")).hasMessageContaining("reason");
    var regenerated=service.regenerate((UUID)asset.get("id"),UUID.randomUUID().toString());
    assertThat(regenerated.get("parent_id")).isEqualTo(g.get("id"));assertThat(service.list("assets")).hasSize(1);
  }
@@ -67,8 +70,9 @@ class PipelineIntegrationTest {
    var w=worker(new MockProviders() { @Override public ProviderTypes.Result<ProviderTypes.Media> generate(ProviderTypes.Request r) { return constant; } });UUID c=concept();
    service.generate(c,"One",128,128,UUID.randomUUID().toString(),null);w.execute(w.claim());
    var second=service.generate(c,"Two",128,128,UUID.randomUUID().toString(),null);w.execute(w.claim());
+   runQa();runQa();
    assertThat(service.one("generations",(UUID)second.get("id")).get("status")).isEqualTo("REJECTED");
-   assertThat(service.list("quality_reviews").toString()).contains("Duplicate SHA-256");
+   assertThat(db.sql("select code from quality_findings where detected").query(String.class).list()).contains("DUPLICATE_SHA256");
  }
  @Test void staleWorkerCannotFinishRecoveredJob() {
    var g=service.generate(concept(),"Test",128,128,UUID.randomUUID().toString(),null);

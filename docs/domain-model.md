@@ -46,3 +46,6 @@ stateDiagram-v2
 ```
 
 `GENERATED` and `QA_PENDING` are advanced within the completion transaction; API observers normally see the committed pending/rejected state. PUBLISHED is reserved for a future publication service. Regenerate creates a new lifecycle, rather than resetting an approved/rejected original.
+# Advanced QA domain extension
+
+QualityReview now owns execution, automatic/final decisions, frozen policy/context and revision. Asset.current_review_id selects its effective review. Normalized findings and dimension results retain source, evidence and confidence. QA jobs and Vision attempts track execution; immutable human actions and regeneration requests retain decision history and lineage. See [quality assurance](quality-assurance.md) and [human review](human-review.md) for the V5 schema and current invariants.
