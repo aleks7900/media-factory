@@ -2,8 +2,11 @@ package com.mediafactory.wallpaper;
 
 import java.util.Map;
 
-/** Target-specific wire DTOs, credentials and transfer mechanisms stay behind this port. */
+/**
+ * Target-specific wire DTOs, credentials and transfer mechanisms stay behind this port.
+ */
 public interface WallpaperPublicationTarget {
+
   String key();
 
   boolean available();
@@ -14,13 +17,20 @@ public interface WallpaperPublicationTarget {
 
   Result unpublish(Reference reference);
 
-  record Request(String idempotencyKey, String manifestChecksum, Map<String, Object> manifest) {}
+  record Request(String idempotencyKey, String manifestChecksum, Map<String, Object> manifest) {
 
-  record Reference(String idempotencyKey, String externalId, int version) {}
+  }
 
-  record Result(String externalId, int version, String status, Map<String, Object> evidence) {}
+  record Reference(String idempotencyKey, String externalId, int version) {
+
+  }
+
+  record Result(String externalId, int version, String status, Map<String, Object> evidence) {
+
+  }
 
   final class Failure extends RuntimeException {
+
     private final String code;
     private final boolean retryable;
 

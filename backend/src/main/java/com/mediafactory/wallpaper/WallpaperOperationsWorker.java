@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(name = "media.worker.enabled", havingValue = "true", matchIfMissing = true)
 public class WallpaperOperationsWorker {
+
   private final WallpaperCollectionService collections;
   private final WallpaperPublicationService publications;
   private final WallpaperExportService exports;
@@ -31,12 +32,13 @@ public class WallpaperOperationsWorker {
                 "select collection_id from wallpaper_collection_plans where status='RUNNING' order"
                     + " by created_at limit 5")
             .query(UUID.class)
-            .list())
+            .list()) {
       try {
         collections.advance(id);
       } catch (Exception e) {
         collections.pause(id, "COLLECTION_STAGE_FAILED");
       }
+    }
   }
 
   @Scheduled(fixedDelay = 2000)
@@ -67,7 +69,9 @@ public class WallpaperOperationsWorker {
                 "select id from wallpaper_deliveries where (status='READY' and available_at<=now())"
                     + " or (status='RUNNING' and lease_until<now()) order by created_at limit 10")
             .query(UUID.class)
-            .list()) publications.deliver(id);
+            .list()) {
+      publications.deliver(id);
+    }
   }
 
   @Scheduled(fixedDelay = 5000)
@@ -80,7 +84,9 @@ public class WallpaperOperationsWorker {
                 "select id from wallpaper_exports where status='QUEUED' or (status='RUNNING' and"
                     + " lease_until<now()) order by created_at limit 1")
             .query(UUID.class)
-            .list()) exports.execute(id);
+            .list()) {
+      exports.execute(id);
+    }
   }
 
   @Scheduled(fixedDelay = 15000)

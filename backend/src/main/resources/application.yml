@@ -79,7 +79,7 @@ media-factory:
       mock:
         enabled: true
         model: studio-mock-v1
-        models: [studio-mock-v1]
+        models: [ studio-mock-v1 ]
         mock-scenario: ${MOCK_IMAGE_SCENARIO:success}
         rate-limit:
           requests-per-minute: 120
@@ -89,7 +89,7 @@ media-factory:
       openai:
         enabled: ${OPENAI_IMAGE_ENABLED:false}
         model: ${OPENAI_IMAGE_MODEL:gpt-image-2}
-        models: [gpt-image-2, gpt-image-1.5, gpt-image-1]
+        models: [ gpt-image-2, gpt-image-1.5, gpt-image-1 ]
         timeout:
           connect: ${OPENAI_CONNECT_TIMEOUT:10s}
           request: ${OPENAI_IMAGE_TIMEOUT:120s}

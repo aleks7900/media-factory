@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1")
 public class WallpaperController {
+
   private final WallpaperProductionService productions;
   private final WallpaperCollectionService collections;
   private final WallpaperPublicationService publications;
@@ -26,38 +27,6 @@ public class WallpaperController {
     this.publications = publications;
     this.exports = exports;
   }
-
-  public record Start(
-      @NotNull UUID conceptId, @NotBlank String profile, @NotNull Map<String, Object> metadata) {}
-
-  public record Action(@Min(0) int revision, @NotBlank @Size(max = 2000) String reason) {}
-
-  public record Approval(@NotNull UUID packageId, @Min(0) int revision) {}
-
-  public record Target(@NotBlank String target) {}
-
-  public record Metadata(@Min(0) int revision, @NotNull Map<String, Object> metadata) {}
-
-  public record Reprocess(@Min(0) int revision, @NotNull UUID processingRunId) {}
-
-  public record ProfileUpdate(@Min(1) int version, @NotNull Map<String, Object> definition) {}
-
-  public record CollectionInput(
-      @NotNull UUID projectId,
-      @NotBlank String title,
-      @NotBlank String slug,
-      String description,
-      String theme,
-      String style,
-      boolean amoled) {}
-
-  public record Plan(
-      @Min(1) @Max(1000) int targetApproved,
-      @Min(1) @Max(20) int batchSize,
-      @Min(1) @Max(2000) int maxAttempts,
-      @NotNull @DecimalMin("0") BigDecimal maximumCost,
-      @NotNull @DecimalMin("0") BigDecimal reservedCostPerAttempt,
-      @NotBlank String wallpaperProfile) {}
 
   @GetMapping("/wallpaper-productions")
   public Object list() {
@@ -165,8 +134,6 @@ public class WallpaperController {
     return collections.coverCandidates(id);
   }
 
-  public record Cover(@NotNull UUID assetId) {}
-
   @PostMapping("/wallpaper-collections/{id}/cover")
   public Object cover(@PathVariable UUID id, @Valid @RequestBody Cover r) {
     return collections.cover(id, r.assetId());
@@ -234,5 +201,59 @@ public class WallpaperController {
         .header("Content-Type", "application/zip")
         .header("Content-Disposition", "attachment; filename=wallpaper-" + id + ".zip")
         .body(exports.download(id));
+  }
+
+  public record Start(
+      @NotNull UUID conceptId, @NotBlank String profile, @NotNull Map<String, Object> metadata) {
+
+  }
+
+  public record Action(@Min(0) int revision, @NotBlank @Size(max = 2000) String reason) {
+
+  }
+
+  public record Approval(@NotNull UUID packageId, @Min(0) int revision) {
+
+  }
+
+  public record Target(@NotBlank String target) {
+
+  }
+
+  public record Metadata(@Min(0) int revision, @NotNull Map<String, Object> metadata) {
+
+  }
+
+  public record Reprocess(@Min(0) int revision, @NotNull UUID processingRunId) {
+
+  }
+
+  public record ProfileUpdate(@Min(1) int version, @NotNull Map<String, Object> definition) {
+
+  }
+
+  public record CollectionInput(
+      @NotNull UUID projectId,
+      @NotBlank String title,
+      @NotBlank String slug,
+      String description,
+      String theme,
+      String style,
+      boolean amoled) {
+
+  }
+
+  public record Plan(
+      @Min(1) @Max(1000) int targetApproved,
+      @Min(1) @Max(20) int batchSize,
+      @Min(1) @Max(2000) int maxAttempts,
+      @NotNull @DecimalMin("0") BigDecimal maximumCost,
+      @NotNull @DecimalMin("0") BigDecimal reservedCostPerAttempt,
+      @NotBlank String wallpaperProfile) {
+
+  }
+
+  public record Cover(@NotNull UUID assetId) {
+
   }
 }

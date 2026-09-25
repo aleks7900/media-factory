@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class WallpaperPublicationService {
+
   final WallpaperProductionService service;
   final List<WallpaperPublicationTarget> targets;
   private final java.util.concurrent.ConcurrentMap<UUID, UUID> active =
@@ -37,9 +38,11 @@ public class WallpaperPublicationService {
             .param(collection)
             .query(UUID.class)
             .list();
-    if (ids.isEmpty()) throw conflict("Collection has no ready wallpapers");
+    if (ids.isEmpty()) {
+      throw conflict("Collection has no ready wallpapers");
+    }
     var results = new ArrayList<Map<String, Object>>();
-    for (UUID id : ids)
+    for (UUID id : ids) {
       try {
         Object result =
             switch (action) {
@@ -60,6 +63,7 @@ public class WallpaperPublicationService {
                     ? Objects.toString(r.getReason(), "ACTION_FAILED")
                     : "ACTION_FAILED"));
       }
+    }
     return results;
   }
 
@@ -74,44 +78,58 @@ public class WallpaperPublicationService {
     var w = service.one(id);
     var reasons = new ArrayList<String>();
     UUID asset = (UUID) w.get("master_asset_id");
-    if (asset == null) reasons.add("MASTER_MISSING");
-    else {
-      if (!"APPROVED".equals(service.processing.asset(asset).get("final_decision")))
+    if (asset == null) {
+      reasons.add("MASTER_MISSING");
+    } else {
+      if (!"APPROVED".equals(service.processing.asset(asset).get("final_decision"))) {
         reasons.add("QA_NOT_APPROVED");
+      }
       UUID model = service.similarity.activeModel().id();
-      if (!service.similarity.state(asset, model).equals("READY"))
+      if (!service.similarity.state(asset, model).equals("READY")) {
         reasons.add("SIMILARITY_INCOMPLETE");
+      }
       if (service
           .db
           .sql("select similarity_publication_block_reason(?)")
           .param(asset)
           .query(String.class)
           .optional()
-          .isPresent()) reasons.add("SIMILARITY_BLOCKED");
+          .isPresent()) {
+        reasons.add("SIMILARITY_BLOCKED");
+      }
     }
     var p = map(w.get("profile_snapshot"));
     if (Boolean.TRUE.equals(p.get("amoled"))
         && (w.get("amoled_result") == null
-            || !"AMOLED_SUITABLE".equals(map(w.get("amoled_result")).get("classification"))))
+        || !"AMOLED_SUITABLE".equals(map(w.get("amoled_result")).get("classification")))) {
       reasons.add("AMOLED_NOT_SUITABLE");
+    }
     var variants = variants(w);
     Set<String> found = new HashSet<>();
     for (var v : variants) {
       found.add(v.get("kind").toString());
-      if (!"VALID".equals(v.get("validation_status")))
+      if (!"VALID".equals(v.get("validation_status"))) {
         reasons.add("VARIANT_NOT_VALID:" + v.get("kind"));
-      if (verifyFiles)
+      }
+      if (verifyFiles) {
         try {
           verified(v);
         } catch (RuntimeException e) {
           reasons.add("VARIANT_UNREADABLE_OR_CHECKSUM_MISMATCH:" + v.get("kind"));
         }
+      }
     }
-    for (Object required : (List<?>) p.get("processingProfiles"))
-      if (!found.contains(required.toString())) reasons.add("MISSING_VARIANT:" + required);
-    if (!found.contains("ANDROID_GENERIC_PORTRAIT")) reasons.add("FALLBACK_REQUIRED");
-    if (!READY.contains(w.get("status")) && !"PUBLICATION_FAILED".equals(w.get("status")))
+    for (Object required : (List<?>) p.get("processingProfiles")) {
+      if (!found.contains(required.toString())) {
+        reasons.add("MISSING_VARIANT:" + required);
+      }
+    }
+    if (!found.contains("ANDROID_GENERIC_PORTRAIT")) {
+      reasons.add("FALLBACK_REQUIRED");
+    }
+    if (!READY.contains(w.get("status")) && !"PUBLICATION_FAILED".equals(w.get("status"))) {
       reasons.add("PRODUCTION_NOT_READY");
+    }
     validateMetadata(map(w.get("metadata")));
     return Map.of(
         "eligible",
@@ -125,7 +143,9 @@ public class WallpaperPublicationService {
   }
 
   List<Map<String, Object>> variants(Map<String, Object> w) {
-    if (w.get("processing_run_id") == null) return List.of();
+    if (w.get("processing_run_id") == null) {
+      return List.of();
+    }
     return service
         .db
         .sql(
@@ -140,16 +160,18 @@ public class WallpaperPublicationService {
 
   byte[] verified(Map<String, Object> v) {
     byte[] bytes = service.storage.read(v.get("storage_key").toString());
-    if (!PerceptualHash.sha(bytes).equals(v.get("sha256")))
+    if (!PerceptualHash.sha(bytes).equals(v.get("sha256"))) {
       throw conflict("Binary checksum mismatch");
+    }
     return bytes;
   }
 
   public Map<String, Object> prepare(UUID id) {
     var w = service.one(id);
     var eligibility = eligibility(id, true);
-    if (!Boolean.TRUE.equals(eligibility.get("eligible")))
+    if (!Boolean.TRUE.equals(eligibility.get("eligible"))) {
       throw conflict("Publication ineligible: " + eligibility.get("reasons"));
+    }
     var col = service.factory.one("collections", (UUID) w.get("collection_id"));
     var manifest = new LinkedHashMap<String, Object>();
     manifest.put("contractVersion", "media-factory-wallpaper-package/1");
@@ -219,8 +241,9 @@ public class WallpaperPublicationService {
               .param(id)
               .query()
               .singleRow();
-          if (!service.one(id).get("revision").equals(w.get("revision")))
+          if (!service.one(id).get("revision").equals(w.get("revision"))) {
             throw conflict("Wallpaper changed during package validation");
+          }
           var previous =
               service
                   .db
@@ -236,9 +259,10 @@ public class WallpaperPublicationService {
             var before = new LinkedHashMap<>(map(previous.get().get("manifest")));
             before.remove("publicationVersion");
             if ((!"UNPUBLISHED".equals(w.get("status"))
-                    || previous.get().get("approved_at") == null)
-                && ProcessingPlanner.hash(before).equals(ProcessingPlanner.hash(manifest)))
+                || previous.get().get("approved_at") == null)
+                && ProcessingPlanner.hash(before).equals(ProcessingPlanner.hash(manifest))) {
               return clean(previous.get());
+            }
           }
           int version = previous.map(v -> integer(v, "version", 0) + 1).orElse(1);
           manifest.put("publicationVersion", version);
@@ -312,8 +336,9 @@ public class WallpaperPublicationService {
   }
 
   public Object approve(UUID id, UUID packageId, int revision) {
-    if (!Boolean.TRUE.equals(eligibility(id, true).get("eligible")))
+    if (!Boolean.TRUE.equals(eligibility(id, true).get("eligible"))) {
       throw conflict("Wallpaper is not eligible");
+    }
     return service.tx.execute(
         s -> {
           service
@@ -326,14 +351,17 @@ public class WallpaperPublicationService {
           var p = latest(id);
           if (!p.get("id").equals(packageId)
               || !w.get("revision").equals(revision)
-              || !Set.of("PUBLICATION_REVIEW", "UNPUBLISHED").contains(w.get("status")))
+              || !Set.of("PUBLICATION_REVIEW", "UNPUBLISHED").contains(w.get("status"))) {
             throw conflict("Review the latest package at the current revision");
+          }
           if (!ProcessingPlanner.hash(map(p.get("manifest")).get("metadata"))
-              .equals(ProcessingPlanner.hash(w.get("metadata"))))
+              .equals(ProcessingPlanner.hash(w.get("metadata")))) {
             throw conflict("Prepare updated metadata before approval");
+          }
           if (!Objects.toString(map(p.get("manifest")).get("processingRunId"))
-              .equals(Objects.toString(w.get("processing_run_id"))))
+              .equals(Objects.toString(w.get("processing_run_id")))) {
             throw conflict("Prepare a new package after reprocessing");
+          }
           service
               .db
               .sql(
@@ -361,9 +389,12 @@ public class WallpaperPublicationService {
   }
 
   public Object publish(UUID id, String target) {
-    if (!target(target).available()) throw conflict("ANDROID_CONTRACT_NOT_CONFIGURED");
-    if (!Boolean.TRUE.equals(eligibility(id, true).get("eligible")))
+    if (!target(target).available()) {
+      throw conflict("ANDROID_CONTRACT_NOT_CONFIGURED");
+    }
+    if (!Boolean.TRUE.equals(eligibility(id, true).get("eligible"))) {
       throw conflict("Publication eligibility changed");
+    }
     return service.tx.execute(
         s -> {
           service
@@ -376,8 +407,10 @@ public class WallpaperPublicationService {
           var p = latest(id);
           if (p.get("approved_at") == null
               || !Set.of(
-                      "APPROVED_FOR_PUBLICATION", "PUBLISHING", "PUBLISHED", "PUBLICATION_FAILED")
-                  .contains(w.get("status"))) throw conflict("Human approval required");
+                  "APPROVED_FOR_PUBLICATION", "PUBLISHING", "PUBLISHED", "PUBLICATION_FAILED")
+              .contains(w.get("status"))) {
+            throw conflict("Human approval required");
+          }
           UUID delivery = UUID.randomUUID();
           String key = "wallpaper:" + id + ":" + p.get("version") + ":" + target;
           service
@@ -394,7 +427,7 @@ public class WallpaperPublicationService {
                   .param(key)
                   .query()
                   .singleRow();
-          if (!"PUBLISHED".equals(saved.get("status")))
+          if (!"PUBLISHED".equals(saved.get("status"))) {
             service
                 .db
                 .sql(
@@ -402,21 +435,24 @@ public class WallpaperPublicationService {
                         + " status='PUBLISHING',revision=revision+1,updated_at=now() where id=?")
                 .param(id)
                 .update();
+          }
           return clean(saved);
         });
   }
 
   public Object retry(UUID delivery) {
     if (service
-            .db
-            .sql(
-                "update wallpaper_deliveries set"
-                    + " status='READY',max_attempts=attempt+3,available_at=now(),failure_code=null"
-                    + " where id=? and status='FAILED' and failure_code in"
-                    + " ('TIMEOUT','REMOTE_UNAVAILABLE','STORAGE_UNAVAILABLE')")
-            .param(delivery)
-            .update()
-        != 1) throw conflict("Failure requires correction rather than retry");
+        .db
+        .sql(
+            "update wallpaper_deliveries set"
+                + " status='READY',max_attempts=attempt+3,available_at=now(),failure_code=null"
+                + " where id=? and status='FAILED' and failure_code in"
+                + " ('TIMEOUT','REMOTE_UNAVAILABLE','STORAGE_UNAVAILABLE')")
+        .param(delivery)
+        .update()
+        != 1) {
+      throw conflict("Failure requires correction rather than retry");
+    }
     return Map.of("id", delivery, "status", "READY");
   }
 
@@ -429,8 +465,9 @@ public class WallpaperPublicationService {
               .param(id)
               .query()
               .singleRow();
-          if (!Set.of("PUBLISHED", "UNPUBLISHED").contains(service.one(id).get("status")))
+          if (!Set.of("PUBLISHED", "UNPUBLISHED").contains(service.one(id).get("status"))) {
             throw conflict("Wait for publication to finish before unpublishing");
+          }
           var prior =
               service
                   .db
@@ -488,7 +525,9 @@ public class WallpaperPublicationService {
                           + " d.lease_until>now())")
                   .params(production, id)
                   .query(Boolean.class)
-                  .single()) return Optional.<Map<String, Object>>empty();
+                  .single()) {
+                return Optional.<Map<String, Object>>empty();
+              }
               return service
                   .db
                   .sql(
@@ -503,7 +542,9 @@ public class WallpaperPublicationService {
                   .stream()
                   .findFirst();
             });
-    if (claimed.isEmpty()) return;
+    if (claimed.isEmpty()) {
+      return;
+    }
     active.put(id, token);
     var d = claimed.get();
     var p = packageById((UUID) d.get("package_id"));
@@ -522,8 +563,9 @@ public class WallpaperPublicationService {
                     integer(ref, "version", 1)));
       } else {
         if (p.get("approved_at") == null
-            || !Boolean.TRUE.equals(eligibility(production, true).get("eligible")))
+            || !Boolean.TRUE.equals(eligibility(production, true).get("eligible"))) {
           throw new WallpaperPublicationTarget.Failure("ELIGIBILITY_CHANGED", false);
+        }
         var request =
             new WallpaperPublicationTarget.Request(
                 d.get("idempotency_key").toString(),
@@ -534,14 +576,16 @@ public class WallpaperPublicationService {
       service.tx.executeWithoutResult(
           s -> {
             if (service
-                    .db
-                    .sql(
-                        "update wallpaper_deliveries set"
-                            + " status=?,external_reference=?::jsonb,lease_token=null,lease_until=null,updated_at=now()"
-                            + " where id=? and lease_token=?")
-                    .params(result.status(), write(result), id, token)
-                    .update()
-                != 1) throw conflict("Publication lease expired");
+                .db
+                .sql(
+                    "update wallpaper_deliveries set"
+                        + " status=?,external_reference=?::jsonb,lease_token=null,lease_until=null,updated_at=now()"
+                        + " where id=? and lease_token=?")
+                .params(result.status(), write(result), id, token)
+                .update()
+                != 1) {
+              throw conflict("Publication lease expired");
+            }
             if (!unpublish) {
               UUID publication = UUID.randomUUID();
               service
@@ -604,7 +648,7 @@ public class WallpaperPublicationService {
                   + " and lease_token=?")
           .params(status, code, id, token)
           .update();
-      if (status.equals("FAILED"))
+      if (status.equals("FAILED")) {
         service
             .db
             .sql(
@@ -614,6 +658,7 @@ public class WallpaperPublicationService {
                     + " status='RUNNING' and lease_token<>?)")
             .params(code, production, p.get("id"), token)
             .update();
+      }
       service
           .metrics
           .counter("media_factory_wallpaper_publication_failed_total", "code", code)

@@ -138,17 +138,18 @@ public class ProcessingService {
     return requestInternal(id, keys, manual, key, priority, null);
   }
 
-  public Map<String, Object> requestFrozen(UUID id, List<Map<String,Object>> versions,
-      Map<String,Object> manual, String key, int priority) {
+  public Map<String, Object> requestFrozen(UUID id, List<Map<String, Object>> versions,
+      Map<String, Object> manual, String key, int priority) {
     var resolved = versions.stream().map(v -> profileJson(db.sql(
-        "select p.key,p.name,v.* from processing_profile_versions v join processing_profiles p on p.id=v.profile_id where v.id=? and v.status in ('PUBLISHED','DEPRECATED')")
+            "select p.key,p.name,v.* from processing_profile_versions v join processing_profiles p on p.id=v.profile_id where v.id=? and v.status in ('PUBLISHED','DEPRECATED')")
         .param(UUID.fromString(v.get("id").toString())).query().singleRow())).toList();
     return requestInternal(id, resolved.stream().map(v -> v.get("key").toString()).toList(),
         manual, key, priority, resolved);
   }
 
-  private Map<String,Object> requestInternal(UUID id, List<String> keys, Map<String,Object> manual,
-      String key, int priority, List<Map<String,Object>> frozenVersions) {
+  private Map<String, Object> requestInternal(UUID id, List<String> keys,
+      Map<String, Object> manual,
+      String key, int priority, List<Map<String, Object>> frozenVersions) {
     if (keys.isEmpty() || keys.size() > 16 || new HashSet<>(keys).size() != keys.size()) {
       throw new IllegalArgumentException("Select 1–16 distinct profiles");
     }

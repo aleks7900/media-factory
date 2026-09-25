@@ -3,20 +3,18 @@ package com.mediafactory.wallpaper;
 import java.util.Comparator;
 import java.util.List;
 
-/** Dimensions are physical pixels; callers must not multiply screen pixels by Android density. */
+/**
+ * Dimensions are physical pixels; callers must not multiply screen pixels by Android density.
+ */
 public final class WallpaperVariantSelector {
-  private WallpaperVariantSelector() {}
 
-  public record Variant(String key, int width, int height, String qualityTier) {
-    public Variant {
-      if (key == null || qualityTier == null || width <= 0 || height <= 0)
-        throw new IllegalArgumentException("Invalid variant");
-    }
+  private WallpaperVariantSelector() {
   }
 
   public static Variant select(List<Variant> variants, int width, int height, String tier) {
-    if (width <= 0 || height <= 0)
+    if (width <= 0 || height <= 0) {
       throw new IllegalArgumentException("Physical screen size required");
+    }
     double aspect = (double) width / height;
     return variants.stream()
         .filter(
@@ -35,5 +33,14 @@ public final class WallpaperVariantSelector {
                     .findFirst()
                     .orElseThrow(
                         () -> new IllegalArgumentException("Generic fallback is required")));
+  }
+
+  public record Variant(String key, int width, int height, String qualityTier) {
+
+    public Variant {
+      if (key == null || qualityTier == null || width <= 0 || height <= 0) {
+        throw new IllegalArgumentException("Invalid variant");
+      }
+    }
   }
 }

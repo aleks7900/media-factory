@@ -20,6 +20,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 @Service
 public class WallpaperProductionService {
+
   static final JsonMapper JSON = JsonMapper.builder().build();
   static final Set<String> READY =
       Set.of(
@@ -80,9 +81,31 @@ public class WallpaperProductionService {
             "metadata",
             "amoled_result",
             "manifest",
-            "external_reference"))
-      if (result.get(key) != null) result.put(key, map(result.get(key)));
+            "external_reference")) {
+      if (result.get(key) != null) {
+        result.put(key, map(result.get(key)));
+      }
+    }
     return result;
+  }
+
+  static void validateMetadata(Map<String, Object> metadata) {
+    String title = Objects.toString(metadata.get("title"), "");
+    String slug = Objects.toString(metadata.get("slug"), "");
+    if (title.isBlank()
+        || title.length() > 200
+        || !slug.matches("[a-z0-9]+(?:-[a-z0-9]+)*")
+        || slug.length() > 160) {
+      throw new IllegalArgumentException("Title and lowercase hyphenated slug required");
+    }
+    if (write(metadata).length() > 16000) {
+      throw new IllegalArgumentException("Metadata too large");
+    }
+    if (metadata.get("tags") instanceof List<?> tags
+        && (tags.size() > 30
+        || tags.stream().anyMatch(t -> !(t instanceof String) || t.toString().length() > 80))) {
+      throw new IllegalArgumentException("At most 30 text tags of 80 characters");
+    }
   }
 
   public Map<String, Object> one(UUID id) {
@@ -156,32 +179,39 @@ public class WallpaperProductionService {
   }
 
   public Object configureProfile(String key, int version, Map<String, Object> definition) {
-    if (!key.matches("ANDROID_[A-Z0-9_]{1,60}"))
+    if (!key.matches("ANDROID_[A-Z0-9_]{1,60}")) {
       throw new IllegalArgumentException("Invalid wallpaper profile key");
-    if (!Boolean.TRUE.equals(definition.get("humanApprovalRequired")))
+    }
+    if (!Boolean.TRUE.equals(definition.get("humanApprovalRequired"))) {
       throw new IllegalArgumentException("Human publication approval must remain enabled");
-    if (!(definition.get("amoled") instanceof Boolean))
+    }
+    if (!(definition.get("amoled") instanceof Boolean)) {
       throw new IllegalArgumentException("Structured AMOLED flag required");
+    }
     int width = integer(definition, "generationWidth", 0),
         height = integer(definition, "generationHeight", 0);
-    if (width < 1024 || height < width || height > 4096 || width > 4096)
+    if (width < 1024 || height < width || height > 4096 || width > 4096) {
       throw new IllegalArgumentException("Generation must use supported portrait dimensions");
-    for (String field : List.of("safeZoneTop", "safeZoneBottom"))
-      if (number(definition, field, -1) < 0 || number(definition, field, 2) >= 1)
+    }
+    for (String field : List.of("safeZoneTop", "safeZoneBottom")) {
+      if (number(definition, field, -1) < 0 || number(definition, field, 2) >= 1) {
         throw new IllegalArgumentException("Invalid safe zones");
+      }
+    }
     var keys = (List<?>) definition.get("processingProfiles");
     if (keys == null
         || keys.size() > 16
         || !keys.containsAll(
-            List.of(
-                "WALLPAPER_MASTER",
-                "ANDROID_FHD_PORTRAIT",
-                "ANDROID_QHD_PORTRAIT",
-                "ANDROID_GENERIC_PORTRAIT",
-                "ANDROID_PREVIEW",
-                "ANDROID_THUMBNAIL")))
+        List.of(
+            "WALLPAPER_MASTER",
+            "ANDROID_FHD_PORTRAIT",
+            "ANDROID_QHD_PORTRAIT",
+            "ANDROID_GENERIC_PORTRAIT",
+            "ANDROID_PREVIEW",
+            "ANDROID_THUMBNAIL"))) {
       throw new IllegalArgumentException(
           "Master, device families, preview and thumbnail are required");
+    }
     keys.forEach(k -> processing.profile(k.toString()));
     qaConfiguration.policy(definition.get("qaPolicy").toString());
     JSON.readValue(write(definition.get("amoledPolicy")), AmoledAnalyzer.Policy.class);
@@ -189,13 +219,17 @@ public class WallpaperProductionService {
     if (!db.sql("select exists(select 1 from prompt_versions where id=? and status='PUBLISHED')")
         .param(prompt)
         .query(Boolean.class)
-        .single()) throw new IllegalArgumentException("Published prompt version required");
+        .single()) {
+      throw new IllegalArgumentException("Published prompt version required");
+    }
     if (db.sql(
-                "update wallpaper_profiles set definition=?::jsonb,version=version+1 where key=?"
-                    + " and version=?")
-            .params(write(definition), key, version)
-            .update()
-        != 1) throw conflict("Profile version changed");
+            "update wallpaper_profiles set definition=?::jsonb,version=version+1 where key=?"
+                + " and version=?")
+        .params(write(definition), key, version)
+        .update()
+        != 1) {
+      throw conflict("Profile version changed");
+    }
     return Map.of("key", key, "version", version + 1);
   }
 
@@ -210,8 +244,9 @@ public class WallpaperProductionService {
 
   public Map<String, Object> start(
       UUID concept, String profile, Map<String, Object> metadata, String key, UUID parent) {
-    if (key == null || key.isBlank() || key.length() > 180)
+    if (key == null || key.isBlank() || key.length() > 180) {
       throw new IllegalArgumentException("Idempotency key required, maximum 180 characters");
+    }
     validateMetadata(metadata);
     var p =
         db.sql("select definition from wallpaper_profiles where key=?")
@@ -225,8 +260,9 @@ public class WallpaperProductionService {
         map(write(qaConfiguration.policy(snapshot.get("qaPolicy").toString()))));
     // Freeze actual processing version IDs, not only a mutable profile key.
     var profiles = new ArrayList<Map<String, Object>>();
-    for (Object name : (List<?>) snapshot.get("processingProfiles"))
+    for (Object name : (List<?>) snapshot.get("processingProfiles")) {
       profiles.add(processing.profile(name.toString()));
+    }
     snapshot.put("processingVersions", profiles);
     String hash =
         ProcessingPlanner.hash(
@@ -254,19 +290,24 @@ public class WallpaperProductionService {
                   .stream()
                   .findFirst();
           if (existing.isPresent()) {
-            if (!hash.equals(existing.get().get("request_hash")))
+            if (!hash.equals(existing.get().get("request_hash"))) {
               throw conflict("Key already used for another wallpaper");
+            }
             return one((UUID) existing.get().get("id"));
           }
           var c = factory.one("concepts", concept);
           var col = factory.one("collections", (UUID) c.get("collection_id"));
-          if (!Boolean.TRUE.equals(col.get("wallpaper")))
+          if (!Boolean.TRUE.equals(col.get("wallpaper"))) {
             throw new IllegalArgumentException("Select a wallpaper collection");
-          if (Boolean.TRUE.equals(col.get("amoled")) != Boolean.TRUE.equals(snapshot.get("amoled")))
+          }
+          if (Boolean.TRUE.equals(col.get("amoled")) != Boolean.TRUE.equals(
+              snapshot.get("amoled"))) {
             throw new IllegalArgumentException(
                 "Collection and wallpaper AMOLED profiles must match");
-          if (!Objects.equals(col.get("similarity_profile"), snapshot.get("similarityProfile")))
+          }
+          if (!Objects.equals(col.get("similarity_profile"), snapshot.get("similarityProfile"))) {
             throw conflict("Collection similarity profile differs from wallpaper profile");
+          }
           UUID id = UUID.randomUUID();
           db.sql(
                   "insert into"
@@ -280,21 +321,6 @@ public class WallpaperProductionService {
               .increment();
           return one(id);
         });
-  }
-
-  static void validateMetadata(Map<String, Object> metadata) {
-    String title = Objects.toString(metadata.get("title"), "");
-    String slug = Objects.toString(metadata.get("slug"), "");
-    if (title.isBlank()
-        || title.length() > 200
-        || !slug.matches("[a-z0-9]+(?:-[a-z0-9]+)*")
-        || slug.length() > 160)
-      throw new IllegalArgumentException("Title and lowercase hyphenated slug required");
-    if (write(metadata).length() > 16000) throw new IllegalArgumentException("Metadata too large");
-    if (metadata.get("tags") instanceof List<?> tags
-        && (tags.size() > 30
-            || tags.stream().anyMatch(t -> !(t instanceof String) || t.toString().length() > 80)))
-      throw new IllegalArgumentException("At most 30 text tags of 80 characters");
   }
 
   public Object details(UUID id) {
@@ -401,13 +427,17 @@ public class WallpaperProductionService {
                       row.get("revision"),
                       row.get("status"))
                   .update();
-          if (n == 0) throw conflict("Wallpaper changed concurrently");
+          if (n == 0) {
+            throw conflict("Wallpaper changed concurrently");
+          }
           event(id, row.get("status").toString(), next, "pipeline", reason);
         });
-    if (next.endsWith("REJECTED"))
+    if (next.endsWith("REJECTED")) {
       metrics.counter("media_factory_wallpaper_rejected_total", "status", next).increment();
-    if (next.equals("PUBLICATION_REVIEW"))
+    }
+    if (next.equals("PUBLICATION_REVIEW")) {
       metrics.counter("media_factory_wallpaper_ready_total").increment();
+    }
   }
 
   public Object action(UUID id, int revision, String action, String reason) {
@@ -418,35 +448,43 @@ public class WallpaperProductionService {
               .query()
               .singleRow();
           var w = one(id);
-          if (integer(w, "revision", -1) != revision)
+          if (integer(w, "revision", -1) != revision) {
             throw conflict("Refresh this wallpaper before changing it");
+          }
           String state = w.get("status").toString(), next;
           switch (action) {
             case "pause" -> {
-              if (!ACTIVE.contains(state)) throw conflict("Only active production can pause");
+              if (!ACTIVE.contains(state)) {
+                throw conflict("Only active production can pause");
+              }
               next = "PAUSED";
               db.sql("update wallpaper_productions set previous_status=? where id=?")
                   .params(state, id)
                   .update();
             }
             case "resume" -> {
-              if (!state.equals("PAUSED")) throw conflict("Production is not paused");
+              if (!state.equals("PAUSED")) {
+                throw conflict("Production is not paused");
+              }
               next = w.get("previous_status").toString();
             }
             case "cancel" -> {
-              if (Set.of("PUBLISHED", "PUBLISHING", "UNPUBLISHED").contains(state))
+              if (Set.of("PUBLISHED", "PUBLISHING", "UNPUBLISHED").contains(state)) {
                 throw conflict("Use unpublish for delivered wallpapers");
+              }
               next = "CANCELLED";
             }
             case "reject" -> {
-              if (!Set.of("PUBLICATION_REVIEW", "APPROVED_FOR_PUBLICATION").contains(state))
+              if (!Set.of("PUBLICATION_REVIEW", "APPROVED_FOR_PUBLICATION").contains(state)) {
                 throw conflict("Wallpaper is not in review");
+              }
               next = "REJECTED";
             }
             default -> throw new IllegalArgumentException("Unsupported production action");
           }
-          if (reason == null || reason.isBlank() || reason.length() > 2000)
+          if (reason == null || reason.isBlank() || reason.length() > 2000) {
             throw new IllegalArgumentException("Reason required");
+          }
           db.sql(
                   "update wallpaper_productions set"
                       + " status=?,revision=revision+1,lease_token=null,lease_until=null,updated_at=now()"
@@ -461,14 +499,16 @@ public class WallpaperProductionService {
   public Object metadata(UUID id, int revision, Map<String, Object> values) {
     validateMetadata(values);
     if (db.sql(
-                "update wallpaper_productions set metadata=?::jsonb,status=case when"
-                    + " status='APPROVED_FOR_PUBLICATION' then 'PUBLICATION_REVIEW' else status"
-                    + " end,approved_by=null,approved_at=null,revision=revision+1,updated_at=now()"
-                    + " where id=? and revision=? and status in"
-                    + " ('PUBLICATION_REVIEW','APPROVED_FOR_PUBLICATION','UNPUBLISHED')")
-            .params(write(values), id, revision)
-            .update()
-        != 1) throw conflict("Metadata cannot be edited at this revision/state");
+            "update wallpaper_productions set metadata=?::jsonb,status=case when"
+                + " status='APPROVED_FOR_PUBLICATION' then 'PUBLICATION_REVIEW' else status"
+                + " end,approved_by=null,approved_at=null,revision=revision+1,updated_at=now()"
+                + " where id=? and revision=? and status in"
+                + " ('PUBLICATION_REVIEW','APPROVED_FOR_PUBLICATION','UNPUBLISHED')")
+        .params(write(values), id, revision)
+        .update()
+        != 1) {
+      throw conflict("Metadata cannot be edited at this revision/state");
+    }
     event(id, null, "METADATA_EDITED", "local-workspace", "Publication approval invalidated");
     return one(id);
   }
@@ -493,17 +533,22 @@ public class WallpaperProductionService {
           var w = one(id);
           if (!w.get("revision").equals(revision)
               || !Set.of("PUBLICATION_REVIEW", "PROCESSING_FAILED", "UNPUBLISHED")
-                  .contains(w.get("status")))
+              .contains(w.get("status"))) {
             throw conflict("Unpublish before changing delivered variants; refresh this revision");
+          }
           var run = processing.run(runId);
-          if (!w.get("master_asset_id").equals(run.get("source_asset_id")))
+          if (!w.get("master_asset_id").equals(run.get("source_asset_id"))) {
             throw conflict("Processing source must be the same original");
+          }
           var plan = map(run.get("plan"));
           Set<String> keys = new HashSet<>();
-          for (var node : (List<Map<String, Object>>) plan.get("nodes"))
+          for (var node : (List<Map<String, Object>>) plan.get("nodes")) {
             keys.add(node.get("key").toString());
-          if (!keys.containsAll((List<?>) map(w.get("profile_snapshot")).get("processingProfiles")))
+          }
+          if (!keys.containsAll(
+              (List<?>) map(w.get("profile_snapshot")).get("processingProfiles"))) {
             throw conflict("Reprocessing must include every required wallpaper profile");
+          }
           db.sql(
                   "update wallpaper_productions set"
                       + " processing_run_id=?,master_variant_id=null,approved_by=null,approved_at=null,status='PROCESSING',revision=revision+1,updated_at=now()"
@@ -523,7 +568,9 @@ public class WallpaperProductionService {
   public void advance(UUID id) {
     var w = one(id);
     String status = w.get("status").toString();
-    if (!ACTIVE.contains(status)) return;
+    if (!ACTIVE.contains(status)) {
+      return;
+    }
     var collectionPlan =
         db.sql("select status from wallpaper_collection_plans where collection_id=?")
             .param(w.get("collection_id"))
@@ -531,91 +578,95 @@ public class WallpaperProductionService {
             .optional();
     if (collectionPlan.isPresent()
         && (collectionPlan.get().equals("CANCELLED")
-            || (!Set.of("RUNNING", "COMPLETED").contains(collectionPlan.get())
-                && Set.of("CONCEPT_READY", "SIMILARITY_CHECK").contains(status)))) return;
+        || (!Set.of("RUNNING", "COMPLETED").contains(collectionPlan.get())
+        && Set.of("CONCEPT_READY", "SIMILARITY_CHECK").contains(status)))) {
+      return;
+    }
     var p = map(w.get("profile_snapshot"));
     switch (status) {
-      case "CONCEPT_READY" ->
-          tx.executeWithoutResult(
-              s -> {
-                db.sql("select id from wallpaper_productions where id=? for update")
-                    .param(id)
-                    .query()
-                    .singleRow();
-                var fresh = one(id);
-                if (!fresh.get("status").equals(status)) return;
-                var c = factory.one("concepts", (UUID) w.get("concept_id"));
-                var col = factory.one("collections", (UUID) c.get("collection_id"));
-                var vars = new LinkedHashMap<String, Object>();
-                vars.put("subject", c.get("prompt"));
-                vars.put("wallpaper_collectionTheme", col.get("theme"));
-                vars.put("wallpaper_style", col.get("style"));
-                vars.put("wallpaper_orientation", "PORTRAIT");
-                vars.put(
-                    "wallpaper_aspectRatio",
-                    integer(p, "generationWidth", 1024)
-                        + ":"
-                        + integer(p, "generationHeight", 2048));
-                vars.put("wallpaper_subjectPlacement", p.get("subjectPlacement"));
-                vars.put("wallpaper_safeZoneTop", p.get("safeZoneTop").toString());
-                vars.put("wallpaper_safeZoneBottom", p.get("safeZoneBottom").toString());
-                vars.put(
-                    "wallpaper_background",
-                    Boolean.TRUE.equals(p.get("amoled"))
-                        ? "Dominant pure black background, restrained bright focal highlights,"
-                            + " clear subject separation, no gray haze, preserve important detail"
-                        : "Clear negative space and balanced background");
-                var prompt =
-                    new PromptRenderRequest(
-                        UUID.fromString(p.get("promptVersionId").toString()),
-                        vars,
-                        List.of(),
-                        null,
-                        null,
-                        null,
-                        (UUID) c.get("id"),
-                        "wallpaper",
-                        null,
-                        null,
-                        null,
-                        null);
-                UUID parent =
-                    w.get("parent_id") == null
-                        ? null
-                        : (UUID) one((UUID) w.get("parent_id")).get("generation_id");
-                var g =
-                    factory.generatePrompt(
-                        (UUID) c.get("id"),
-                        integer(p, "generationWidth", 1024),
-                        integer(p, "generationHeight", 2048),
-                        "wallpaper:" + id,
-                        parent,
-                        ImageOptions.defaults(),
-                        prompt,
-                        false);
-                if (collectionPlan.isPresent()) {
-                  var budget =
-                      db.sql(
-                              "select max_cost,reserved_cost_per_attempt from"
-                                  + " wallpaper_collection_plans where collection_id=?")
-                          .param(c.get("collection_id"))
-                          .query()
-                          .singleRow();
-                  if ((factory.route(g).stream().anyMatch(h -> !h.provider().equals("mock"))
-                          || !qaConfiguration.provider().equals("mock"))
-                      && (((java.math.BigDecimal) budget.get("max_cost")).signum() == 0
-                          || ((java.math.BigDecimal) budget.get("reserved_cost_per_attempt"))
-                                  .signum()
-                              == 0))
-                    throw conflict(
-                        "Paid collection generation requires a nonzero explicit budget and"
-                            + " per-attempt reserve");
-                }
-                db.sql("update wallpaper_productions set generation_id=? where id=?")
-                    .params(g.get("id"), id)
-                    .update();
-                move(w, "GENERATING", "");
-              });
+      case "CONCEPT_READY" -> tx.executeWithoutResult(
+          s -> {
+            db.sql("select id from wallpaper_productions where id=? for update")
+                .param(id)
+                .query()
+                .singleRow();
+            var fresh = one(id);
+            if (!fresh.get("status").equals(status)) {
+              return;
+            }
+            var c = factory.one("concepts", (UUID) w.get("concept_id"));
+            var col = factory.one("collections", (UUID) c.get("collection_id"));
+            var vars = new LinkedHashMap<String, Object>();
+            vars.put("subject", c.get("prompt"));
+            vars.put("wallpaper_collectionTheme", col.get("theme"));
+            vars.put("wallpaper_style", col.get("style"));
+            vars.put("wallpaper_orientation", "PORTRAIT");
+            vars.put(
+                "wallpaper_aspectRatio",
+                integer(p, "generationWidth", 1024)
+                    + ":"
+                    + integer(p, "generationHeight", 2048));
+            vars.put("wallpaper_subjectPlacement", p.get("subjectPlacement"));
+            vars.put("wallpaper_safeZoneTop", p.get("safeZoneTop").toString());
+            vars.put("wallpaper_safeZoneBottom", p.get("safeZoneBottom").toString());
+            vars.put(
+                "wallpaper_background",
+                Boolean.TRUE.equals(p.get("amoled"))
+                    ? "Dominant pure black background, restrained bright focal highlights,"
+                      + " clear subject separation, no gray haze, preserve important detail"
+                    : "Clear negative space and balanced background");
+            var prompt =
+                new PromptRenderRequest(
+                    UUID.fromString(p.get("promptVersionId").toString()),
+                    vars,
+                    List.of(),
+                    null,
+                    null,
+                    null,
+                    (UUID) c.get("id"),
+                    "wallpaper",
+                    null,
+                    null,
+                    null,
+                    null);
+            UUID parent =
+                w.get("parent_id") == null
+                    ? null
+                    : (UUID) one((UUID) w.get("parent_id")).get("generation_id");
+            var g =
+                factory.generatePrompt(
+                    (UUID) c.get("id"),
+                    integer(p, "generationWidth", 1024),
+                    integer(p, "generationHeight", 2048),
+                    "wallpaper:" + id,
+                    parent,
+                    ImageOptions.defaults(),
+                    prompt,
+                    false);
+            if (collectionPlan.isPresent()) {
+              var budget =
+                  db.sql(
+                          "select max_cost,reserved_cost_per_attempt from"
+                              + " wallpaper_collection_plans where collection_id=?")
+                      .param(c.get("collection_id"))
+                      .query()
+                      .singleRow();
+              if ((factory.route(g).stream().anyMatch(h -> !h.provider().equals("mock"))
+                  || !qaConfiguration.provider().equals("mock"))
+                  && (((java.math.BigDecimal) budget.get("max_cost")).signum() == 0
+                  || ((java.math.BigDecimal) budget.get("reserved_cost_per_attempt"))
+                  .signum()
+                  == 0)) {
+                throw conflict(
+                    "Paid collection generation requires a nonzero explicit budget and"
+                        + " per-attempt reserve");
+              }
+            }
+            db.sql("update wallpaper_productions set generation_id=? where id=?")
+                .params(g.get("id"), id)
+                .update();
+            move(w, "GENERATING", "");
+          });
       case "GENERATING" -> {
         var g = factory.one("generations", (UUID) w.get("generation_id"));
         if ("FAILED".equals(g.get("status"))) {
@@ -646,8 +697,9 @@ public class WallpaperProductionService {
                   .singleRow();
           if (!Objects.equals(review.get("policy_id"), p.get("qaPolicy"))
               || !Objects.equals(
-                  review.get("policy_version"), map(p.get("qaPolicySnapshot")).get("version")))
+              review.get("policy_version"), map(p.get("qaPolicySnapshot")).get("version"))) {
             throw conflict("Wallpaper QA policy changed; rerun the required frozen policy");
+          }
           if ("FAILED".equals(review.get("execution_status"))) {
             db.sql("update wallpaper_productions set previous_status=status where id=?")
                 .param(id)
@@ -656,9 +708,11 @@ public class WallpaperProductionService {
             return;
           }
         }
-        if ("APPROVED".equals(a.get("final_decision"))) move(w, "QA_APPROVED", "");
-        else if ("REJECTED".equals(a.get("final_decision")))
+        if ("APPROVED".equals(a.get("final_decision"))) {
+          move(w, "QA_APPROVED", "");
+        } else if ("REJECTED".equals(a.get("final_decision"))) {
           move(w, "QA_REJECTED", "VISUAL_QA_REJECTED");
+        }
       }
       case "QA_APPROVED" -> {
         if (Boolean.TRUE.equals(p.get("amoled"))) {
@@ -701,7 +755,9 @@ public class WallpaperProductionService {
           move(w, "PAUSED", "SIMILARITY_FAILED");
           return;
         }
-        if (!ready.equals("READY")) return;
+        if (!ready.equals("READY")) {
+          return;
+        }
         String blocked =
             db.sql("select similarity_publication_block_reason(?)")
                 .param(asset)
@@ -718,7 +774,9 @@ public class WallpaperProductionService {
                   .param(id)
                   .query()
                   .singleRow();
-              if (!one(id).get("status").equals(status)) return;
+              if (!one(id).get("status").equals(status)) {
+                return;
+              }
               var run =
                   processing.requestFrozen(
                       asset,
@@ -774,10 +832,12 @@ public class WallpaperProductionService {
               .params(master, id, w.get("revision"))
               .update();
           move(w, "PUBLICATION_REVIEW", "");
-        } else if (Set.of("FAILED", "CANCELLED", "PARTIALLY_COMPLETED").contains(run))
+        } else if (Set.of("FAILED", "CANCELLED", "PARTIALLY_COMPLETED").contains(run)) {
           move(w, "PROCESSING_FAILED", "PROCESSING_" + run);
+        }
       }
-      default -> {}
+      default -> {
+      }
     }
   }
 }

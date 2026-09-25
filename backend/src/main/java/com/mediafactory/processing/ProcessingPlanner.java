@@ -123,10 +123,10 @@ public class ProcessingPlanner {
         var definition = map(p.get("definition"));
         if (!Set.of("FILL", "SMART_FILL").contains(definition.get("mode"))
             || Math.abs(
-                    cw * w / (ch * h)
-                        - (double) integer(definition, "width", 1)
-                            / integer(definition, "height", 1))
-                > .01) {
+            cw * w / (ch * h)
+                - (double) integer(definition, "width", 1)
+                / integer(definition, "height", 1))
+            > .01) {
           throw new IllegalArgumentException("Manual crop must have the target aspect ratio");
         }
       }
@@ -164,9 +164,10 @@ public class ProcessingPlanner {
             .toList();
     if (wallpaperMaster) {
       var master = map(ordered.getFirst().get("definition"));
-      if (!"PRESERVE".equals(master.get("mode")) || !"PNG".equals(master.get("format")))
+      if (!"PRESERVE".equals(master.get("mode")) || !"PNG".equals(master.get("format"))) {
         throw new IllegalArgumentException(
             "Wallpaper master must preserve geometry in lossless PNG");
+      }
     }
     for (var p : ordered) {
       var node = new LinkedHashMap<String, Object>();

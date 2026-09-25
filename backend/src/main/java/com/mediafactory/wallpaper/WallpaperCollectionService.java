@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class WallpaperCollectionService {
+
   final WallpaperProductionService service;
   final CollectionClusteringService clustering;
 
@@ -149,11 +150,13 @@ public class WallpaperCollectionService {
         || attempts < target
         || attempts > 2000
         || maxCost.signum() < 0
-        || reserve.signum() < 0)
+        || reserve.signum() < 0) {
       throw new IllegalArgumentException("Invalid collection production limits");
+    }
     var c = service.factory.one("collections", id);
-    if (!Boolean.TRUE.equals(c.get("wallpaper")))
+    if (!Boolean.TRUE.equals(c.get("wallpaper"))) {
       throw new IllegalArgumentException("Wallpaper collection required");
+    }
     return service.tx.execute(
         s -> {
           service
@@ -167,8 +170,9 @@ public class WallpaperCollectionService {
               .sql("select exists(select 1 from wallpaper_collection_plans where collection_id=?)")
               .param(id)
               .query(Boolean.class)
-              .single())
+              .single()) {
             throw conflict("A production plan already exists; pause/resume it instead");
+          }
           service
               .db
               .sql(
@@ -198,14 +202,16 @@ public class WallpaperCollectionService {
           default -> throw new IllegalArgumentException("Unknown collection action");
         };
     if (service
-            .db
-            .sql(
-                "update wallpaper_collection_plans set"
-                    + " status=?,failure_reason=null,revision=revision+1,updated_at=now() where"
-                    + " collection_id=? and revision=? and status not in ('COMPLETED','CANCELLED')")
-            .params(state, id, revision)
-            .update()
-        != 1) throw conflict("Collection plan changed");
+        .db
+        .sql(
+            "update wallpaper_collection_plans set"
+                + " status=?,failure_reason=null,revision=revision+1,updated_at=now() where"
+                + " collection_id=? and revision=? and status not in ('COMPLETED','CANCELLED')")
+        .params(state, id, revision)
+        .update()
+        != 1) {
+      throw conflict("Collection plan changed");
+    }
     return status(id);
   }
 
@@ -228,7 +234,9 @@ public class WallpaperCollectionService {
             .param(id)
             .query()
             .singleRow();
-    if (!plan.get("status").equals("RUNNING")) return;
+    if (!plan.get("status").equals("RUNNING")) {
+      return;
+    }
     var progress = status(id);
     int ready = integer(progress, "ready", 0), attempts = integer(progress, "attempts", 0);
     if (ready >= integer(plan, "target_approved", 1)) {
@@ -247,7 +255,9 @@ public class WallpaperCollectionService {
       service.metrics.counter("media_factory_wallpaper_collection_ready_total").increment();
       return;
     }
-    if (integer(progress, "active", 0) > 0) return;
+    if (integer(progress, "active", 0) > 0) {
+      return;
+    }
     if (attempts >= integer(plan, "max_attempts", 1)) {
       pause(id, "MAX_ATTEMPTS");
       return;
@@ -287,9 +297,13 @@ public class WallpaperCollectionService {
                   .query()
                   .singleRow();
           if (!locked.get("status").equals("RUNNING")
-              || !locked.get("revision").equals(plan.get("revision"))) return;
+              || !locked.get("revision").equals(plan.get("revision"))) {
+            return;
+          }
           var current = status(id);
-          if (integer(current, "active", 0) > 0) return;
+          if (integer(current, "active", 0) > 0) {
+            return;
+          }
           int count =
               Math.min(
                   integer(plan, "batch_size", 1),
@@ -308,8 +322,8 @@ public class WallpaperCollectionService {
                   .reduce(BigDecimal.ZERO, BigDecimal::add);
           BigDecimal reserve = (BigDecimal) plan.get("reserved_cost_per_attempt");
           if (spent
-                  .add(reserve.multiply(BigDecimal.valueOf(count)))
-                  .compareTo((BigDecimal) plan.get("max_cost"))
+              .add(reserve.multiply(BigDecimal.valueOf(count)))
+              .compareTo((BigDecimal) plan.get("max_cost"))
               > 0) {
             pause(id, "MAX_COST");
             return;
@@ -365,7 +379,9 @@ public class WallpaperCollectionService {
                 + " in ('PUBLICATION_REVIEW','APPROVED_FOR_PUBLICATION','PUBLISHED'))")
         .params(collection, asset)
         .query(Boolean.class)
-        .single()) throw conflict("Cover must be a ready wallpaper in this collection");
+        .single()) {
+      throw conflict("Cover must be a ready wallpaper in this collection");
+    }
     var run =
         service.processing.request(
             asset,

@@ -19,6 +19,7 @@ public class GenerationBatchService {
   private final FactoryService factory;
   private final CollectionClusteringService clustering;
   private final boolean worker;
+
   public GenerationBatchService(
       SimilarityService similarity,
       FactoryService factory,

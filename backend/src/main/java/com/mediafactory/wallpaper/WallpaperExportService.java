@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class WallpaperExportService {
+
   final WallpaperPublicationService publication;
   private final java.util.concurrent.ConcurrentMap<UUID, UUID> active =
       new java.util.concurrent.ConcurrentHashMap<>();
@@ -24,8 +25,9 @@ public class WallpaperExportService {
   public Object request(UUID production, UUID collection) {
     var s = publication.service;
     var packages = new ArrayList<UUID>();
-    if (production != null) packages.add((UUID) publication.prepare(production).get("id"));
-    else {
+    if (production != null) {
+      packages.add((UUID) publication.prepare(production).get("id"));
+    } else {
       var ids =
           s.db
               .sql(
@@ -36,12 +38,17 @@ public class WallpaperExportService {
               .param(collection)
               .query(UUID.class)
               .list();
-      if (ids.isEmpty()) throw conflict("No ready wallpapers to export");
-      if (ids.size() > 100)
+      if (ids.isEmpty()) {
+        throw conflict("No ready wallpapers to export");
+      }
+      if (ids.size() > 100) {
         throw conflict(
             "Export supports at most 100 wallpapers; export individual packages or smaller"
                 + " collections");
-      for (UUID id : ids) packages.add((UUID) publication.prepare(id).get("id"));
+      }
+      for (UUID id : ids) {
+        packages.add((UUID) publication.prepare(id).get("id"));
+      }
     }
     UUID id = UUID.randomUUID();
     s.db
@@ -72,8 +79,9 @@ public class WallpaperExportService {
             .query()
             .singleRow();
     byte[] bytes = publication.service.storage.read(row.get("storage_key").toString());
-    if (!PerceptualHash.sha(bytes).equals(row.get("sha256")))
+    if (!PerceptualHash.sha(bytes).equals(row.get("sha256"))) {
       throw conflict("Export checksum mismatch");
+    }
     return bytes;
   }
 
@@ -93,7 +101,9 @@ public class WallpaperExportService {
             .listOfRows()
             .stream()
             .findFirst();
-    if (row.isEmpty()) return;
+    if (row.isEmpty()) {
+      return;
+    }
     active.put(id, token);
     try {
       var ids = JSON.readValue(row.get().get("package_ids").toString(), UUID[].class);
@@ -110,16 +120,18 @@ public class WallpaperExportService {
           for (var item : (List<Map<String, Object>>) m.get("variants")) {
             long size = ((Number) item.get("fileSize")).longValue();
             total += size;
-            if (total > 256L * 1024 * 1024)
+            if (total > 256L * 1024 * 1024) {
               throw new IllegalArgumentException("EXPORT_SIZE_LIMIT: export smaller collections");
+            }
             byte[] content = s.storage.read(item.get("storageReference").toString());
-            if (!PerceptualHash.sha(content).equals(item.get("checksum")))
+            if (!PerceptualHash.sha(content).equals(item.get("checksum"))) {
               throw conflict("Export source checksum mismatch");
+            }
             String folder =
                 item.get("type").equals("WALLPAPER_MASTER")
                     ? "master"
                     : item.get("type").toString().contains("THUMBNAIL")
-                        ? "thumbnails"
+                      ? "thumbnails"
                         : item.get("type").toString().contains("PREVIEW") ? "previews" : "variants";
             entry(
                 zip,
@@ -136,11 +148,11 @@ public class WallpaperExportService {
             zip,
             "manifest.json",
             canonical(
-                    Map.of(
-                        "contractVersion",
-                        "media-factory-wallpaper-export/1",
-                        "wallpapers",
-                        manifests))
+                Map.of(
+                    "contractVersion",
+                    "media-factory-wallpaper-export/1",
+                    "wallpapers",
+                    manifests))
                 .getBytes(StandardCharsets.UTF_8));
       }
       byte[] data = bytes.toByteArray();

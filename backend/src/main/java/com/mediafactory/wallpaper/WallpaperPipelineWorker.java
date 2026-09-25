@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(name = "media.worker.enabled", havingValue = "true", matchIfMissing = true)
 public class WallpaperPipelineWorker {
+
   private final WallpaperProductionService service;
 
   public WallpaperPipelineWorker(WallpaperProductionService service) {
@@ -28,13 +29,15 @@ public class WallpaperPipelineWorker {
             .list()) {
       UUID token = UUID.randomUUID();
       if (service
-              .db
-              .sql(
-                  "update wallpaper_productions set lease_token=?,lease_until=now()+interval '2"
-                      + " minutes' where id=? and (lease_until is null or lease_until<now())")
-              .params(token, id)
-              .update()
-          != 1) continue;
+          .db
+          .sql(
+              "update wallpaper_productions set lease_token=?,lease_until=now()+interval '2"
+                  + " minutes' where id=? and (lease_until is null or lease_until<now())")
+          .params(token, id)
+          .update()
+          != 1) {
+        continue;
+      }
       try {
         service.advance(id);
       } catch (Exception e) {

@@ -7,9 +7,12 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/** Durable local fake remote catalog. Never represents a real Android service. */
+/**
+ * Durable local fake remote catalog. Never represents a real Android service.
+ */
 @Component
 public class MockWallpaperPublicationTarget implements WallpaperPublicationTarget {
+
   private final JdbcClient db;
   private final TransactionTemplate tx;
 
@@ -52,8 +55,9 @@ public class MockWallpaperPublicationTarget implements WallpaperPublicationTarge
                   .stream()
                   .findFirst();
           if (prior.isPresent()) {
-            if (!r.manifestChecksum().equals(prior.get().get("checksum")))
+            if (!r.manifestChecksum().equals(prior.get().get("checksum"))) {
               throw new Failure("IDEMPOTENCY_CONFLICT", false);
+            }
             return WallpaperProductionService.JSON.readValue(
                 prior.get().get("result").toString(), Result.class);
           }
@@ -63,8 +67,9 @@ public class MockWallpaperPublicationTarget implements WallpaperPublicationTarge
                   .param(id)
                   .query(Integer.class)
                   .optional();
-          if (current.isPresent() && current.get() > version)
+          if (current.isPresent() && current.get() > version) {
             throw new Failure("STALE_VERSION", false);
+          }
           db.sql(
                   "insert into mock_wallpaper_catalog(external_id,version,status,manifest)"
                       + " values(?,?,'PUBLISHED',?::jsonb) on conflict(external_id) do update set"
