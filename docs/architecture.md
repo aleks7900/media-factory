@@ -70,3 +70,8 @@ Actuator exposes health/info and liveness/readiness. Compose health gates Postgr
 # TASK-04 extension
 
 Advanced QA now runs as a durable stage after immutable asset storage. See [quality assurance](quality-assurance.md) for the authoritative execution/decision model, normalized evidence, shared resilience, costs and publication gate. [TASK-04 report](task-04-report.md) records verification. Earlier foundation QA descriptions below describe the initial implementation; the advanced stage supersedes the immediate technical pass/fail flow.
+
+## Image postproduction
+
+TASK-06 introduces a separate local processing worker, immutable versioned plans, fenced asynchronous execution and source-linked artifacts. See [image processing](image-processing.md) and [lineage](processing-lineage.md). GPU inference is optional; the default Compose image runs on CPU. Original assets alone enter the similarity ingestion pipeline.
+

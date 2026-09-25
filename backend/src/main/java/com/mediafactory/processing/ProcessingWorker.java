@@ -23,6 +23,7 @@ public class ProcessingWorker {
   private final String autoProfiles;
   private final ExecutorService thread = Executors.newSingleThreadExecutor();
   private volatile Map<String, Object> active;
+  private volatile double activeGpuJobs;
 
   public ProcessingWorker(
       ProcessingExecutor executor,
@@ -42,7 +43,14 @@ public class ProcessingWorker {
                 .sql("select count(*) from processing_runs where status='PENDING'")
                 .query(Long.class)
                 .single());
-    metrics.gauge("media_factory_gpu_jobs_active", this, w -> w.active == null ? 0 : 1);
+    metrics.gauge("media_factory_gpu_jobs_active", this, w -> w.activeGpuJobs);
+  }
+
+  @Scheduled(fixedDelay = 5000)
+  public void refreshGpuActivity() {
+    Object health = service.worker();
+    activeGpuJobs = health instanceof Map<?, ?> map
+        && map.get("activeGpuJobs") instanceof Number count ? count.doubleValue() : 0;
   }
 
   @Scheduled(fixedDelay = 2000)

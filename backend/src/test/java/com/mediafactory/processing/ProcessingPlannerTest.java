@@ -72,6 +72,37 @@ class ProcessingPlannerTest {
   }
 
   @Test
+  void wallpaperMasterIncludesUpscaleRequiredByLargerDeviceBranch() {
+    var master = profile(1000, 2000);
+    master.put("mode", "PRESERVE");
+    master.put("format", "PNG");
+    var profiles =
+        List.of(
+            Map.<String, Object>of(
+                "id",
+                UUID.randomUUID(),
+                "key",
+                "WALLPAPER_MASTER",
+                "version",
+                1,
+                "definition",
+                master),
+            Map.<String, Object>of(
+                "id",
+                UUID.randomUUID(),
+                "key",
+                "ANDROID_QHD_PORTRAIT",
+                "version",
+                1,
+                "definition",
+                profile(2000, 4000)));
+    var plan = planner.plan(UUID.randomUUID(), "a".repeat(64), 1000, 2000, profiles, Map.of());
+    var nodes = (List<Map<String, Object>>) plan.get("nodes");
+    assertThat(nodes.get(1).get("dependsOn")).isEqualTo(List.of("upscale-2"));
+    assertThat(nodes.get(2).get("dependsOn")).isEqualTo(List.of("WALLPAPER_MASTER"));
+  }
+
+  @Test
   void failureRetryClassification() {
     assertThat(new ProcessingFailure("GPU_OOM").retryable()).isFalse();
     assertThat(new ProcessingFailure("CORRUPT_SOURCE").retryable()).isFalse();

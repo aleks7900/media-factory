@@ -111,9 +111,9 @@ On Windows use `gradlew.bat`. Integration tests require Docker and run real Post
 
 ## Deployment boundary
 
-This is a private, single-workspace foundation. It has no user authentication or tenant authorization; do not expose it publicly without an authenticated gateway, TLS, managed secrets, backup/restore procedures, and infrastructure hardening—especially with a paid provider enabled. Compose database/storage defaults are local development defaults. The review queue is paginated; other lists return the newest 200 records. Video orchestration, external publishing delivery, metric ingestion, embeddings, and AI-powered upscale remain extension points. Publication records now enforce QA approval; performance schemas are ready for later integration.
+This is a private, single-workspace foundation. It has no user authentication or tenant authorization; do not expose it publicly without an authenticated gateway, TLS, managed secrets, backup/restore procedures, and infrastructure hardening—especially with a paid provider enabled. Compose database/storage defaults are local development defaults. The review queue is paginated; other lists return the newest 200 records. Video orchestration, external publishing delivery and performance-metric ingestion remain extension points. Local embeddings and neural image upscaling are implemented. Publication records now enforce QA approval; performance schemas are ready for later integration.
 
-MinIO's community repository is archived and old Docker Hub images are unavailable; Compose pins official Quay releases for reproducible local development. For production, use a maintained S3 service through `S3MediaStorage` and review your storage lifecycle and retention requirements. See the [official MinIO repository](https://github.com/minio/minio) and [container documentation](https://min.io/docs/minio/container/index.html).
+MinIO's community repository is archived and old Docker Hub images are unavailable; Compose builds pinned official MinIO and mc source revisions because the previously referenced registry images were unavailable during verification. The initial Go build needs network access and can take several minutes. For production, use a maintained S3 service through `S3MediaStorage` and review your storage lifecycle and retention requirements. See the [official MinIO repository](https://github.com/minio/minio) and [container documentation](https://min.io/docs/minio/container/index.html).
 ## TASK-05: local similarity and duplicate review
 
 Run `docker compose up -d --build` to start PostgreSQL/pgvector, MinIO, backend, frontend, and the local CLIP embedding worker. Open [Media Factory](http://localhost:3000). The first embedding-worker start downloads a pinned open-source model; no paid API key is required. Check [backend health](http://localhost:8080/actuator/health), [frontend health](http://localhost:3000/health), and [embedding health](http://localhost:8001/health).
@@ -141,3 +141,29 @@ docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
 Model provisioning is explicit and checksum-verified; no startup model downloads or paid image calls are introduced. Worker health: [localhost:8002/health](http://localhost:8002/health). Backend: [localhost:8080/actuator/health](http://localhost:8080/actuator/health). Dashboard: [localhost:3000](http://localhost:3000).
 
 See [image processing](docs/image-processing.md), [upscaling](docs/upscaling.md), [profiles](docs/processing-profiles.md), [smart crop](docs/smart-crop.md), [lineage](docs/processing-lineage.md), [stock](docs/stock-processing.md), and [wallpaper](docs/wallpaper-processing.md). Verification and environment limitations are recorded in [TASK-06 report](docs/task-06-report.md).
+
+
+Free end-to-end verification (creates a new mock master and six derivatives):
+
+```powershell
+./scripts/processing-smoke.ps1
+cd frontend
+node e2e/processing-smoke.mjs
+```
+
+Before backend integration tests on a fresh Docker engine, build the S3 fixture image with `docker compose build minio`. The default Testcontainers fixture uses that local pinned image; `MINIO_TEST_IMAGE` can override it. Processing worker tests run with `docker compose exec processing python -m unittest discover -s tests -v`.
+
+# Wallpaper Factory (TASK-07)
+
+Open **Wallpaper Factory** at http://localhost:3000 for collection production, Android variants, AMOLED review and human-approved mock publication. The pipeline reuses prompt/QA/similarity/processing services and preserves every original and published version.
+
+```powershell
+docker compose -f compose.yaml -f compose.gpu.yaml up -d --build --wait
+./scripts/wallpaper-smoke.ps1
+cd frontend
+node e2e/wallpaper-smoke.mjs
+```
+
+The free smoke run uses mock AI providers plus local CLIP and processing models. Use base Compose for CPU processing; follow the existing model-provisioning prerequisites above. Publication is mock, dry run or immutable ZIP export until a real Android backend contract exists.
+
+See [wallpaper pipeline](docs/wallpaper-pipeline.md), [Android contract](docs/android-wallpaper-backend-contract.md), and [TASK-07 verification and limitations](docs/task-07-report.md).

@@ -24,12 +24,13 @@ import {PromptStudio} from './PromptStudio';
 import {CollectionQaPolicies, QaDashboard, QaJobs, ReviewWorkspace} from './ReviewWorkspace';
 import {SimilarityWorkspace, SimilarityDashboard} from './SimilarityWorkspace';
 import {ProcessingWorkspace} from './ProcessingWorkspace';
+import {WallpaperWorkspace} from './WallpaperWorkspace';
 
-const pages = ['Dashboard', 'Collections', 'Generation Queue', 'Assets', 'Review', 'Providers', 'Costs', 'Settings', 'Processing'] as const;
+const pages = ['Dashboard', 'Collections', 'Generation Queue', 'Assets', 'Review', 'Providers', 'Costs', 'Settings', 'Processing', 'Wallpaper Factory'] as const;
 const promptPages = ['Prompt Library', 'Prompt Editor', 'Prompt History', 'Presets', 'Experiments'] as const;
 const similarityPages = ['Duplicate Review', 'Similarity Explorer', 'Collection Diversity', 'Embedding Jobs'] as const;
 type Page = typeof pages[number] | typeof promptPages[number] | typeof similarityPages[number];
-const icons = [LayoutDashboard, Layers3, ListVideo, Images, ScanEye, Plug, CircleDollarSign, Settings, Sparkles];
+const icons = [LayoutDashboard, Layers3, ListVideo, Images, ScanEye, Plug, CircleDollarSign, Settings, Sparkles, Images];
 const labels: Record<string, string> = {
     generated_today: 'Generated today',
     approved_today: 'Approved today',
@@ -54,6 +55,7 @@ export function App() {
     const [selectedGeneration, setSelectedGeneration] = useState<string | null>(null);
     const [notice, setNotice] = useState('');
     const [processingAsset, setProcessingAsset] = useState<string>();
+    const [processingProfiles, setProcessingProfiles] = useState<string[]>();
     const client = useQueryClient();
     const dashboard = useQuery({queryKey: ['dashboard'], queryFn: () => api<Record<string, number>>('/dashboard')});
     const assets = useRows('/assets');
@@ -173,7 +175,8 @@ export function App() {
                                    key: crypto.randomUUID()
                                } : {path: '/reviews', body: {assetId: asset.id, decision, reason: ''}})}/></>}
                 {page === 'Review' && <ReviewWorkspace/>}
-                {page === 'Processing' && <ProcessingWorkspace initialAsset={processingAsset}/>}
+                {page === 'Processing' && <ProcessingWorkspace initialAsset={processingAsset} initialProfiles={processingProfiles}/>}
+                {page === 'Wallpaper Factory' && <WallpaperWorkspace onProcess={(id,profiles)=>{setProcessingAsset(id);setProcessingProfiles(profiles);setPage('Processing');}}/>}
                 {page === 'Generation Queue' && <Jobs onSelect={setSelectedGeneration} rows={jobs.data ?? []}
                                                       retry={id => action.mutate({path: `/jobs/${id}/retry`, body: {}})}
                                                       disabled={action.isPending}/>}

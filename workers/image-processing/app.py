@@ -25,6 +25,7 @@ torch.set_num_threads(max(1,min(8,int(os.getenv('TORCH_THREADS','4')))))
 app=FastAPI()
 lock=threading.Lock()
 active=set(); cancelled=set()
+gpu_active=set()
 logger=logging.getLogger('processing')
 
 @app.on_event('startup')
@@ -53,7 +54,7 @@ async def limit(request:Request, call_next):
 def health():
     capabilities=upscale.capabilities()
     return {**capabilities,'status':'BUSY' if active else ('ONLINE' if all(m['available'] for m in capabilities['models']) else 'DEGRADED'),
-            'activeJobs':len(active),'maxConcurrentJobs':1}
+            'activeJobs':len(active),'activeGpuJobs':len(gpu_active),'maxConcurrentJobs':1}
 
 @app.post('/v1/cancel/{run_id}')
 def cancel(run_id:str):
@@ -91,7 +92,10 @@ def execute(body:dict):
             image,color_metadata=stage('COLOR_CONVERT',lambda:encoding.color(image))
             metadata.update(color_metadata)
             if operation=='UPSCALE':
-                image,details=stage('UPSCALE',lambda:upscale.upscale(image,body['scale'],body.get('requireGpu',False),lambda:run_id in cancelled))
+                if upscale.choose_device(body.get('requireGpu',False))=='cuda':gpu_active.add(run_id)
+                try:
+                    image,details=stage('UPSCALE',lambda:upscale.upscale(image,body['scale'],body.get('requireGpu',False),lambda:run_id in cancelled))
+                finally:gpu_active.discard(run_id)
                 metadata.update(details)
                 output=io.BytesIO();image.save(output,format='PNG',icc_profile=encoding.SRGB)
                 data=output.getvalue();p={'format':'PNG','maxBytes':64*1024*1024}
@@ -117,4 +121,4 @@ def execute(body:dict):
         logger.exception('processing_failed run=%s',run_id)
         return JSONResponse({'code':'WORKER_FAILURE'},status_code=503)
     finally:
-        active.discard(run_id);cancelled.discard(run_id);lock.release()
+        gpu_active.discard(run_id);active.discard(run_id);cancelled.discard(run_id);lock.release()

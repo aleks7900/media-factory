@@ -31,3 +31,8 @@ Keep originals immutable. Derived thumbnails/upscales use AssetVariant records a
 # Advanced QA pipeline stage
 
 After image generation, immutable asset storage enqueues QA: technical inspection → provider-neutral Vision evidence → versioned policy → APPROVED / NEEDS_REVIEW / REJECTED. Vision infrastructure failures remain FAILED execution with NEEDS_REVIEW. Collection policy references override pipeline mapping; wallpaper and stock map to their respective profiles. Only effective final approval permits publication. See [policies](qa-policies.md), [QA architecture](quality-assurance.md) and [regeneration](regeneration.md).
+
+## Approved-master processing
+
+Approval → frozen profile plan → optional shared 2×/4× upscale → subject-aware crop/letterbox → resize → optional filters → color-managed encoding → validation → immutable variant. Successful branches are reusable across retries. Optional postprocessing visual QA reuses TASK-04 providers and policy evaluation. See [processing profiles](processing-profiles.md).
+

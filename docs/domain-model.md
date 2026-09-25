@@ -49,3 +49,8 @@ stateDiagram-v2
 # Advanced QA domain extension
 
 QualityReview now owns execution, automatic/final decisions, frozen policy/context and revision. Asset.current_review_id selects its effective review. Normalized findings and dimension results retain source, evidence and confidence. QA jobs and Vision attempts track execution; immutable human actions and regeneration requests retain decision history and lineage. See [quality assurance](quality-assurance.md) and [human review](human-review.md) for the V5 schema and current invariants.
+
+## Processing domain
+
+ProcessingProfile has immutable published ProcessingProfileVersions. ProcessingRun freezes the selected versions and source identity. ProcessingSteps form a dependency graph; ProcessingArtifacts retain the original and parent lineage. Validated terminal artifacts become AssetVariants. Each attempt appends an immutable manifest. Validation results and compute usage remain attached to the run/artifact, separately from master QualityReviews. See [processing lineage](processing-lineage.md).
+

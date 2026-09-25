@@ -12,9 +12,9 @@ type Variant={id:string;kind:string;width:number;height:number;format:string;siz
 type Worker={status:string;device?:string;gpuAvailable:boolean;vramBytes?:number;activeJobs:number;models?:{id:string;available:boolean;scale:number}[]};
 const path='/v1';
 
-export function ProcessingWorkspace({initialAsset}:{initialAsset?:string}){
+export function ProcessingWorkspace({initialAsset,initialProfiles}:{initialAsset?:string;initialProfiles?:string[]}){
  const client=useQueryClient();const [tab,setTab]=useState('Queue');const [selected,setSelected]=useState(initialAsset??'');
- const [profiles,setProfiles]=useState<string[]>(['PREVIEW']);const [batch,setBatch]=useState<string[]>([]);const [notice,setNotice]=useState('');const [detail,setDetail]=useState('');
+ const [profiles,setProfiles]=useState<string[]>(initialProfiles??['PREVIEW']);const [batch,setBatch]=useState<string[]>([]);const [notice,setNotice]=useState('');const [detail,setDetail]=useState('');
  const [cropProfile,setCropProfile]=useState('');const [manual,setManual]=useState<Record<string,Rect>>({});const [compare,setCompare]=useState<Variant|null>(null);
  const assets=useQuery({queryKey:['/assets'],queryFn:()=>api<Row[]>('/assets')});
  const catalog=useQuery({queryKey:['processing-profiles'],queryFn:()=>api<Profile[]>(path+'/processing-profiles')});

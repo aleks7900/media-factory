@@ -19,7 +19,8 @@ public class LocalProcessingProvider
 
   private final URI endpoint;
   private final HttpClient client =
-      HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+      HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
+          .connectTimeout(Duration.ofSeconds(5)).build();
 
   public LocalProcessingProvider(
       @Value("${PROCESSING_ENDPOINT:http://localhost:8002}") String endpoint) {

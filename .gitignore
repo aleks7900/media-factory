@@ -8,3 +8,5 @@ storage/data/
 *.log
 *.tsbuildinfo
 frontend/test-results/
+**/__pycache__/
+*.pyc

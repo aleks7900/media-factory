@@ -98,7 +98,9 @@ public class ProcessingPlanner {
       int h,
       List<Map<String, Object>> profiles,
       Map<String, Object> manual) {
-    if (!profiles.stream().map(p -> p.get("key").toString()).toList()
+    if (!profiles.stream()
+        .map(p -> p.get("key").toString())
+        .toList()
         .containsAll(manual.keySet())) {
       throw new IllegalArgumentException("Manual crop must match a selected profile");
     }
@@ -121,16 +123,15 @@ public class ProcessingPlanner {
         var definition = map(p.get("definition"));
         if (!Set.of("FILL", "SMART_FILL").contains(definition.get("mode"))
             || Math.abs(
-            cw * w / (ch * h)
-                - (double) integer(definition, "width", 1)
-                / integer(definition, "height", 1))
-            > .01) {
+                    cw * w / (ch * h)
+                        - (double) integer(definition, "width", 1)
+                            / integer(definition, "height", 1))
+                > .01) {
           throw new IllegalArgumentException("Manual crop must have the target aspect ratio");
         }
       }
     }
-    int factor =
-        profiles.stream().mapToInt(p -> branchScale(w, h, p, manual)).max().orElse(1);
+    int factor = profiles.stream().mapToInt(p -> branchScale(w, h, p, manual)).max().orElse(1);
     dimensions(w * factor, h * factor);
     var nodes = new ArrayList<Map<String, Object>>();
     String upscaleKey = "upscale-" + factor;
@@ -153,13 +154,31 @@ public class ProcessingPlanner {
             factor == 2
                 ? "RealESRGAN_x2plus:v0.2.1:49fafd45f8fd7aa8d31ab2a22d14d91b536c34494a5cfe31eb5d89c2fa266abb"
                 : "realesr-general-x4v3:v0.2.5.0:8dc7edb9ac80ccdc30c3a5dca6616509367f05fbc184ad95b731f05bece96292"));
-    for (var p : profiles) {
+    boolean wallpaperMaster =
+        profiles.stream().anyMatch(p -> "WALLPAPER_MASTER".equals(p.get("key")));
+    var ordered =
+        profiles.stream()
+            .sorted(
+                java.util.Comparator.comparingInt(
+                    p -> "WALLPAPER_MASTER".equals(p.get("key")) ? 0 : 1))
+            .toList();
+    if (wallpaperMaster) {
+      var master = map(ordered.getFirst().get("definition"));
+      if (!"PRESERVE".equals(master.get("mode")) || !"PNG".equals(master.get("format")))
+        throw new IllegalArgumentException(
+            "Wallpaper master must preserve geometry in lossless PNG");
+    }
+    for (var p : ordered) {
       var node = new LinkedHashMap<String, Object>();
       node.put("key", p.get("key"));
       node.put("operation", "DERIVE");
       // Small previews derive directly from the original, avoiding unnecessary neural modification.
-      int needed = branchScale(w, h, p, manual);
-      node.put("dependsOn", needed > 1 ? List.of(upscaleKey) : List.of());
+      int needed = wallpaperMaster ? factor : branchScale(w, h, p, manual);
+      node.put(
+          "dependsOn",
+          wallpaperMaster && !"WALLPAPER_MASTER".equals(p.get("key"))
+              ? List.of("WALLPAPER_MASTER")
+              : needed > 1 ? List.of(upscaleKey) : List.of());
       node.put("profile", map(p.get("definition")));
       node.put("profileVersionId", p.get("id").toString());
       node.put("profileVersion", p.get("version"));
@@ -185,14 +204,16 @@ public class ProcessingPlanner {
         !manual.isEmpty());
   }
 
-  private int branchScale(int width, int height, Map<String, Object> profile,
-      Map<String, Object> manual) {
+  private int branchScale(
+      int width, int height, Map<String, Object> profile, Map<String, Object> manual) {
     var definition = map(profile.get("definition"));
     if (!manual.containsKey(profile.get("key"))) {
       return scale(width, height, definition);
     }
     var rectangle = map(manual.get(profile.get("key")));
-    return scale(Math.max(1, (int) Math.floor(width * number(rectangle, "width", 1))),
-        Math.max(1, (int) Math.floor(height * number(rectangle, "height", 1))), definition);
+    return scale(
+        Math.max(1, (int) Math.floor(width * number(rectangle, "width", 1))),
+        Math.max(1, (int) Math.floor(height * number(rectangle, "height", 1))),
+        definition);
   }
 }

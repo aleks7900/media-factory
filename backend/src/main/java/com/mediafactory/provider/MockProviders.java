@@ -87,6 +87,18 @@ public class MockProviders implements ImageGenerationProvider, VideoGenerationPr
       }
       g.setFont(new Font("SansSerif", Font.BOLD, Math.max(16, r.width() / 28)));
       g.drawString("MEDIA / FACTORY", r.width() / 12, r.height() * 4 / 5);
+      if (r.prompt().contains("Dominant pure black background")) {
+        // Deterministic local AMOLED fixture for the wallpaper pipeline; never a paid operation.
+        g.setColor(Color.BLACK);
+        g.fillRect(0, 0, r.width(), r.height());
+        int diameter = r.width() / 3;
+        int x = r.width() / 3 + Math.floorMod(hash, Math.max(1, r.width() / 8));
+        int y = r.height() / 2 + Math.floorMod(hash / 31, Math.max(1, r.height() / 8));
+        g.setColor(new Color(245, 250, 255));
+        g.fillOval(x, y, diameter, diameter);
+        g.setColor(new Color(80, 100 + Math.floorMod(hash, 100), 200));
+        g.fillOval(x + diameter / 4, y + diameter / 4, diameter / 2, diameter / 2);
+      }
       g.dispose();
       String format = r.options().format() == ImageOptions.Format.PNG ? "png" : "jpeg";
       var out = new ByteArrayOutputStream();
