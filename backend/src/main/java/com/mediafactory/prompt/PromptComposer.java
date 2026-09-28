@@ -24,7 +24,7 @@ public class PromptComposer {
 
   public Map<String, String> constraints(String pipeline) {
     return switch (pipeline == null ? "default" : pipeline) {
-      case "default" -> Map.of("positive", "", "negative", "");
+      case "default", "stock-metadata", "video" -> Map.of("positive", "", "negative", "");
       case "wallpaper" -> Map.of("positive",
           "Vertical composition, subject centered, safe lock-screen composition.", "negative",
           "UI, text");

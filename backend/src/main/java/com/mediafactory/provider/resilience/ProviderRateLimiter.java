@@ -39,6 +39,11 @@ public class ProviderRateLimiter {
     return acquireOwned(provider, jobId, "similarity_job_id", rate, lease);
   }
 
+  public Admission acquireVideo(String provider, UUID attemptId,
+      ImageGenerationProperties.RateLimit rate, Duration lease) {
+    return acquireOwned(provider, attemptId, "video_attempt_id", rate, lease);
+  }
+
   private Admission acquireOwned(String provider, UUID jobId, String owner,
       ImageGenerationProperties.RateLimit rate, Duration lease) {
     return tx.execute(s -> {

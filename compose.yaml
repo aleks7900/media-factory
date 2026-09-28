@@ -44,6 +44,19 @@ services:
     environment:
       EMBEDDING_ENDPOINT: http://embedding:8000
       PROCESSING_ENDPOINT: http://processing:8000
+      VIDEO_WORKER_ENDPOINT: http://video:8000
+      VIDEO_DEFAULT_PROVIDER: ${VIDEO_DEFAULT_PROVIDER:-mock-video}
+      VIDEO_MAX_REMOTE_JOBS: ${VIDEO_MAX_REMOTE_JOBS:-3}
+      VIDEO_REQUESTS_PER_MINUTE: ${VIDEO_REQUESTS_PER_MINUTE:-60}
+      VIDEO_MAX_HTTP_CALLS: ${VIDEO_MAX_HTTP_CALLS:-3}
+      VIDEO_VISION_PROVIDER: ${VIDEO_VISION_PROVIDER:-mock}
+      VIDEO_VISION_MAX_FRAME_COST: ${VIDEO_VISION_MAX_FRAME_COST:-0}
+      VIDEO_FALLBACK_PROVIDERS: ${VIDEO_FALLBACK_PROVIDERS:-}
+      RUNWAY_VIDEO_MODEL: ${RUNWAY_VIDEO_MODEL:-gen4_turbo}
+      RUNWAY_VIDEO_ENABLED: ${RUNWAY_VIDEO_ENABLED:-false}
+      RUNWAY_VIDEO_API_KEY: ${RUNWAY_VIDEO_API_KEY:-}
+      RUNWAY_VIDEO_DOWNLOAD_HOSTS: ${RUNWAY_VIDEO_DOWNLOAD_HOSTS:-}
+      RUNWAY_VIDEO_USD_PER_SECOND: ${RUNWAY_VIDEO_USD_PER_SECOND:-}
       DATABASE_URL: jdbc:postgresql://postgres:5432/mediafactory
       DATABASE_USER: ${DATABASE_USER:-mediafactory}
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:-mediafactory}
@@ -107,6 +120,17 @@ services:
       UPSCALE_TILE_SIZE: ${UPSCALE_TILE_SIZE:-256}
     volumes: ["./.tools/processing-models:/models:ro"]
     ports: ["127.0.0.1:8002:8000"]
+    mem_limit: 6g
+    cpus: 4
+    restart: unless-stopped
+  video:
+    build: ./workers/video
+    image: media-factory-video:latest
+    environment:
+      VIDEO_CPU_JOBS: 2
+      VIDEO_GPU_JOBS: 1
+      VIDEO_THREADS: 2
+    ports: ["127.0.0.1:8003:8000"]
     mem_limit: 6g
     cpus: 4
     restart: unless-stopped

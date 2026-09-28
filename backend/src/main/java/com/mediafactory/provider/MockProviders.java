@@ -87,6 +87,18 @@ public class MockProviders implements ImageGenerationProvider, VideoGenerationPr
       }
       g.setFont(new Font("SansSerif", Font.BOLD, Math.max(16, r.width() / 28)));
       g.drawString("MEDIA / FACTORY", r.width() / 12, r.height() * 4 / 5);
+      if (r.prompt().startsWith("Stock illustration:")) {
+        // Free abstract stock fixture, with no text/logo baked into the image.
+        var random = new java.util.Random(hash);
+        g.setColor(new Color(random.nextInt(0xffffff)));
+        g.fillRect(0, 0, r.width(), r.height());
+        for (int i = 0; i < 36; i++) {
+          g.setColor(new Color(random.nextInt(0xffffff)));
+          g.fillOval(random.nextInt(r.width()), random.nextInt(r.height()),
+              r.width()/8 + random.nextInt(r.width()/2),
+              r.height()/8 + random.nextInt(r.height()/2));
+        }
+      }
       if (r.prompt().contains("Dominant pure black background")) {
         // Deterministic local AMOLED fixture for the wallpaper pipeline; never a paid operation.
         g.setColor(Color.BLACK);
@@ -123,10 +135,29 @@ public class MockProviders implements ImageGenerationProvider, VideoGenerationPr
   }
 
   public Result<String> inspect(Media media) {
-    return result("Mock visual inspection passed", "vision.inspect", media.bytes().length);
+    try {
+      var image = ImageIO.read(new ByteArrayInputStream(media.bytes()));
+      if (image == null) throw new IllegalArgumentException("Unreadable metadata image");
+      long red=0,green=0,blue=0,count=0;
+      for(int y=0;y<image.getHeight();y+=Math.max(1,image.getHeight()/64))
+        for(int x=0;x<image.getWidth();x+=Math.max(1,image.getWidth()/64)) {
+          var c=new Color(image.getRGB(x,y));red+=c.getRed();green+=c.getGreen();blue+=c.getBlue();count++;
+        }
+      String color=red>=green&&red>=blue?"red":green>=blue?"green":"blue";
+      return result(com.mediafactory.processing.ProcessingJson.write(Map.of("mock",true,"dominantColor",color,"meanRgb",java.util.List.of(red/count,green/count,blue/count),"orientation",image.getWidth()==image.getHeight()?"square":image.getWidth()>image.getHeight()?"landscape":"portrait","visualDescription","Abstract color composition; subject semantics unavailable in mock Vision","keywords",java.util.List.of("abstract","background","color","composition","digital","illustration","texture","pattern","gradient","design",color))),"STOCK_VISION_ANALYSIS",media.bytes().length);
+    } catch(IOException e){throw new IllegalArgumentException("Metadata image decode failed",e);}
   }
 
+  public Map<String, String> textIdentity() { return Map.of("provider", "mock", "model", "studio-mock-v1"); }
+
+  public Map<String, String> visionIdentity() { return Map.of("provider", "mock", "model", "pixel-observations-v1"); }
+
   public Result<String> generateText(Request r) {
+    if(r.prompt().startsWith("STOCK_METADATA_V1")) {
+      String color=r.prompt().contains("\"dominantColor\":\"red\"")?"Red":r.prompt().contains("\"dominantColor\":\"green\"")?"Green":"Blue";
+      var words=java.util.List.of(color.toLowerCase(),"abstract","background","color composition","digital illustration","texture","pattern","gradient","design","visual composition","color field");
+      return result(com.mediafactory.processing.ProcessingJson.write(Map.of("title",color+" abstract color composition","description","Abstract digital composition with "+color.toLowerCase()+" tones, layered shapes and a textured background.","keywords",words.stream().map(v->Map.of("value",v,"source","LLM","confidence",0.5)).toList(),"categories",java.util.List.of("ABSTRACT"),"contentType","UNDETERMINED","aiGenerated",true,"riskFlags",java.util.List.of("UNKNOWN_IP_RISK"))),"STOCK_METADATA_GENERATION",r.prompt().length());
+    }
     return result("Mock concept: " + r.prompt(), "text.generate", r.prompt().length());
   }
 

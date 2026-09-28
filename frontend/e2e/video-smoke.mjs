@@ -1,0 +1,30 @@
+import {chromium,expect} from '@playwright/test';
+import {mkdir} from 'node:fs/promises';
+const browser=await chromium.launch({headless:true});
+const page=await browser.newPage({viewport:{width:1536,height:1024}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
+try{
+ await page.goto(process.env.MEDIA_FACTORY_URL??'http://localhost:3000',{waitUntil:'networkidle'});
+ await page.getByRole('button',{name:'Video Factory',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Video Factory',exact:true}).first()).toBeVisible();
+ await expect(page.getByRole('button',{name:'Review motion',exact:true}).first()).toBeVisible();
+ await mkdir('test-results',{recursive:true});await page.screenshot({path:'test-results/video-grid.png',fullPage:true});
+ expect(await page.locator('video').count()).toBe(0);
+ await page.getByRole('button',{name:'Review motion',exact:true}).first().click();
+ const dialog=page.getByRole('dialog',{name:'Video review'});
+ await expect(dialog.getByRole('heading',{name:'Processed master'})).toBeVisible();
+ const master=dialog.locator('video').nth(1);
+ await expect.poll(()=>master.evaluate(v=>v.readyState),{timeout:30000}).toBeGreaterThanOrEqual(1);
+ await master.evaluate(async v=>{v.muted=true;await v.play();});
+ await expect.poll(()=>master.evaluate(v=>v.currentTime),{timeout:15000}).toBeGreaterThan(.1);
+ await master.evaluate(v=>v.pause());
+ await expect(dialog.getByRole('button',{name:'Approve video',exact:true})).toBeDisabled();
+ await dialog.getByText('Edit motion plan for regeneration',{exact:true}).click();
+ await expect(dialog.getByRole('button',{name:'Save new motion version'})).toBeVisible();
+ await dialog.getByText('Edit motion plan for regeneration',{exact:true}).click();
+ await dialog.screenshot({path:'test-results/video-review.png'});
+ await dialog.getByRole('button',{name:'Close video review'}).click();
+ await page.setViewportSize({width:1100,height:850});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+ expect(errors).toEqual([]);
+ console.log('PASS: video grid, lazy media, playable master, human approval gate, motion editor, responsive layout; zero browser errors.');
+}finally{await browser.close();}

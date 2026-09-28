@@ -167,3 +167,36 @@ node e2e/wallpaper-smoke.mjs
 The free smoke run uses mock AI providers plus local CLIP and processing models. Use base Compose for CPU processing; follow the existing model-provisioning prerequisites above. Publication is mock, dry run or immutable ZIP export until a real Android backend contract exists.
 
 See [wallpaper pipeline](docs/wallpaper-pipeline.md), [Android contract](docs/android-wallpaper-backend-contract.md), and [TASK-07 verification and limitations](docs/task-07-report.md).
+
+# Stock Factory (TASK-08)
+
+Open **Stock Factory** at http://localhost:3000. Create a stock collection/concept, start a candidate, complete visual QA, review its final JPEG and versioned metadata, then approve and export. Generic CSV and custom CSV packages contain JPEGs, metadata, provenance and a validation report. Original assets and completed packages remain immutable.
+
+```powershell
+docker compose -f compose.yaml -f compose.gpu.yaml up -d --build --wait
+./scripts/stock-smoke.ps1
+cd frontend
+node e2e/stock-smoke.mjs
+```
+
+The smoke flow uses free mock image/Vision/Text providers, real local similarity and processing, and MinIO. Human review remains mandatory; only the smoke script's own mock fixture is explicitly approved by its test harness. No marketplace upload is performed. The provisional Adobe profile is disabled pending review of actual platform requirements.
+
+See [architecture and API](docs/stock-factory.md), [profiles](docs/stock-profiles.md), [technical validation](docs/stock-validation.md), [metadata](docs/stock-metadata.md), [keywords](docs/stock-keywords.md), [exports](docs/stock-export.md), [CSV](docs/stock-csv.md), and [TASK-08 verification report](docs/task-08-report.md).
+
+# Video Factory (TASK-09)
+
+Open **Video Factory** at http://localhost:3000. Queue an approved image with `mock-video`, review the raw/master/repeated loop, and approve the video. Motion plans and processing versions are preserved. Reprocess changes local outputs without another AI generation; Regenerate creates a new potentially paid attempt lineage.
+
+```powershell
+docker compose -f compose.yaml -f compose.gpu.yaml up -d --build --wait
+./scripts/video-smoke.ps1 -SourceAssetId '<approved mock image asset UUID>'
+./scripts/test-video-backend.ps1 -All
+cd frontend
+npm test
+npm run build
+node e2e/video-smoke.mjs
+```
+
+The dedicated FFmpeg worker is at `http://localhost:8003/health`. CPU processing is the default; hardware encoder initialization is probed before use. Runway is implemented but disabled by default, and no paid video API is called in tests. The smoke script verifies only its explicitly-created free mock video fixture, including approval, 11 artifacts, HTTP range playback, checksums and two processing versions. It requires an already-approved mock source image.
+
+See [Video Factory architecture/API](docs/video-factory.md), [providers](docs/video-providers.md), [motion prompts](docs/video-prompts.md), [processing](docs/video-processing.md), [FFmpeg](docs/ffmpeg.md), [looping](docs/video-looping.md), [QA](docs/video-qa.md), [Android variants](docs/android-video-wallpapers.md), and [TASK-09 report](docs/task-09-report.md).
