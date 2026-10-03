@@ -200,3 +200,17 @@ node e2e/video-smoke.mjs
 The dedicated FFmpeg worker is at `http://localhost:8003/health`. CPU processing is the default; hardware encoder initialization is probed before use. Runway is implemented but disabled by default, and no paid video API is called in tests. The smoke script verifies only its explicitly-created free mock video fixture, including approval, 11 artifacts, HTTP range playback, checksums and two processing versions. It requires an already-approved mock source image.
 
 See [Video Factory architecture/API](docs/video-factory.md), [providers](docs/video-providers.md), [motion prompts](docs/video-prompts.md), [processing](docs/video-processing.md), [FFmpeg](docs/ffmpeg.md), [looping](docs/video-looping.md), [QA](docs/video-qa.md), [Android variants](docs/android-video-wallpapers.md), and [TASK-09 report](docs/task-09-report.md).
+
+## Analytics & Asset Economics (TASK-10)
+
+Open **Analytics** for period/currency/timezone filters, asset and collection economics, prompt/experiment/provider comparisons, external metric imports and data-quality diagnostics. Metrics are measurement-only: no automatic prompt optimization, winner selection or paid provider calls.
+
+Run `./scripts/test-analytics-backend.ps1 -All`, then `npm test` and `npm run build` in `frontend`. Start/rebuild the system with `docker compose -f compose.yaml -f compose.gpu.yaml up -d --build --wait` on the GPU installation. See [analytics setup and API guide](docs/analytics.md), [economics formulas](docs/asset-economics.md), and [import workflow](docs/analytics-imports.md).
+
+## Feedback & Experimentation (TASK-11)
+
+Open **Feedback** to extract versioned visual attributes, freeze historical cohorts, review exploratory findings and hypotheses, register human-approved prompt experiments, and preserve results and conflicting learnings. Semantic extraction and hypothesis generation use free mock providers; no paid calls are required.
+
+Run `./scripts/test-feedback-backend.ps1 -All`, then frontend tests/builds. Set `FEEDBACK_BENCHMARK=true` to include the 100,000-asset Testcontainers benchmark. After rebuilding Compose with the GPU overlay, run `node e2e/feedback-api-smoke.mjs` and `node e2e/feedback-smoke.mjs` from `frontend`.
+
+See [setup and API](docs/feedback-engine.md), [statistics](docs/feedback-statistics.md), [registered protocols](docs/experiment-proposals.md), and [verification and limitations](docs/task-11-report.md). Online experiments currently target the image generation pipeline; specialized factory cohorts support historical/offline evaluation. Human review and ordinary publication gates remain required.

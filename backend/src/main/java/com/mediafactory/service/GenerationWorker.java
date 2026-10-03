@@ -53,6 +53,8 @@ public class GenerationWorker implements AutoCloseable {
   private final ProviderObservability telemetry;
   private final MediaStorage storage;
   private final TechnicalQa qa;
+  @org.springframework.beans.factory.annotation.Autowired
+  private com.mediafactory.feedback.FeedbackBudgetGuard feedbackBudget;
   private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
   private final AtomicInteger running = new AtomicInteger();
 
@@ -161,6 +163,10 @@ public class GenerationWorker implements AutoCloseable {
         return;
       }
       permit = admission.permit();
+      if (feedbackBudget != null && !feedbackBudget.reserve(generationId, (UUID) job.get("id"), hop.provider(), hop.model())) {
+        schedule(job, Duration.ofMinutes(1), false, "Feedback experiment paused by approval, budget or safety guard");
+        return;
+      }
       attempt = attempts.start(job, hop.provider(), hop.model());
       started = System.nanoTime();
       if (attempt.number() == 1) {
@@ -222,6 +228,7 @@ public class GenerationWorker implements AutoCloseable {
         telemetry.count("image_generation_failure", hop.provider(), hop.model());
       }
     } finally {
+      if (feedbackBudget != null && attempt != null) feedbackBudget.release((UUID) job.get("id"));
       limiter.release(permit);
     }
   }

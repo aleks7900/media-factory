@@ -1,0 +1,9 @@
+# Saturation, diversity and novelty
+
+Queue SATURATION_ANALYSIS with normal dataset parameters or a frozen runId. The service reuses TASK-05 cluster membership and `asset_embeddings`. It never calculates a second CLIP embedding. Snapshot cluster membership is contextual to the selected collection/run, not a reconstructed historical cluster lineage.
+
+Within each cluster, assets with comparable complete metric windows are ordered by generation timestamp and ID, then split into chronological thirds. Report count, mean, median, measured cost, downloads and revenue per slice. A descriptive declining-marginal-performance signal requires each third to satisfy the sample policy, strictly descending means, and final mean below 80% of the first. This is a hypothesis signal, never an automatic stop/delete action. Pricing, QA attrition, promotion and trend drift may explain a decline without catalog saturation.
+
+Cluster details include measured similarity to centroid. Collection diversity reports cluster count, unclustered assets and largest measured cluster ratio. A deterministic sample of at most 200 existing embeddings reports average pairwise cosine similarity per **same model**. It does not compare incompatible model spaces. Novelty reports nearest distance to an earlier asset in a bounded historical sample, explicitly labeled as a sample-relative estimate; no earlier reference produces unavailable novelty. Neither novelty nor diversity is automatically quality or expected revenue.
+
+Results persist with the frozen dataset run. Missing embeddings produce empty diversity evidence rather than fabricated novelty. The UI exposes the selected metric, cluster slices and full provenance. Explicit SATURATION or EXPLORATION hypotheses can be proposed for human review; production allocation is unchanged.

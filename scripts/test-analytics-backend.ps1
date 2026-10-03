@@ -1,0 +1,20 @@
+param([switch]$All)
+$ErrorActionPreference='Stop'
+$repoRoot=Split-Path $PSScriptRoot -Parent
+Set-Location $repoRoot
+$env:JAVA_HOME=(Resolve-Path '.tools/jdk-21.0.12.1+1').Path
+$env:GRADLE_USER_HOME=Join-Path $env:USERPROFILE '.gradle'
+$analyticsBuild=Join-Path $env:TEMP ('analytics-it-'+[guid]::NewGuid())
+New-Item -ItemType Directory -Path $analyticsBuild | Out-Null
+$analyticsInit=Join-Path $analyticsBuild 'init.gradle'
+"allprojects { layout.buildDirectory.set(file('$(($analyticsBuild -replace '\\','/') + '/output')')) }" | Set-Content $analyticsInit
+$analyticsTasks=if($All){@('test','integrationTest','bootJar')}else{@('integrationTest','--tests','*AnalyticsIntegrationTest')}
+& .tools/gradle-9.1.0/bin/gradle.bat -p backend --init-script $analyticsInit --project-cache-dir "$analyticsBuild/cache" @analyticsTasks --no-daemon 2>&1 | Tee-Object backend/build/task10-integration.log
+$result=$LASTEXITCODE
+New-Item -ItemType Directory -Force backend/build/task10-integration-results | Out-Null
+Copy-Item "$analyticsBuild/output/test-results/integrationTest/*.xml" backend/build/task10-integration-results/ -Force -ErrorAction SilentlyContinue
+if($All){New-Item -ItemType Directory -Force backend/build/task10-unit-results | Out-Null;Copy-Item "$analyticsBuild/output/test-results/test/*.xml" backend/build/task10-unit-results/ -Force -ErrorAction SilentlyContinue}
+if($All -and $result -eq 0){Copy-Item "$analyticsBuild/output/libs/*.jar" backend/build/libs/ -Force}
+exit $result
+
+

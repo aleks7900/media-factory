@@ -1,0 +1,30 @@
+import {chromium,expect} from '@playwright/test';
+import {mkdir,writeFile} from 'node:fs/promises';
+const browser=await chromium.launch({headless:true});
+const page=await browser.newPage({viewport:{width:1536,height:1024}});
+const errors=[];page.on('pageerror',e=>errors.push(e.message));
+try {
+  await page.goto(process.env.MEDIA_FACTORY_URL??'http://localhost:3000',{waitUntil:'networkidle'});
+  await page.getByRole('button',{name:'Analytics',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Analytics',exact:true,level:2})).toBeVisible();
+  await page.getByLabel('Period',{exact:true}).selectOption('Lifetime');
+  await expect(page.getByText('Loading analytics…')).toHaveCount(0);
+  await page.getByLabel('Timezone',{exact:true}).selectOption('Europe/Bucharest');
+  await page.getByLabel('Interval',{exact:true}).selectOption('month');
+  await page.getByRole('navigation',{name:'Analytics sections'}).getByRole('button',{name:'Assets',exact:true}).click();
+  await page.getByLabel('Sort by',{exact:true}).selectOption('downloads');
+  await expect.poll(()=>page.getByRole('link',{name:'Export CSV'}).getAttribute('href')).toContain('sort=downloads');
+  const csv=await page.request.get(new URL(await page.getByRole('link',{name:'Export CSV'}).getAttribute('href'),page.url()).href);
+  expect(csv.status()).toBe(200);expect(await csv.text()).toContain('baseCurrency,USD');
+  await page.getByRole('button',{name:'Refresh aggregates',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Refresh aggregates',exact:true})).toBeEnabled();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await mkdir('test-results',{recursive:true});
+  await page.screenshot({path:'test-results/analytics-desktop.png',fullPage:true});
+  await page.setViewportSize({width:1100,height:850});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await page.screenshot({path:'test-results/analytics-compact.png',fullPage:true});
+  expect(errors).toEqual([]);
+  await writeFile('test-results/analytics-smoke.json',JSON.stringify({passed:true,browserErrors:errors,checks:['analytics navigation','period','timezone','monthly series','asset table','sorting','CSV export','aggregate refresh','compact layout']}));
+  console.log('PASS: analytics navigation, filters, time series, sorting, CSV export, rebuild, responsive layout; no browser errors.');
+} finally {await browser.close();}

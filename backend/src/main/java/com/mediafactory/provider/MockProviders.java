@@ -153,6 +153,9 @@ public class MockProviders implements ImageGenerationProvider, VideoGenerationPr
   public Map<String, String> visionIdentity() { return Map.of("provider", "mock", "model", "pixel-observations-v1"); }
 
   public Result<String> generateText(Request r) {
+    if(r.prompt().startsWith("FEEDBACK_HYPOTHESIS_V1")) {
+      return result(com.mediafactory.processing.ProcessingJson.write(Map.of("title","Controlled visual attribute comparison","description","Test the selected visual attribute within the observed collection and platform using frozen control and treatment prompt versions.","rationale","The supplied observational evidence motivates an experiment; it does not establish causality.")),"HYPOTHESIS_GENERATION",r.prompt().length());
+    }
     if(r.prompt().startsWith("STOCK_METADATA_V1")) {
       String color=r.prompt().contains("\"dominantColor\":\"red\"")?"Red":r.prompt().contains("\"dominantColor\":\"green\"")?"Green":"Blue";
       var words=java.util.List.of(color.toLowerCase(),"abstract","background","color composition","digital illustration","texture","pattern","gradient","design","visual composition","color field");
@@ -182,5 +185,9 @@ public class MockProviders implements ImageGenerationProvider, VideoGenerationPr
     } catch (IOException e) {
       throw new IllegalStateException("Mock upscale failed", e);
     }
+  }
+
+  public Result<String> extractVisualAttributes(Media media, String versionedPrompt) {
+    return result(com.mediafactory.processing.ProcessingJson.write(Map.of("features",java.util.List.of(Map.of("key","style","value","mock abstract fixture","confidence",0.25)),"warnings",java.util.List.of("MOCK_SEMANTICS: fixture labels are not real visual understanding"))),"VISUAL_FEATURE_EXTRACTION",media.bytes().length);
   }
 }

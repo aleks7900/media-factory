@@ -1,0 +1,11 @@
+# Experiment results
+
+Queue EXPERIMENT_ANALYSIS with experimentId. `ExperimentAnalysisService` reads the registered protocol and builds a new immutable TASK-10 cohort snapshot. Online population is new generations already assigned to this experiment; offline population is historical matching prompt versions in the recorded scope. No historical asset changes variant.
+
+Every variant reports assigned, generated, QA-approved/rejected, duplicate rejection, processing, publication and observed sample counts, primary metric, secondary downloads/likes/revenue/profit/approval/cost, and actual-vs-estimated ledger charges. Operational failures and incomplete exposure remain distinct from market outcomes. Absent metrics are not zeros. Result detail exposes unequal publication funnels, so 100 published A assets and 38 B assets cannot be mistaken for a balanced market trial.
+
+Mean/proportion differences use the same documented deterministic bootstrap; cost-per-approved comparisons resample paired cost/approval observations. Secondary metrics never replace the registered primary metric. Sufficient observations must cover the registered number of post-publication days; QA-only analyses use resolved quality outcomes instead. Completing an experiment requires target observed samples on both sides and no unresolved generation states. Otherwise a persisted INSUFFICIENT_EVIDENCE result and learning preserve the current state without declaring a winner. The database blocks premature completion through old lifecycle endpoints too.
+
+Results are append-only and reference their analysis run. Reanalysis appends another result/learning rather than overwriting inconvenient evidence. No automatic adoption or prompt mutation occurs. `Feedback → Experiments` displays plan versions, changed defaults, side-by-side results, funnel, budget, costs and audit timeline. Full evidence remains available in the expanded provenance view.
+
+Limitations: platform delivery is not randomized by Media Factory; sample assignment randomizes generation conditions only. Mock platform events verify software attribution, not real user behavior. Independent-asset bootstrap assumptions can fail for correlated concepts. Full exposure coverage cannot be proven from an imported total alone. Large groups use the documented interval sample cap.

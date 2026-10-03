@@ -27,12 +27,14 @@ import {ProcessingWorkspace} from './ProcessingWorkspace';
 import {WallpaperWorkspace} from './WallpaperWorkspace';
 import {StockWorkspace} from './StockWorkspace';
 import {VideoWorkspace} from './VideoWorkspace';
+import {AnalyticsWorkspace} from './AnalyticsWorkspace';
+import {FeedbackWorkspace} from './FeedbackWorkspace';
 
-const pages = ['Dashboard', 'Collections', 'Generation Queue', 'Assets', 'Review', 'Providers', 'Costs', 'Settings', 'Processing', 'Wallpaper Factory', 'Stock Factory', 'Video Factory'] as const;
+const pages = ['Dashboard', 'Collections', 'Generation Queue', 'Assets', 'Review', 'Providers', 'Costs', 'Settings', 'Processing', 'Wallpaper Factory', 'Stock Factory', 'Video Factory', 'Analytics', 'Feedback'] as const;
 const promptPages = ['Prompt Library', 'Prompt Editor', 'Prompt History', 'Presets', 'Experiments'] as const;
 const similarityPages = ['Duplicate Review', 'Similarity Explorer', 'Collection Diversity', 'Embedding Jobs'] as const;
 type Page = typeof pages[number] | typeof promptPages[number] | typeof similarityPages[number];
-const icons = [LayoutDashboard, Layers3, ListVideo, Images, ScanEye, Plug, CircleDollarSign, Settings, Sparkles, Images, Layers3, ListVideo];
+const icons = [LayoutDashboard, Layers3, ListVideo, Images, ScanEye, Plug, CircleDollarSign, Settings, Sparkles, Images, Layers3, ListVideo, Activity, Sparkles];
 const labels: Record<string, string> = {
     generated_today: 'Generated today',
     approved_today: 'Approved today',
@@ -180,6 +182,8 @@ export function App() {
                 {page === 'Processing' && <ProcessingWorkspace initialAsset={processingAsset} initialProfiles={processingProfiles}/>}
                 {page === 'Stock Factory' && <StockWorkspace onQaReview={()=>setPage('Review')}/>}
                 {page === 'Video Factory' && <VideoWorkspace/>}
+                {page === 'Analytics' && <AnalyticsWorkspace/>}
+                {page === 'Feedback' && <FeedbackWorkspace/>}
                 {page === 'Wallpaper Factory' && <WallpaperWorkspace onProcess={(id,profiles)=>{setProcessingAsset(id);setProcessingProfiles(profiles);setPage('Processing');}}/>}
                 {page === 'Generation Queue' && <Jobs onSelect={setSelectedGeneration} rows={jobs.data ?? []}
                                                       retry={id => action.mutate({path: `/jobs/${id}/retry`, body: {}})}

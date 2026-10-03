@@ -1,0 +1,9 @@
+# Hypothesis engine
+
+Queue HYPOTHESIS_GENERATION with findingId and explicit EXPLOITATION, EXPLORATION or SATURATION intent. `HypothesisGenerationService` sends the immutable calculated evidence and warnings to `TextGenerationProvider` using the published TASK-03 `FEEDBACK_HYPOTHESIS_GENERATION` template. This adapter receives data, not authority to alter the finding.
+
+Strict output permits **title, description and rationale only**. Extra fields such as sample size, effect, confidence, estimated revenue or budget are rejected; numerical evidence remains linked to the original finding. Text is bounded and parsed as data. The bundled free adapter describes a candidate test without asserting causal effect. Paid hypothesis calls are disabled pending an explicit provider/cost policy. The existing generation_costs ledger records provider, model, operation HYPOTHESIS_GENERATION, usage, estimate and currency, plus hypothesis/finding IDs. The charge is explicitly anchored to one evidence asset as analysis overhead, not copied onto every example.
+
+Stale/dismissed findings and unavailable measurement populations cannot generate hypotheses. Insufficient samples require EXPLORATION intent. Hypotheses retain scope through their source finding. Priority components expose evidence strength, intent, sample availability, uncertainty-reduction purpose, cost pending registration, business review and unmeasured novelty; no combined AI success score is invented.
+
+Lifecycle: PROPOSED (or DRAFT) → APPROVED / REJECTED / ARCHIVED; approved hypotheses can become CONVERTED_TO_EXPERIMENT. Approve/reject/archive routes require reason and user. Creating a plan requires a published controllable baseline and never edits an old prompt version. Underrepresented dimensions can be selected explicitly for exploratory hypotheses; sparse evidence is retained and never upgraded to strong confidence by model prose.
