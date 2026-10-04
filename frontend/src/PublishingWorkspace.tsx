@@ -16,7 +16,7 @@ import {
   X,
   XCircle
 } from 'lucide-react';
-import {api} from './api';
+import {api, apiUrl} from './api';
 import './publishing.css';
 
 export interface PublishingAccountDto {
@@ -204,7 +204,7 @@ export function PublishingWorkspace() {
         formData.append('batchName', uploadBatchName);
       }
 
-      const res = await fetch('/api/v1/publishing/upload', {
+      const res = await fetch(apiUrl('/v1/publishing/upload'), {
         method: 'POST',
         body: formData
       });
@@ -296,7 +296,7 @@ export function PublishingWorkspace() {
           <button
             className="control-btn"
             onClick={() => {
-              window.open('/api/v1/publishing/tiktok/auth-url', '_blank');
+              window.open(apiUrl('/v1/publishing/tiktok/auth-url'), '_blank');
             }}
           >
             <RefreshCw size={14} /> Switch / Re-auth Account
@@ -477,7 +477,7 @@ export function PublishingWorkspace() {
               <div key={task.id} className="video-card">
                 <div className="video-card-thumb">
                   <img
-                    src={`/api/v1/publishing/tasks/${task.id}/thumbnail`}
+                    src={apiUrl(`/v1/publishing/tasks/${task.id}/thumbnail`)}
                     alt={task.videoFilename}
                     loading="lazy"
                   />
@@ -617,7 +617,7 @@ export function PublishingWorkspace() {
                   <div key={task.id} className={`preview-task-item ${isInvalid ? 'invalid' : ''}`}>
                     <div className="preview-thumb-box">
                       <img
-                        src={`/api/v1/publishing/tasks/${task.id}/thumbnail`}
+                        src={apiUrl(`/v1/publishing/tasks/${task.id}/thumbnail`)}
                         alt={task.videoFilename}
                       />
                       {task.durationSeconds && (
@@ -711,7 +711,7 @@ export function PublishingWorkspace() {
               <X size={16} />
             </button>
             <video
-              src={`/api/v1/publishing/tasks/${playingVideoId}/video`}
+              src={apiUrl(`/v1/publishing/tasks/${playingVideoId}/video`)}
               controls
               autoPlay
             />

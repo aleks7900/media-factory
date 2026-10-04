@@ -11,7 +11,7 @@ import {
   ZoomIn,
   ZoomOut
 } from 'lucide-react';
-import {api, type Row} from './api';
+import {api, apiUrl, type Row} from './api';
 import './processing.css';
 
 type Profile = {
@@ -150,7 +150,7 @@ export function ProcessingWorkspace({initialAsset, initialProfiles}: {
           {assets.data?.map(a => <option key={String(a.id)}
                                          value={String(a.id)}>{String(a.id).slice(0, 8)} · {a.width} × {a.height}</option>)}
         </select></label>
-        {current && <div className="processing-source"><img src={`/api/assets/${selected}/content`}
+        {current && <div className="processing-source"><img src={apiUrl(`/assets/${selected}/content`)}
                                                             alt="Original master"/>
           <div><b>Immutable
             original</b><small>{current.width} × {current.height} · {(Number(current.width) * Number(current.height) / 1e6).toFixed(2)} MP</small><small>{String(current.media_type)}</small>
@@ -190,7 +190,7 @@ export function ProcessingWorkspace({initialAsset, initialProfiles}: {
             <section className="panel processing-runs">{list.length === 0 ?
                 <div className="processing-empty"><CheckCircle2 size={30}/><h3>Nothing here yet</h3>
                   <p>Choose a master and output profiles to begin.</p></div> : list.map(r =>
-                    <article key={r.id}><img src={`/api/assets/${r.source_asset_id}/content`}
+                    <article key={r.id}><img src={apiUrl(`/assets/${r.source_asset_id}/content`)}
                                              alt="Processing source"/>
                       <div>
                         <button className="text-button"
@@ -230,7 +230,7 @@ export function ProcessingWorkspace({initialAsset, initialProfiles}: {
               <div className="batch-assets">{assets.data?.map(a => <label key={String(a.id)}><input
                   type="checkbox" checked={batch.includes(String(a.id))}
                   onChange={() => setBatch(old => old.includes(String(a.id)) ? old.filter(id => id !== a.id) : [...old, String(a.id)].slice(0, 100))}/><img
-                  src={`/api/assets/${a.id}/content`}
+                  src={apiUrl(`/assets/${a.id}/content`)}
                   alt="Batch source"/><span>{String(a.id).slice(0, 8)}</span></label>)}</div>
               <button className="primary"
                       disabled={!batch.length || !profiles.length || action.isPending}
@@ -244,7 +244,7 @@ export function ProcessingWorkspace({initialAsset, initialProfiles}: {
           <h3>Deliverables <span>{variants.data?.length ?? 0}</span></h3>
           <div className="variant-grid">{variants.data?.map(v => <button key={v.id}
                                                                          onClick={() => setCompare(v)}>
-            <img src={`${path === '/v1' ? '/api/v1' : ''}/variants/${v.id}/content`}
+            <img src={apiUrl(`${path === '/v1' ? '/v1' : ''}/variants/${v.id}/content`)}
                  alt={v.kind}/><b>{v.kind.replaceAll('_', ' ')}</b><small>{v.width} × {v.height} · {v.format} · {Number(v.megapixels ?? 0).toFixed(2)} MP</small><small>{v.validation_status ?? 'Legacy derivative'} ·
             v{v.profile_version ?? '—'}</small></button>)}</div>
           {!variants.data?.length && <p className="muted">Validated outputs will appear here.</p>}
@@ -286,7 +286,7 @@ export function CropEditor({source, crop, value, onChange}: {
         x: Math.max(0, Math.min(1 - r.width, (e.clientX - box.left) / box.width - r.width / 2)),
         y: Math.max(0, Math.min(1 - r.height, (e.clientY - box.top) / box.height - r.height / 2))
       });
-    }}><img src={`/api/assets/${source}/content`} alt="Crop composition preview" draggable={false}/>
+    }}><img src={apiUrl(`/assets/${source}/content`)} alt="Crop composition preview" draggable={false}/>
       <div className="crop-safe-top" style={{
         left: `${r.x * 100}%`,
         top: `${r.y * 100}%`,
@@ -349,7 +349,7 @@ function Compare({source, variant, close}: {
         </div>
       </header>
       <div
-          className="compare-panes">{[`/api/assets/${source}/content`, `/api/v1/variants/${variant.id}/content`].map((url, i) =>
+          className="compare-panes">{[apiUrl(`/assets/${source}/content`), apiUrl(`/v1/variants/${variant.id}/content`)].map((url, i) =>
           <div key={url} onPointerDown={e => {
             e.currentTarget.setPointerCapture(e.pointerId);
           }} onPointerMove={e => {

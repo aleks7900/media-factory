@@ -1,7 +1,7 @@
 import {useEffect, useRef, useState} from 'react';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {Check, ChevronLeft, ChevronRight, RotateCw, ScanEye, X, ZoomIn} from 'lucide-react';
-import {api, type Row} from './api';
+import {api, apiUrl, type Row} from './api';
 import './review.css';
 
 export type Review = {
@@ -286,7 +286,7 @@ export function ReviewWorkspace() {
       <div className="asset-image">
         <button className="qa-image-button" onClick={() => setOpen(r.id)}
                 aria-label={`Review frame ${r.asset_id.slice(0, 8)}`}><img loading="lazy"
-                                                                           src={`/api/assets/${r.asset_id}/content`}
+                                                                           src={apiUrl(`/assets/${r.asset_id}/content`)}
                                                                            alt={`Frame ${r.asset_id.slice(0, 8)}`}/>
         </button>
         <label className="qa-select"><input type="checkbox"
@@ -506,7 +506,7 @@ export function ReviewDetail({id, close, navigate, onHistory}: {
               el.dataset.y = String(e.clientY);
             }} onPointerUp={e => {
               if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
-            }}><img draggable={false} src={`/api/assets/${r.asset_id}/content`}
+            }}><img draggable={false} src={apiUrl(`/assets/${r.asset_id}/content`)}
                     alt="Full resolution generated asset" style={zoom ? {
               width: r.asset.width * zoom,
               height: r.asset.height * zoom,

@@ -1,7 +1,7 @@
 import {useState} from 'react';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {Film, Play, Plus, X} from 'lucide-react';
-import {api} from './api';
+import {api, apiUrl} from './api';
 import './video.css';
 import {
   VideoCollectionControls,
@@ -46,7 +46,7 @@ type Profile = {
 };
 type Source = { id: string; generation_id: string; media_type?: string };
 type Provider = { provider: string; enabled: boolean; model: string };
-const url = (id: string) => `/api/v1/video/variants/${id}/content`;
+const url = (id: string) => apiUrl(`/v1/video/variants/${id}/content`);
 
 export function VideoWorkspace() {
   const cache = useQueryClient();
@@ -121,7 +121,7 @@ export function VideoWorkspace() {
         source image<select value={source} onChange={e => setSource(e.target.value)}>
           <option value="">Select a source</option>
           {approved.map(a => <option key={a.id} value={a.id}>{a.id.slice(0, 12)}</option>)}</select></label>{source &&
-          <img src={`/api/assets/${source}/content`} alt="Selected source image"/>}<label>Production
+          <img src={apiUrl(`/assets/${source}/content`)} alt="Selected source image"/>}<label>Production
         profile<select value={profile}
                        onChange={e => setProfile(e.target.value)}>{profiles.data?.filter((p, i, a) => a.findIndex(x => x.profile_key === p.profile_key) === i).map(p =>
             <option key={p.id}>{p.profile_key}</option>)}</select></label><label>Video
@@ -181,14 +181,14 @@ export function VideoWorkspace() {
         <h2>Motion review</h2>{current ? <><span
           className="badge">{current.status}</span>{current.source_asset_id &&
           <img className="video-source-reference"
-               src={`/api/assets/${current.source_asset_id}/content`}
+               src={apiUrl(`/assets/${current.source_asset_id}/content`)}
                alt="Original approved source"/>}<VideoMotionEditor id={current.id}
                                                                    revision={current.revision}
                                                                    onSave={task => action.mutate(task)}/>
         <div className="video-comparison">{current.raw_asset_id &&
             <div><h3>Original provider video</h3>
               <video controls preload="metadata"
-                     src={`/api/assets/${current.raw_asset_id}/content`}/>
+                     src={apiUrl(`/assets/${current.raw_asset_id}/content`)}/>
             </div>}{master && <div><h3>Processed master</h3>
           <video controls preload="metadata" src={url(master.id)}/>
           <small>{master.width} × {master.height} · {(master.size_bytes / 1048576).toFixed(2)} MiB</small>

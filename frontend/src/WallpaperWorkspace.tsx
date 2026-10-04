@@ -13,7 +13,7 @@ import {
   Send,
   X
 } from 'lucide-react';
-import {api} from './api';
+import {api, apiUrl} from './api';
 import './wallpaper.css';
 
 type Metadata = {
@@ -295,7 +295,7 @@ export function WallpaperWorkspace({onProcess}: {
         <div className="wallpaper-grid">{visible.map(w => <article key={w.id}
                                                                    className="wallpaper-card">
           <div className="wallpaper-image">{w.thumbnail_id ?
-              <img loading="lazy" src={`/api/v1/variants/${w.thumbnail_id}/content`}
+              <img loading="lazy" src={apiUrl(`/v1/variants/${w.thumbnail_id}/content`)}
                    alt={w.metadata.title}/> : <div className="wallpaper-placeholder">
                 <Moon/><span>{w.status.replaceAll('_', ' ')}</span></div>}<input
               aria-label={`Select ${w.metadata.title}`} type="checkbox"
@@ -320,7 +320,7 @@ export function WallpaperWorkspace({onProcess}: {
           <summary>Export packages</summary>
           {exports.data.map(e => <p
               key={e.id}>{e.status} {e.failure_code} {e.status === 'COMPLETED' &&
-              <a href={`/api/v1/wallpaper-exports/${e.id}/content`}>Download immutable
+              <a href={apiUrl(`/v1/wallpaper-exports/${e.id}/content`)}>Download immutable
                 ZIP</a>}</p>)}</details>}
       </section>
     </div>
@@ -333,8 +333,8 @@ export function WallpaperWorkspace({onProcess}: {
               <p className="notice" role="status">{notice}</p>}
           <p>{current.status} · {current.profile_key}</p>
           <div className="wallpaper-variant-grid">{current.variants?.map(v => <figure key={v.id}><a
-              href={`/api/v1/variants/${v.id}/content`} target="_blank" rel="noreferrer"><img
-              src={`/api/v1/variants/${v.kind === 'WALLPAPER_MASTER' ? (current.variants?.find(x => x.kind === 'ANDROID_PREVIEW')?.id ?? v.id) : v.id}/content`}
+              href={apiUrl(`/v1/variants/${v.id}/content`)} target="_blank" rel="noreferrer"><img
+              src={apiUrl(`/v1/variants/${v.kind === 'WALLPAPER_MASTER' ? (current.variants?.find(x => x.kind === 'ANDROID_PREVIEW')?.id ?? v.id) : v.id}/content`)}
               alt={v.kind} loading="lazy"/></a>
             <figcaption>{v.kind}<small>{v.width} × {v.height} · {v.format} · {v.validation_status}</small>
             </figcaption>

@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
-import {api} from './api';
+import {api, apiUrl} from './api';
 import './similarity.css';
 
 type Asset = { id: string; width: number; height: number };
@@ -57,7 +57,7 @@ const classifications = ['EXACT_DUPLICATE', 'PERCEPTUAL_DUPLICATE', 'NEAR_DUPLIC
 const label = (text: string) => text.replaceAll('_', ' ').toLowerCase();
 
 function Photo({id, alt = 'Asset preview'}: { id: string; alt?: string }) {
-  return <img loading="lazy" src={`/api/assets/${id}/content`} alt={alt}/>
+  return <img loading="lazy" src={apiUrl(`/assets/${id}/content`)} alt={alt}/>
 }
 
 function useData<T>(path: string, enabled = true) {

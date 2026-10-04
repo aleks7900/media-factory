@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
-import {api} from './api';
+import {api, apiUrl} from './api';
 import './feedback.css';
 
 type RecordData = Record<string, any>;
@@ -314,7 +314,7 @@ export function FeedbackWorkspace() {
           setAsset(e.asset_id);
           navigate('Visual Attributes');
         }}>{e.thumbnail_variant_id ?
-            <img loading="lazy" src={`/api/v1/variants/${e.thumbnail_variant_id}/content`}
+            <img loading="lazy" src={apiUrl(`/v1/variants/${e.thumbnail_variant_id}/content`)}
                  alt={`${e.role} asset`}/> : <span className="feedback-no-preview">Preview unavailable</span>}<small>{e.role.replaceAll('_', ' ')}</small><b>{feedbackNumber(e.value)}</b>
         </button>)}</div>
         <label>Experiment intent<select aria-label="Hypothesis intent" value={intent}

@@ -18,7 +18,7 @@ import {
     Sparkles,
     X
 } from 'lucide-react';
-import {api, type Row} from './api';
+import {api, apiUrl, type Row} from './api';
 import {
     GenerationDetails,
     GenerationDialog,
@@ -345,7 +345,7 @@ function AssetGrid({assets, status, review = false, disabled = false, onAction, 
 }) {
   return assets.length ?
       <div className="asset-grid">{assets.map((a, i) => <article className="asset-card" key={a.id}>
-        <div className="asset-image"><img src={`/api/assets/${a.id}/content`}
+        <div className="asset-image"><img src={apiUrl(`/assets/${a.id}/content`)}
                                           alt={`Generated artwork ${a.id.slice(0, 8)}`}
                                           loading="lazy"/><span
             className="asset-number">FRAME / {String(i + 1).padStart(3, '0')}</span></div>

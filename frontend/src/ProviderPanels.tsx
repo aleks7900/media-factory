@@ -1,7 +1,7 @@
 import {type FormEvent, useEffect, useRef, useState} from 'react';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {ArrowRight, Clock, ShieldCheck, Sparkles, X} from 'lucide-react';
-import {api, type Row} from './api';
+import {api, apiUrl, type Row} from './api';
 import {PromptGenerationFields} from './PromptStudio';
 
 export interface ProviderInfo {
@@ -284,7 +284,7 @@ export function GenerationDetails({id, close}: { id: string; close: () => void }
             className="lint-warning"
             key={i}>{w}</p>)}</details>)}
         {data.assets.map(a => <img className="detail-preview" key={a.id}
-                                   src={`/api/assets/${a.id}/content`}
+                                   src={apiUrl(`/assets/${a.id}/content`)}
                                    alt="Generated original"/>)}
         <div className="detail-cost"><h3>Generation
           cost</h3>{data.costs.length ? data.costs.map(c => <p

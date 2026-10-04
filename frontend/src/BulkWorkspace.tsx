@@ -1,7 +1,7 @@
 import {useRef, useState} from 'react';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {Archive, Download, Film, ImagePlus, UploadCloud} from 'lucide-react';
-import {api} from './api';
+import {api, apiUrl} from './api';
 import './bulk.css';
 
 type Data = Record<string, any>;
@@ -94,7 +94,7 @@ export function BulkWorkspace({kind}: { kind: Kind }) {
         options,
         authorizePaid: paid
       })], {type: 'application/json'}));
-      const response = await fetch('/api/v1/bulk/batches', {
+      const response = await fetch(apiUrl('/v1/bulk/batches'), {
         method: 'POST',
         headers: {'Idempotency-Key': importKey.current},
         body: form
@@ -146,7 +146,7 @@ export function BulkWorkspace({kind}: { kind: Kind }) {
       if (!file) return null;
       const form = new FormData();
       form.append('archive', file);
-      const res = await fetch('/api/v1/bulk/preview', {
+      const res = await fetch(apiUrl('/v1/bulk/preview'), {
         method: 'POST',
         body: form
       }).catch(() => null);
@@ -303,7 +303,7 @@ export function BulkWorkspace({kind}: { kind: Kind }) {
     </section>
     {b && <section className="panel">
       <div className="bulk-bar"><h3>{b.name}</h3><span className="badge">{b.status}</span><a
-          className="bulk-download" href={`/api/v1/bulk/batches/${selected}/results.zip`}><Download
+          className="bulk-download" href={apiUrl(`/v1/bulk/batches/${selected}/results.zip`)}><Download
           size={16}/> Results ZIP</a></div>
       <p>{b.archive_name} · {b.totalTasks} tasks · {b.references} references
         · {b.provider} / {b.model}</p>
@@ -320,7 +320,7 @@ export function BulkWorkspace({kind}: { kind: Kind }) {
               disabled={action.isPending || (b.cancelled && a !== 'delete') || (a === 'retry-failed' && (b.counts.FAILED ?? 0) === 0)}
               key={a} onClick={() => act('batches', selected, a)}>{a.replace('-', ' ')}</button>)}<a
           className="button bulk-download-btn"
-          href={`/api/v1/bulk/batches/${selected}/results.zip`}><Download size={14}/> Download
+          href={apiUrl(`/v1/bulk/batches/${selected}/results.zip`)}><Download size={14}/> Download
         results ({b.counts.COMPLETED ?? 0})</a></div>
       <div className="bulk-bar"><input aria-label="Search tasks" placeholder="Search task names…"
                                        value={search} onChange={e => {
@@ -349,7 +349,7 @@ export function BulkWorkspace({kind}: { kind: Kind }) {
             <td>{t.inputs.length}</td>
             <td>{t.retry_count}</td>
             <td>{t.asset_id ?
-                <a href={`/api/assets/${t.asset_id}/content`} download>Download</a> : '—'}</td>
+                <a href={apiUrl(`/assets/${t.asset_id}/content`)} download>Download</a> : '—'}</td>
           </tr>)}</tbody>
         </table>
       </div>
@@ -374,7 +374,7 @@ export function BulkWorkspace({kind}: { kind: Kind }) {
       <pre>{d.prompt}</pre>
       {!!d.inputs.length &&
           <div className="bulk-references">{d.inputs.map((r: Data, i: number) => <figure key={i}>
-            <img src={`/api/v1/bulk/tasks/${task}/references/${i}`} alt={r.name}/>
+            <img src={apiUrl(`/v1/bulk/tasks/${task}/references/${i}`)} alt={r.name}/>
             <figcaption>{r.name}</figcaption>
           </figure>)}</div>}
       {(d.error_message || d.error_code) && <div className="bulk-error-box">{d.error_code &&
@@ -384,9 +384,9 @@ export function BulkWorkspace({kind}: { kind: Kind }) {
         <p className="error">Provider outcome is unknown. Automatic and manual resubmission are
           blocked until the original request is reconciled.</p>}
       {d.asset_id && <div className="bulk-result">{video ?
-          <video controls preload="metadata" src={`/api/assets/${d.asset_id}/content`}/> :
-          <img src={`/api/assets/${d.asset_id}/content`} alt={d.name}/>}<a
-          href={`/api/assets/${d.asset_id}/content`} download>Download original</a></div>}
+          <video controls preload="metadata" src={apiUrl(`/assets/${d.asset_id}/content`)}/> :
+          <img src={apiUrl(`/assets/${d.asset_id}/content`)} alt={d.name}/>}<a
+          href={apiUrl(`/assets/${d.asset_id}/content`)} download>Download original</a></div>}
       <div
           className="bulk-actions">{['retry', 'cancel', 'regenerate', 'delete', ...(d.outcome_unknown ? ['reconcile'] : [])].map(a =>
           <button key={a}

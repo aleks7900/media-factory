@@ -11,7 +11,7 @@ import {
   Sparkles,
   X
 } from 'lucide-react';
-import {api} from './api';
+import {api, apiUrl} from './api';
 import './stock.css';
 
 type Keyword = {
@@ -210,7 +210,7 @@ export function StockWorkspace({onQaReview}: { onQaReview?: () => void } = {}) {
                   as new export
                 </button>
                 {e.status === 'READY' && <a className="stock-download"
-                                            href={`/api/v1/stock-exports/${e.id}/content`}><Download
+                                            href={apiUrl(`/v1/stock-exports/${e.id}/content`)}><Download
                     size={14}/>Download ZIP</a>}{e.status === 'FAILED' &&
                   <button onClick={() => run(() => post(`/v1/stock-exports/${e.id}/retry`))}>Retry
                     storage failure</button>}</div>
@@ -340,7 +340,7 @@ export function StockWorkspace({onQaReview}: { onQaReview?: () => void } = {}) {
                 <div className="stock-grid">{visible.map(p => <article className="stock-card"
                                                                        key={p.id}>
                   <div className="stock-image">{p.thumbnail_id ?
-                      <img src={`/api/v1/variants/${p.thumbnail_id}/content`}
+                      <img src={apiUrl(`/v1/variants/${p.thumbnail_id}/content`)}
                            alt={p.metadata?.title ?? 'Stock candidate'} loading="lazy"/> :
                       <div className="stock-placeholder">
                         <Layers3/><span>{p.status.replaceAll('_', ' ')}</span></div>}<input
@@ -377,13 +377,13 @@ export function StockWorkspace({onQaReview}: { onQaReview?: () => void } = {}) {
         <h2>{latest?.data.title ?? 'Stock candidate'}</h2>
         <div className="stock-review-columns">
           <div>{!current.variant && current.source_asset_id && <img className="stock-review-image"
-                                                                    src={`/api/assets/${current.source_asset_id}/content`}
+                                                                    src={apiUrl(`/assets/${current.source_asset_id}/content`)}
                                                                     alt="Source awaiting visual QA"/>}{current.status === 'QA_PENDING' &&
               <div className="panel stock-evidence"><p>The stock QA policy requires human review
                 before processing.</p>
                 <button onClick={onQaReview}>Open visual QA review</button>
               </div>}{current.variant && <><img className="stock-review-image"
-                                                src={`/api/v1/variants/${current.variant.id}/content`}
+                                                src={apiUrl(`/v1/variants/${current.variant.id}/content`)}
                                                 alt="Stock master review"/>
             <p>{current.variant.width} × {current.variant.height} · {(current.variant.width * current.variant.height / 1000000).toFixed(3)} MP
               · {current.variant.format} · {(current.variant.size_bytes / 1048576).toFixed(2)} MiB</p></>}

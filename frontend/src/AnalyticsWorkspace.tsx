@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
-import {api} from './api';
+import {api, apiUrl} from './api';
 import './analytics.css';
 
 type MetricRow = Record<string, string | number | null>;
@@ -271,7 +271,7 @@ export function AnalyticsWorkspace() {
         setPage(0);
       }}>{[...measures, 'generated', 'approved'].map(m => <option
           key={m}>{m}</option>)}</select></label><a
-          href={`/api/v1/analytics/export?${filter}&groupBy=${dimension || ({
+          href={apiUrl(`/v1/analytics/export?${filter}&groupBy=${dimension || ({
             Overview: 'overview',
             Collections: 'collection',
             Prompts: 'prompt',
@@ -280,7 +280,7 @@ export function AnalyticsWorkspace() {
             Revenue: 'overview',
             Platforms: 'platform',
             Experiments: 'variant'
-          } as Record<string, string>)[section] || 'asset'}`}>Export CSV</a></div>
+          } as Record<string, string>)[section] || 'asset'}`)}>Export CSV</a></div>
       {!data.isPending && data.data?.rows.length === 0 ?
           <p>No analytics available for these filters.</p> : <div className="analytics-table">
             <table>
@@ -293,7 +293,7 @@ export function AnalyticsWorkspace() {
                 <td title={String(r.group_key)}>{(dimension === 'asset' || (!dimension && section === 'Assets')) && r.group_key !== 'UNATTRIBUTED' ?
                     <button onClick={() => setSelectedAsset(String(r.group_key))}>{r.thumbnail_id &&
                         <img loading="lazy" className="analytics-thumbnail"
-                             src={`/api/v1/variants/${r.thumbnail_id}/content`}
+                             src={apiUrl(`/v1/variants/${r.thumbnail_id}/content`)}
                              alt="Asset preview"/>}{String(r.group_key).slice(0, 12)} ·
                       Details</button> : String(r.group_key)}</td>
                 {['generated', 'approved', ...measures].map(m => <td key={m}
