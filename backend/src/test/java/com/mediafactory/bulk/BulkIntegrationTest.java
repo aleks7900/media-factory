@@ -401,5 +401,113 @@ class BulkIntegrationTest {
     assertThat(manifestContent).contains("VALIDATION_ERROR");
     assertThat(manifestContent).contains("status");
   }
+
+  @Test
+  void cancelledTaskDoesNotTransitionToCompleted() throws Exception {
+    upload(1, false);
+    var claimed = worker.claim();
+    assertThat(claimed).isNotNull();
+    UUID taskId = (UUID) claimed.get("id");
+
+    service.taskAction(taskId, "cancel");
+
+    worker.step(claimed);
+
+    var finalTask = service.task(taskId);
+    assertThat(finalTask.get("status")).isEqualTo("CANCELLED");
+
+    var genStatus =
+        db.sql("select status from generations where id=?")
+            .param(finalTask.get("generation_id"))
+            .query(String.class)
+            .single();
+    assertThat(genStatus).isEqualTo("FAILED");
+  }
+
+  @Test
+  void multiWorkerConcurrencyStressTest() throws Exception {
+    UUID batch = upload(500, false);
+    var submissions = new ConcurrentHashMap<UUID, java.util.concurrent.atomic.AtomicInteger>();
+
+    var baos = new ByteArrayOutputStream();
+    var img = new java.awt.image.BufferedImage(64, 64, java.awt.image.BufferedImage.TYPE_INT_RGB);
+    javax.imageio.ImageIO.write(img, "png", baos);
+    byte[] validPng = baos.toByteArray();
+
+    var processor = mock(BulkProcessor.class);
+    when(processor.kind()).thenReturn("GPT_IMAGE");
+    when(processor.estimate(any())).thenReturn(new BulkProcessor.Quote(null, "USD"));
+    when(processor.asynchronous()).thenReturn(false);
+    when(processor.replaySafe(any())).thenReturn(true);
+    when(processor.result(any(), any()))
+        .thenAnswer(
+            call -> {
+              BulkProcessor.Input input = call.getArgument(1);
+              submissions.computeIfAbsent(input.taskId(), k -> new java.util.concurrent.atomic.AtomicInteger()).incrementAndGet();
+              return new BulkProcessor.Output(
+                  validPng, "image/png", Map.of(), 100L, 100L, java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, "USD");
+            });
+
+    var sharedService =
+        new BulkGenerationService(
+            db,
+            service.transactions(),
+            storage,
+            service.domainFactory(),
+            service.archiveParser(),
+            List.of(processor));
+
+    var worker1 = new BulkGenerationWorker(sharedService, limiter, retries, 16, 1000, 16);
+    var worker2 = new BulkGenerationWorker(sharedService, limiter, retries, 16, 1000, 16);
+
+    var executor = java.util.concurrent.Executors.newFixedThreadPool(8);
+    var tasksRemaining = new java.util.concurrent.atomic.AtomicInteger(500);
+    var workers = List.of(worker1, worker2);
+
+    for (int i = 0; i < 8; i++) {
+      int workerIndex = i % 2;
+      executor.submit(
+          () -> {
+            var w = workers.get(workerIndex);
+            while (tasksRemaining.get() > 0) {
+              var claimed = w.claim();
+              if (claimed != null) {
+                try {
+                  w.step(claimed);
+                } finally {
+                  db.sql("update bulk_tasks set lease_token=null,lease_until=null where id=?")
+                      .param(claimed.get("id"))
+                      .update();
+                }
+                tasksRemaining.decrementAndGet();
+              } else {
+                try {
+                  Thread.sleep(10);
+                } catch (InterruptedException ignored) {
+                  break;
+                }
+              }
+            }
+          });
+    }
+
+    executor.shutdown();
+    assertThat(executor.awaitTermination(60, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+    worker1.close();
+    worker2.close();
+
+    assertThat(submissions).hasSize(500);
+    for (var count : submissions.values()) {
+      assertThat(count.get()).isEqualTo(1);
+    }
+
+    var completed =
+        db.sql("select count(*) from bulk_tasks where batch_id=? and status='COMPLETED'")
+            .param(batch)
+            .query(Long.class)
+            .single();
+    assertThat(completed).isEqualTo(500);
+  }
 }
+
 

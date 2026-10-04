@@ -81,6 +81,28 @@ public class BulkGenerationController {
     return service.importArchive(request, key, archive.getOriginalFilename(), archive.getBytes());
   }
 
+  @PostMapping(value = "/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  public Object preview(@RequestPart("archive") MultipartFile archive) throws java.io.IOException {
+    BulkGenerationService.check(
+        archive.getSize() <= service.archiveParser().limits.archiveBytes(),
+        "Archive exceeds upload limit");
+    BulkGenerationService.check(
+        Objects.toString(archive.getOriginalFilename(), "")
+            .toLowerCase(Locale.ROOT)
+            .endsWith(".zip"),
+        "ZIP archive required");
+    var parsed = service.archiveParser().parse(archive.getInputStream());
+    long valid = parsed.tasks().stream().filter(t -> t.error() == null).count();
+    long invalid = parsed.tasks().stream().filter(t -> t.error() != null).count();
+    return Map.of(
+        "totalTasks", parsed.tasks().size(),
+        "validTasks", valid,
+        "invalidTasks", invalid,
+        "referenceCount", parsed.referenceCount(),
+        "sampleTasks",
+            parsed.tasks().stream().limit(10).map(BulkArchiveParser.Task::name).toList());
+  }
+
   @GetMapping("/batches")
   public Object batches(
       @RequestParam UUID projectId,

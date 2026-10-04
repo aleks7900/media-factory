@@ -523,12 +523,19 @@ public class BulkGenerationWorker implements AutoCloseable {
                   .params(
                       asset, t.get("generation_id"), key, hash, type, result.bytes().length, w, h)
                   .update();
+              boolean cancelled =
+                  Boolean.TRUE.equals(current.get("cancel_requested"))
+                      || "CANCELLED".equals(current.get("status"));
               s.database()
                   .sql(
                       "update generations set"
-                          + " status='GENERATED',final_provider=?,model=?,completed_at=now(),updated_at=now()"
+                          + " status=?,final_provider=?,model=?,completed_at=now(),updated_at=now()"
                           + " where id=?")
-                  .params(t.get("provider"), t.get("model"), t.get("generation_id"))
+                  .params(
+                      cancelled ? "FAILED" : "GENERATED",
+                      t.get("provider"),
+                      t.get("model"),
+                      t.get("generation_id"))
                   .update();
               boolean recovered =
                   Boolean.TRUE.equals(result.metadata().get("recoveredFromImmutableStorage"));
@@ -556,9 +563,7 @@ public class BulkGenerationWorker implements AutoCloseable {
                           + " status=?,asset_id=?,provider_metadata=?::jsonb,error_code=null,error_message=null,completed_at=now()"
                           + " where id=?")
                   .params(
-                      Boolean.TRUE.equals(current.get("cancel_requested"))
-                          ? "CANCELLED"
-                          : "COMPLETED",
+                      cancelled ? "CANCELLED" : "COMPLETED",
                       asset,
                       write(result.metadata()),
                       t.get("id"))

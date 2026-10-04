@@ -57,6 +57,14 @@ export function BulkWorkspace({kind}: {kind: Kind}) {
     const key=actionKeys.current.get(identity) ?? crypto.randomUUID();actionKeys.current.set(identity,key);
     action.mutate({scope, id, action: verb, key});
   };
+  const preview = useQuery({queryKey: ['bulk', 'preview', file?.name, file?.size, file?.lastModified], enabled: !!file,
+    queryFn: async () => {
+      if (!file) return null;
+      const form = new FormData(); form.append('archive', file);
+      const res = await fetch('/api/v1/bulk/preview', {method: 'POST', body: form}).catch(() => null);
+      if (!res || !res.ok) return null;
+      return res.json() as Promise<{totalTasks: number; validTasks: number; invalidTasks: number; referenceCount: number; sampleTasks: string[]}>;
+    }});
   const problem = [projects, capabilities, history, batch, tasks, detail].find(q => q.error)?.error;
   const d = detail.data, b = batch.data;
   return <div className="bulk-workspace">
@@ -70,6 +78,10 @@ export function BulkWorkspace({kind}: {kind: Kind}) {
       <label>Resolution<select value={size} onChange={e=>{setSize(e.target.value);changePlan();}}>{(video ? config?.capabilities?.resolutions ?? ['1280:720','720:1280','1920:1080','1080:1920'] : (config?.capabilities?.supportedSizes?.length ? config.capabilities.supportedSizes.map((s:string)=>s.replace('x',':')) : ['1024:1024','1024:1536','1536:1024'])).map((s:string)=><option key={s} value={s}>{s.replace(':',' × ')}</option>)}</select></label>
       {video ? <label>Duration<select value={duration} onChange={e=>{setDuration(Number(e.target.value));changePlan();}}>{(config?.capabilities?.durations ?? [4,6,8]).map((n:number)=><option key={n} value={n}>{n} seconds</option>)}</select></label> : <><label>Quality<select value={quality} onChange={e=>{setQuality(e.target.value);changePlan();}}>{(config?.capabilities?.supportedQualities ?? ['AUTO','LOW','MEDIUM','HIGH']).map((q:string)=><option key={q}>{q}</option>)}</select></label><label>Format<select value={format} onChange={e=>{setFormat(e.target.value);if(e.target.value!=='PNG')setTransparent(false);changePlan();}}>{(config?.capabilities?.supportedFormats ?? ['PNG','JPEG']).map((f:string)=><option key={f}>{f}</option>)}</select></label><label>Outputs per task<input value="1" readOnly aria-label="Outputs per task"/><small>Current operation supports one original.</small></label><label className="bulk-check"><input type="checkbox" disabled={!config?.capabilities?.supportsTransparentBackground || format!=='PNG'} checked={transparent} onChange={e=>{setTransparent(e.target.checked);changePlan();}}/> Transparent background</label></>}
     </div><label className="bulk-drop"><Archive size={27}/><strong>{file?.name ?? 'Choose a task archive'}</strong><span>ZIP · up to 100 MiB · up to 1,000 tasks</span><input aria-label="Task ZIP archive" type="file" accept=".zip,application/zip" onChange={e=>{setFile(e.target.files?.[0]);changePlan();}}/></label>
+    {preview.data && <div className="bulk-preview-summary">
+      <strong>Archive Analysis:</strong> {preview.data.totalTasks} tasks detected ({preview.data.validTasks} valid, {preview.data.invalidTasks} invalid, {preview.data.referenceCount} reference images).
+      <p>Provider: <strong>{provider}</strong> · Model: <strong>{chosenModel}</strong> · Expected generations: <strong>{preview.data.validTasks}</strong></p>
+    </div>}
     <p className="bulk-help">Each folder contains task.md and optional PNG/JPEG references. Alternatively, use one .md or .txt file per task at the archive root. {video ? 'Gemini supports up to three references with an 8-second duration.' : 'The current GPT generation operation does not support references; such tasks are marked invalid without blocking the rest.'}</p>
     {real && <label className="bulk-check"><input type="checkbox" checked={paid} onChange={e=>setPaid(e.target.checked)}/> I authorize paid generation for every valid task in this archive. Final cost may be unavailable before execution.</label>}
     <button className="primary" disabled={upload.isPending || !file || !project || !config?.enabled || (real && !paid)} onClick={()=>upload.mutate()}>{upload.isPending?'Validating archive…':'Import & queue tasks'}</button></section>
