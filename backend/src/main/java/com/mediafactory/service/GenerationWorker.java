@@ -55,6 +55,8 @@ public class GenerationWorker implements AutoCloseable {
   private final TechnicalQa qa;
   @org.springframework.beans.factory.annotation.Autowired
   private com.mediafactory.feedback.FeedbackBudgetGuard feedbackBudget;
+  @org.springframework.beans.factory.annotation.Autowired
+  private com.mediafactory.skills.SkillBudgetGuard skillBudget;
   private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
   private final AtomicInteger running = new AtomicInteger();
 
@@ -167,6 +169,11 @@ public class GenerationWorker implements AutoCloseable {
         schedule(job, Duration.ofMinutes(1), false, "Feedback experiment paused by approval, budget or safety guard");
         return;
       }
+      if (skillBudget != null && !skillBudget.reserve(generationId, (UUID) job.get("id"), hop.provider(), hop.model())) {
+        if (feedbackBudget != null) feedbackBudget.release((UUID) job.get("id"));
+        schedule(job, Duration.ofMinutes(1), false, "Skill execution paused by admission guard");
+        return;
+      }
       attempt = attempts.start(job, hop.provider(), hop.model());
       started = System.nanoTime();
       if (attempt.number() == 1) {
@@ -229,6 +236,7 @@ public class GenerationWorker implements AutoCloseable {
       }
     } finally {
       if (feedbackBudget != null && attempt != null) feedbackBudget.release((UUID) job.get("id"));
+      if (skillBudget != null && attempt != null) skillBudget.release((UUID) job.get("id"));
       limiter.release(permit);
     }
   }

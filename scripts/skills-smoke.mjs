@@ -1,0 +1,23 @@
+import {MediaFactoryClient} from '../skills/_shared/client.mjs';
+import {randomUUID} from 'node:crypto';
+import {mkdir,writeFile} from 'node:fs/promises';
+const client=new MediaFactoryClient();
+const stamp=randomUUID(); const report={startedAt:new Date().toISOString(),executions:[]};
+const get=path=>client.request(path);
+const post=(path,body)=>client.request(path,{method:'POST',body});
+async function wait(read,accept,label,timeout=600000){const end=Date.now()+timeout;let previous;while(Date.now()<end){const state=await read();if(state.status!==previous){console.log(`${label}: ${state.status}`);previous=state.status;}if(accept(state))return state;if(['FAILED','PARTIALLY_COMPLETED','CANCELLED'].includes(state.status))throw new Error(`${label}: ${state.status} ${state.error_code??state.failure_code??''}`);await new Promise(r=>setTimeout(r,3000));}throw new Error(`${label}: timeout`);}
+async function execute(name,input,collectionId){const request={skillName:name,operationId:`smoke:${stamp}:${report.executions.length}`,projectId:report.projectId,input,...(collectionId?{collectionId}:{})};const plan=await client.plan(request);const replay=await client.plan(request);if(plan.id!==replay.id||plan.status!=='PLANNED')throw new Error('Planning/replay failed');report.executions.push({id:plan.id,skill:name});await client.action(plan.id,'start','Explicit TASK-12 free mock acceptance fixture');return plan;}
+async function finish(id,label){return wait(()=>client.status(id),s=>s.status==='COMPLETED'||s.status==='WAITING_FOR_APPROVAL',label);}
+try{
+ const providers=await get('/api/v1/providers/image');if(!providers.some(p=>p.default&&p.id==='mock'))throw new Error('Default image provider must be mock');
+ const project=await post('/api/projects',{name:`TASK-12 acceptance ${stamp.slice(0,8)}`,description:'Isolated free mock fixture; no publication'});report.projectId=project.id;
+ const research=await execute('research-trends',{topic:'Acceptance fixture, not a trend claim',mediaType:'WALLPAPER',directions:[{name:'Celestial geometry',description:'Synthetic acceptance fixture for provenance only',evidence:[{source:'Reserved example domain',url:'https://example.org/',sourceType:'TEST_FIXTURE',observedAt:new Date().toISOString(),observation:'Synthetic fixture; not evidence of market popularity'}]}]});
+ const researchDone=await finish(research.id,'research');const candidate=researchDone.result_summary.candidateIds[0];
+ const collection=await execute('create-collection',{name:'Celestial geometry fixture',slug:`skills-${stamp}`,mediaType:'WALLPAPER',theme:'Celestial geometry',style:'Minimal cinematic illustration',amoled:false,generate:false,trendCandidateId:candidate,concepts:[{name:'Orbital geometry',prompt:`Stock illustration: A crisp luminous geometric orbital sculpture on deep indigo, structured detailed lighting and ample negative space, fixture ${stamp}`} ]});
+ const collectionDone=await finish(collection.id,'collection');report.collectionId=collectionDone.collection_id;
+ const production=await execute('create-wallpapers',{profile:'ANDROID_STANDARD',targetCount:1,generate:true,provider:'mock',model:'studio-mock-v1',exportPackage:true,metadata:{title:'Orbital geometry fixture',slug:`orbital-${stamp}`,tags:['abstract','space'],category:'Space',premium:false,featured:false}},report.collectionId);
+ const result=await finish(production.id,'wallpapers');report.wallpapers=result;
+ if(result.status==='WAITING_FOR_APPROVAL'){for(const item of result.items.filter(i=>i.resource_type==='wallpaper_productions')){const domain=await get(`/api/v1/wallpaper-productions/${item.resource_id}`);if(domain.failure_code==='STAGE_FAILED')throw new Error('Wallpaper stage failed; not a human approval gate');}report.outcome='HUMAN_GATE_VERIFIED';console.log('Human gate retained; no automatic approval or publication');}
+ else {report.outcome='WALLPAPER_EXPORT_COMPLETED';const exported=result.items.find(i=>i.resource_type==='wallpaper_exports');if(!exported)throw new Error('Missing export');const exports=await get('/api/v1/wallpaper-exports');const archive=exports.find(e=>e.id===exported.resource_id);report.download=await client.downloadExport('wallpaper',archive.id,'storage/data/skills-verification',`${stamp}.zip`,archive.sha256);}
+} catch(error){report.outcome='FAILED';report.error=error.message;process.exitCode=1;console.error(error.message);}
+finally{await mkdir('storage/data/skills-verification',{recursive:true});await writeFile(`storage/data/skills-verification/${stamp}.json`,JSON.stringify(report,null,2));console.log(`Evidence: storage/data/skills-verification/${stamp}.json`);}

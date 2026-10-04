@@ -214,3 +214,7 @@ Open **Feedback** to extract versioned visual attributes, freeze historical coho
 Run `./scripts/test-feedback-backend.ps1 -All`, then frontend tests/builds. Set `FEEDBACK_BENCHMARK=true` to include the 100,000-asset Testcontainers benchmark. After rebuilding Compose with the GPU overlay, run `node e2e/feedback-api-smoke.mjs` and `node e2e/feedback-smoke.mjs` from `frontend`.
 
 See [setup and API](docs/feedback-engine.md), [statistics](docs/feedback-statistics.md), [registered protocols](docs/experiment-proposals.md), and [verification and limitations](docs/task-11-report.md). Online experiments currently target the image generation pipeline; specialized factory cohorts support historical/offline evaluation. Human review and ordinary publication gates remain required.
+
+## Codex operational workflows
+
+TASK-12 skill setup, API execution, human gates and verification are documented in [Codex skills](docs/codex-skills.md). Install the five canonical repository skills with `powershell -File scripts/install-media-factory-skills.ps1`. See the testing guide for current verification limits.

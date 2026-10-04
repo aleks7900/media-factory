@@ -1,0 +1,6 @@
+interface:
+  display_name: "Create Wallpapers"
+  short_description: "Produce Android wallpaper variants and packages"
+  default_prompt: "Use $create-wallpapers for the selected Media Factory project."
+policy:
+  allow_implicit_invocation: true

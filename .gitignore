@@ -10,3 +10,6 @@ storage/data/
 frontend/test-results/
 **/__pycache__/
 *.pyc
+
+# Generated repository skill copies; canonical sources live in skills/.
+.agents/skills/

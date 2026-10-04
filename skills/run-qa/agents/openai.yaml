@@ -1,0 +1,6 @@
+interface:
+  display_name: "Run Qa"
+  short_description: "Evaluate Media Factory assets with existing QA"
+  default_prompt: "Use $run-qa for the selected Media Factory project."
+policy:
+  allow_implicit_invocation: true

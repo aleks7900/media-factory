@@ -1,0 +1,6 @@
+interface:
+  display_name: "Create Collection"
+  short_description: "Create diversified Media Factory collections"
+  default_prompt: "Use $create-collection for the selected Media Factory project."
+policy:
+  allow_implicit_invocation: true

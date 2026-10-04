@@ -1,0 +1,5 @@
+# Create wallpapers
+
+Select an existing wallpaper collection and versioned production profile. Either generate from conceptIds/targetCount or set processOnly with explicit approved assetIds in that collection. AMOLED and device profiles must match the frozen profile. Reuse requires the profile current QA policy. Existing services create master, device variants, preview, thumbnail, AMOLED analysis and publication preparation. publishToBackend is a request to wait for explicit publication, not permission to bypass human approval. exportPackage uses the existing checksum-verified export. Specialized experiment enrollment is explicitly rejected until attribution can be preserved. The Android adapter remains a future boundary; mock and DRY_RUN flows are available through the existing publication API.
+
+Read [`skills/create-wallpapers/SKILL.md`](../../skills/create-wallpapers/SKILL.md), its input reference and five examples. Use the shared plan/start/monitor/resume protocol in the [overview](../codex-skills.md).
