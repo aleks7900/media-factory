@@ -35,11 +35,13 @@ import {VideoWorkspace} from './VideoWorkspace';
 import {AnalyticsWorkspace} from './AnalyticsWorkspace';
 import {FeedbackWorkspace} from './FeedbackWorkspace';
 import {BulkWorkspace} from './BulkWorkspace';
+import {PublishingWorkspace} from './PublishingWorkspace';
 
 const pages = ['Dashboard', 'Collections', 'Generation Queue', 'Assets', 'Review', 'Providers', 'Costs', 'Settings', 'Processing', 'Wallpaper Factory', 'Stock Factory', 'Video Factory', 'Analytics', 'Feedback', 'Bulk Gemini Video', 'Bulk GPT Image'] as const;
 const promptPages = ['Prompt Library', 'Prompt Editor', 'Prompt History', 'Presets', 'Experiments'] as const;
 const similarityPages = ['Duplicate Review', 'Similarity Explorer', 'Collection Diversity', 'Embedding Jobs'] as const;
-type Page = typeof pages[number] | typeof promptPages[number] | typeof similarityPages[number];
+const publishingPages = ['TikTok Publishing'] as const;
+type Page = typeof pages[number] | typeof promptPages[number] | typeof similarityPages[number] | typeof publishingPages[number];
 const icons = [LayoutDashboard, Layers3, ListVideo, Images, ScanEye, Plug, CircleDollarSign, Settings, Sparkles, Images, Layers3, ListVideo, Activity, Sparkles, ListVideo, Images];
 const labels: Record<string, string> = {
   generated_today: 'Generated today',
@@ -118,6 +120,10 @@ export function App() {
       <nav>{promptPages.map(name => <button key={name} className={page === name ? 'selected' : ''}
                                             onClick={() => setPage(name)}><Layers3 size={18}/>{name}
       </button>)}</nav>
+      <div className="nav-label">PUBLISHING</div>
+      <nav>{publishingPages.map(name => <button key={name} className={page === name ? 'selected' : ''}
+                                                onClick={() => setPage(name)}><ListVideo size={18}/>TikTok
+      </button>)}</nav>
       <div className="aside-bottom">
         <div className="nav-label">SIMILARITY</div>
         <nav>{similarityPages.map(name => <button key={name}
@@ -135,7 +141,7 @@ export function App() {
     </aside>
     <main>
       <header>
-        <div className="breadcrumb">Workspace <ChevronRight size={13}/> <span>{page}</span></div>
+        <div className="breadcrumb">Workspace <ChevronRight size={13}/> <span>{page === 'TikTok Publishing' ? 'Publishing → TikTok' : page}</span></div>
         <div className="header-right"><span
             className="environment">● {realEnabled ? 'LIVE PROVIDERS ENABLED' : 'MOCK ENVIRONMENT'}</span>
           <div className="avatar">MF</div>
@@ -162,6 +168,9 @@ export function App() {
         </div>}
         {page === 'Dashboard' && <>
           <div className="bulk-entry-cards">
+            <button onClick={() => setPage('TikTok Publishing')}><ListVideo size={24}/><strong>TikTok
+              Publishing</strong><span>Bulk upload ZIP and publish directly to TikTok API v2.</span><b>Publish
+              Videos →</b></button>
             <button onClick={() => setPage('Bulk Gemini Video')}><ListVideo size={24}/><strong>Bulk
               Gemini
               Video</strong><span>Turn a ZIP of prompts and references into a video queue.</span><b>Upload
@@ -229,6 +238,7 @@ export function App() {
         {page === 'Feedback' && <FeedbackWorkspace/>}
         {page === 'Bulk Gemini Video' && <BulkWorkspace key="bulk-video" kind="GEMINI_VIDEO"/>}
         {page === 'Bulk GPT Image' && <BulkWorkspace key="bulk-image" kind="GPT_IMAGE"/>}
+        {page === 'TikTok Publishing' && <PublishingWorkspace/>}
         {page === 'Wallpaper Factory' && <WallpaperWorkspace onProcess={(id, profiles) => {
           setProcessingAsset(id);
           setProcessingProfiles(profiles);

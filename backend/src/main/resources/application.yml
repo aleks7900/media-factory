@@ -140,3 +140,28 @@ bulk:
     max-ratio: ${BULK_ZIP_MAX_RATIO:200}
     max-prompt-bytes: ${BULK_ZIP_MAX_PROMPT:40000}
     max-image-pixels: ${BULK_ZIP_MAX_PIXELS:40000000}
+tiktok:
+  enabled: ${TIKTOK_ENABLED:false}
+  client-key: ${TIKTOK_CLIENT_KEY:}
+  client-secret: ${TIKTOK_CLIENT_SECRET:}
+  redirect-uri: ${TIKTOK_REDIRECT_URI:http://localhost:3000/publishing/tiktok/callback}
+  api-base-url: ${TIKTOK_API_BASE_URL:https://open.tiktokapis.com}
+  auth-url: ${TIKTOK_AUTH_URL:https://www.tiktok.com/v2/auth/authorize/}
+  mock-scenario: ${TIKTOK_MOCK_SCENARIO:SUCCESS}
+  rpm-limit: ${TIKTOK_RPM_LIMIT:6}
+  max-attempts: ${TIKTOK_MAX_ATTEMPTS:5}
+publishing:
+  worker:
+    enabled: ${PUBLISHING_WORKER_ENABLED:true}
+    concurrency: ${PUBLISHING_WORKER_CONCURRENCY:2}
+    max-attempts: ${PUBLISHING_WORKER_MAX_ATTEMPTS:5}
+    poll-ms: ${PUBLISHING_WORKER_POLL_MS:1000}
+    retry:
+      initial-delay-ms: ${PUBLISHING_RETRY_INITIAL_DELAY_MS:2000}
+      max-delay-ms: ${PUBLISHING_RETRY_MAX_DELAY_MS:60000}
+  zip:
+    max-archive-bytes: ${PUBLISHING_ZIP_MAX_ARCHIVE:104857600}
+    max-extracted-bytes: ${PUBLISHING_ZIP_MAX_EXTRACTED:536870912}
+    max-entry-bytes: ${PUBLISHING_ZIP_MAX_ENTRY:104857600}
+    max-files: ${PUBLISHING_ZIP_MAX_FILES:500}
+    max-tasks: ${PUBLISHING_ZIP_MAX_TASKS:200}

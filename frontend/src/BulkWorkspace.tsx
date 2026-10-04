@@ -257,6 +257,19 @@ export function BulkWorkspace({kind}: { kind: Kind }) {
       <button className="primary"
               disabled={upload.isPending || !file || !project || !config?.enabled || (real && !paid)}
               onClick={() => upload.mutate()}>{upload.isPending ? 'Validating archive…' : 'Import & queue tasks'}</button>
+      {(!project || !file || !config?.enabled || (real && !paid)) && (
+        <p className="bulk-help" style={{color: '#f59e0b', margin: '0.5rem 0 0 0'}}>
+          {!project
+            ? '⚠️ Please select a Project from the dropdown above.'
+            : !file
+              ? '⚠️ Please choose a task ZIP archive to upload.'
+              : !config?.enabled
+                ? `⚠️ Provider "${provider}" is not configured or enabled in .env.`
+                : real && !paid
+                  ? '⚠️ Please check the authorization box above to approve paid generation.'
+                  : null}
+        </p>
+      )}
     </section>
     <section className="panel">
       <div className="bulk-bar"><h3>Batch history</h3><input aria-label="Search batches"
