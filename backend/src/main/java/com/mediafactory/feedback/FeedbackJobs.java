@@ -9,6 +9,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class FeedbackJobs {
+
   private final FeedbackStore store;
   private final TransactionTemplate tx;
   private final VisualFeatureService features;
@@ -98,7 +99,9 @@ public class FeedbackJobs {
                               + " limit 1")
                       .query()
                       .listOfRows();
-              if (rows.isEmpty()) return null;
+              if (rows.isEmpty()) {
+                return null;
+              }
               var row = rows.getFirst();
               UUID token = UUID.randomUUID();
               row.put("lease_token", token);
@@ -112,7 +115,9 @@ public class FeedbackJobs {
                   .update();
               return row;
             });
-    if (job == null) return;
+    if (job == null) {
+      return;
+    }
     long started = System.nanoTime();
     try {
       tx.executeWithoutResult(
@@ -126,7 +131,9 @@ public class FeedbackJobs {
                     .params(job.get("id"), job.get("lease_token"))
                     .query()
                     .listOfRows();
-            if (locked.isEmpty()) return;
+            if (locked.isEmpty()) {
+              return;
+            }
             var p = map(job.get("payload"));
             Object result =
                 switch (job.get("type").toString()) {
@@ -134,9 +141,8 @@ public class FeedbackJobs {
                   case "DATASET_BUILD" -> Map.of("runId", datasets.build(p));
                   case "PATTERN_ANALYSIS" -> patterns.analyze(p);
                   case "SATURATION_ANALYSIS" -> saturation.analyze(p);
-                  case "HYPOTHESIS_GENERATION" ->
-                      hypotheses.generate(
-                          uuid(p, "findingId"), Objects.toString(p.get("intent"), "EXPLOITATION"));
+                  case "HYPOTHESIS_GENERATION" -> hypotheses.generate(
+                      uuid(p, "findingId"), Objects.toString(p.get("intent"), "EXPLOITATION"));
                   case "EXPERIMENT_GENERATION" -> proposals.generate(uuid(p, "experimentId"));
                   default -> results.analyze(uuid(p, "experimentId"));
                 };
@@ -176,7 +182,9 @@ public class FeedbackJobs {
 
   private Object extractBatch(Map<String, Object> p) {
     String version = Objects.toString(p.get("extractorVersion"), "visual-v1");
-    if (p.containsKey("assetId")) return features.extract(uuid(p, "assetId"), version);
+    if (p.containsKey("assetId")) {
+      return features.extract(uuid(p, "assetId"), version);
+    }
     UUID collection = uuid(p, "collectionId");
     String from = Objects.toString(p.get("from"), "1970-01-01T00:00:00Z"),
         to = Objects.toString(p.get("to"), java.time.Instant.now().toString());
@@ -192,7 +200,9 @@ public class FeedbackJobs {
             .params(collection, from, to, version)
             .query(UUID.class)
             .list();
-    for (UUID id : ids) features.extract(id, version);
+    for (UUID id : ids) {
+      features.extract(id, version);
+    }
     boolean more = ids.size() == 25;
     if (more) {
       var next = new LinkedHashMap<>(p);

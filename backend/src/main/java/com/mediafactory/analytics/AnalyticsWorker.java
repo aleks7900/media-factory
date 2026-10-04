@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(name = "media.worker.enabled", havingValue = "true", matchIfMissing = true)
 public class AnalyticsWorker {
+
   private final AnalyticsJobs jobs;
 
   public AnalyticsWorker(AnalyticsJobs jobs) {

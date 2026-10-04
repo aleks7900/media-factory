@@ -15,6 +15,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class AnalyticsImportService {
+
   private final JdbcClient db;
   private final AnalyticsIngestionService ingestion;
   private final TransactionTemplate tx;
@@ -31,15 +32,6 @@ public class AnalyticsImportService {
     this.metrics = metrics;
   }
 
-  /** Column names are supplied by the platform mapping profile, not hardcoded in ingestion. */
-  public record Request(
-      String source,
-      String platform,
-      String filename,
-      String csv,
-      Map<String, String> columns,
-      String createdBy) {}
-
   static String hash(String s) {
     try {
       return HexFormat.of()
@@ -55,10 +47,12 @@ public class AnalyticsImportService {
     AnalyticsIngestionService.required(r.platform(), "platform", 100);
     AnalyticsIngestionService.required(r.filename(), "filename", 300);
     AnalyticsIngestionService.required(r.createdBy(), "createdBy", 100);
-    if (r.csv() == null || r.csv().length() > 2_000_000 || r.columns() == null)
+    if (r.csv() == null || r.csv().length() > 2_000_000 || r.columns() == null) {
       throw new IllegalArgumentException("CSV/profile missing or CSV exceeds 2 MB");
-    if (!r.columns().keySet().containsAll(Set.of("externalId", "type", "value", "occurredAt")))
+    }
+    if (!r.columns().keySet().containsAll(Set.of("externalId", "type", "value", "occurredAt"))) {
       throw new IllegalArgumentException("Mapping requires externalId, type, value, occurredAt");
+    }
     String checksum = hash(r.csv());
     return tx.execute(
         status -> {
@@ -75,9 +69,10 @@ public class AnalyticsImportService {
                     .param(existing.get())
                     .query()
                     .singleRow();
-            if (!map(saved.get("profile")).equals(r.columns()))
+            if (!map(saved.get("profile")).equals(r.columns())) {
               throw new IllegalArgumentException(
                   "This CSV was already validated with a different mapping profile");
+            }
             return detail(existing.get());
           }
           UUID id = UUID.randomUUID();
@@ -104,13 +99,15 @@ public class AnalyticsImportService {
                   .get()
                   .parse(new StringReader(r.csv().replaceFirst("^\\uFEFF", "")))) {
             for (var record : parser) {
-              if (++count > 10000)
+              if (++count > 10000) {
                 throw new IllegalArgumentException("Maximum 10000 rows per import");
+              }
               Map<String, Object> normalized = new LinkedHashMap<>();
               String rowStatus = "VALID", error = null;
               try {
-                for (var mapping : r.columns().entrySet())
+                for (var mapping : r.columns().entrySet()) {
                   normalized.put(mapping.getKey(), record.get(mapping.getValue()));
+                }
                 normalized.put("source", r.source());
                 normalized.put("platform", r.platform());
                 normalized.put("createdBy", r.createdBy());
@@ -126,11 +123,13 @@ public class AnalyticsImportService {
                 ingestion.validate(event);
                 if (!seen.add(event.deduplicationKey())
                     || db.sql(
-                            "select exists(select 1 from performance_metrics where source=? and"
-                                + " deduplication_key=?)")
-                        .params(event.source(), event.deduplicationKey())
-                        .query(Boolean.class)
-                        .single()) rowStatus = "DUPLICATE";
+                        "select exists(select 1 from performance_metrics where source=? and"
+                            + " deduplication_key=?)")
+                    .params(event.source(), event.deduplicationKey())
+                    .query(Boolean.class)
+                    .single()) {
+                  rowStatus = "DUPLICATE";
+                }
               } catch (Unmapped e) {
                 rowStatus = "UNMAPPED";
                 error = e.getMessage();
@@ -145,10 +144,12 @@ public class AnalyticsImportService {
                   .params(id, count, write(normalized), rowStatus, error)
                   .update();
               metrics.counter("media_factory_analytics_import_rows_total").increment();
-              if (rowStatus.equals("INVALID"))
+              if (rowStatus.equals("INVALID")) {
                 metrics.counter("media_factory_analytics_import_errors_total").increment();
-              if (rowStatus.equals("UNMAPPED"))
+              }
+              if (rowStatus.equals("UNMAPPED")) {
                 metrics.counter("media_factory_analytics_unmapped_total").increment();
+              }
             }
           } catch (java.io.IOException e) {
             throw new IllegalArgumentException("Invalid CSV", e);
@@ -219,7 +220,9 @@ public class AnalyticsImportService {
                       .param(row.get("id"))
                       .query()
                       .singleRow();
-              if (Set.of("IMPORTED", "DUPLICATE").contains(locked.get("status"))) return;
+              if (Set.of("IMPORTED", "DUPLICATE").contains(locked.get("status"))) {
+                return;
+              }
               var result = ingestion.event(resolve(map(locked.get("normalized"))));
               db.sql("update analytics_import_rows set status=?,event_id=?,error=null where id=?")
                   .params(
@@ -243,11 +246,11 @@ public class AnalyticsImportService {
     }
     db.sql(
             """
-            update analytics_import_batches b set status='COMPLETED',completed_at=now(),
-             rows_imported=(select count(*) from analytics_import_rows where batch_id=b.id and status='IMPORTED'),
-             rows_skipped=(select count(*) from analytics_import_rows where batch_id=b.id and status='DUPLICATE'),
-             rows_failed=(select count(*) from analytics_import_rows where batch_id=b.id and status in ('INVALID','UNMAPPED')) where id=?
-            """)
+                update analytics_import_batches b set status='COMPLETED',completed_at=now(),
+                 rows_imported=(select count(*) from analytics_import_rows where batch_id=b.id and status='IMPORTED'),
+                 rows_skipped=(select count(*) from analytics_import_rows where batch_id=b.id and status='DUPLICATE'),
+                 rows_failed=(select count(*) from analytics_import_rows where batch_id=b.id and status in ('INVALID','UNMAPPED')) where id=?
+                """)
         .param(id)
         .update();
     return detail(id);
@@ -287,7 +290,21 @@ public class AnalyticsImportService {
         .listOfRows();
   }
 
+  /**
+   * Column names are supplied by the platform mapping profile, not hardcoded in ingestion.
+   */
+  public record Request(
+      String source,
+      String platform,
+      String filename,
+      String csv,
+      Map<String, String> columns,
+      String createdBy) {
+
+  }
+
   private static class Unmapped extends IllegalArgumentException {
+
     Unmapped(String s) {
       super(s);
     }

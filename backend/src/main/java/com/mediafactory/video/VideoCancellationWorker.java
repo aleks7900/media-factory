@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(name = "media.worker.enabled", havingValue = "true", matchIfMissing = true)
 public class VideoCancellationWorker {
+
   final VideoProductionService s;
   final VideoWorkerClient worker;
 
@@ -49,10 +50,11 @@ public class VideoCancellationWorker {
             .query()
             .listOfRows()) {
       try {
-        if (a.get("provider_job_id") != null)
+        if (a.get("provider_job_id") != null) {
           s.router
               .provider(a.get("provider").toString())
               .cancel(a.get("provider_job_id").toString());
+        }
         s.db
             .sql(
                 "update video_generation_attempts set"

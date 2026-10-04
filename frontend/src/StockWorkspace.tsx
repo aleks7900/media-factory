@@ -1,57 +1,533 @@
 import {useState} from 'react';
-import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';
-import {ArrowUpRight,Check,Download,Layers3,Plus,Search,SlidersHorizontal,Sparkles,X} from 'lucide-react';
+import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
+import {
+  ArrowUpRight,
+  Check,
+  Download,
+  Layers3,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Sparkles,
+  X
+} from 'lucide-react';
 import {api} from './api';
 import './stock.css';
 
-type Keyword={value:string;normalizedValue?:string;rank?:number;source?:string;confidence?:number};
-type Metadata={title:string;description:string;keywords:Keyword[];categories:string[];contentType:string;aiGenerated:boolean;riskFlags?:string[]};
-type Issue={field:string;code:string;severity:string;value:string};
-type Version={id:string;version:number;source:string;lifecycle:string;created_at:string;data:Metadata;validation:{status:string;issues:Issue[]}};
-type Production={id:string;concept_id:string;collection_id:string;revision:number;status:string;source_asset_id?:string;thumbnail_id?:string;metadata?:Metadata;metadataVersions?:Version[];failure_code?:string;variant?:{id:string;width:number;height:number;format:string;size_bytes:number};qa?:{final_decision:string};similarity?:{final_classification:string;explanation:string}[];technical?:{result:{valid:boolean;checks:{type:string;status:string;actual:unknown;required:unknown}[]}}[];events?:unknown[];exports?:unknown[]};
-type Export={id:string;profile_key:string;version:number;status:string;asset_count:number;failure_code?:string;created_at:string;completed_at?:string;validation:unknown;manifest:unknown};
-type Profile={id:string;profile_key:string;version:number;definition:Record<string,unknown>&{enabled?:boolean}};
-type Collection={id:string;name:string;production_status?:string};
-type Progress={attempts:number;ready:number;review:number;rejected:number;plan:{status?:string;revision:number;target_approved?:number;failure_reason?:string};costs:{currency:string;total:number;cost_per_ready?:number}[];diversity:unknown};
-const stages=['All candidates','Metadata review','Ready for export','Exported','Failures'] as const;
-const categories=['ANIMALS','TECHNOLOGY','NATURE','BUSINESS','PEOPLE','ABSTRACT','FOOD','TRAVEL','SCIENCE'];
-export function StockWorkspace({onQaReview}:{onQaReview?:()=>void}={}){
- const client=useQueryClient();const [tab,setTab]=useState('Factory'),[filter,setFilter]=useState<string>('All candidates'),[query,setQuery]=useState(''),[collection,setCollection]=useState(''),[concept,setConcept]=useState(''),[profile,setProfile]=useState('STOCK_GENERIC');
- const [selected,setSelected]=useState<string[]>([]),[detail,setDetail]=useState(''),[editing,setEditing]=useState<Metadata>(),[notice,setNotice]=useState(''),[ack,setAck]=useState(false),[compare,setCompare]=useState(''),[keyword,setKeyword]=useState(''),[dragged,setDragged]=useState<number>();
- const [project,setProject]=useState(''),[title,setTitle]=useState(''),[direction,setDirection]=useState(''),[target,setTarget]=useState(10),[exportProfile,setExportProfile]=useState('GENERIC_CSV'),[policy,setPolicy]=useState('STRICT'),[incremental,setIncremental]=useState(false),[exportDetail,setExportDetail]=useState<unknown>();
- const useData=<T,>(path:string)=>useQuery({queryKey:[path],queryFn:()=>api<T>(path),refetchInterval:5000});
- const productions=useData<Production[]>('/v1/stock-productions'),collections=useData<Collection[]>('/v1/stock-collections'),profiles=useData<Profile[]>('/v1/stock-profiles'),exportProfiles=useData<Profile[]>('/v1/stock-export-profiles'),exports=useData<Export[]>('/v1/stock-exports');
- const dashboard=useData<Record<string,number|{currency:string;total:number;cost_per_ready?:number}[]>>('/v1/stock-dashboard'),projects=useData<{id:string;name:string}[]>('/projects'),concepts=useData<{id:string;name:string;collection_id:string}[]>('/concepts');
- const details=useQuery({queryKey:['stock-detail',detail],queryFn:()=>api<Production>(`/v1/stock-productions/${detail}`),enabled:!!detail,refetchInterval:3000});
- const progress=useQuery({queryKey:['stock-progress',collection],queryFn:()=>api<Progress>(`/v1/stock-collections/${collection}/production-status`),enabled:!!collection,refetchInterval:5000});
- const action=useMutation({mutationFn:async(fn:()=>Promise<unknown>)=>fn(),onSuccess:()=>{client.invalidateQueries();setNotice('Saved');},onError:e=>setNotice(e.message)});
- const run=(fn:()=>Promise<unknown>)=>action.mutate(fn);const post=(path:string,body:unknown={})=>api(path,body,crypto.randomUUID());
- const rows=productions.data??[],current=details.data,latest=current?.metadataVersions?.[0];
- const visible=rows.filter(r=>(!collection||r.collection_id===collection)&&(!query||(r.metadata?.title??r.id).toLowerCase().includes(query.toLowerCase()))&&(filter==='All candidates'||filter==='Metadata review'&&r.status==='METADATA_REVIEW'||filter==='Ready for export'&&r.status==='READY_FOR_EXPORT'||filter==='Exported'&&r.status==='EXPORTED'||filter==='Failures'&&/FAILED|REJECTED/.test(r.status)));
- const uniqueProfiles=(profiles.data??[]).filter((p,i,a)=>a.findIndex(x=>x.profile_key===p.profile_key)===i);
- const moveKeyword=(from:number,to:number)=>setEditing(d=>{if(!d||to<0||to>=d.keywords.length)return d;const k=[...d.keywords];k.splice(to,0,k.splice(from,1)[0]);return {...d,keywords:k};});
- const bulk=(approve:boolean)=>run(async()=>{const outcomes=await Promise.allSettled(selected.map(async id=>{const p=await api<Production>(`/v1/stock-productions/${id}`);return post(`/v1/stock-productions/${id}/${approve?'approve':'reject'}`,{revision:p.revision,acknowledgeWarnings:ack});}));const failures=outcomes.filter(r=>r.status==='rejected');if(failures.length)throw Error(`${outcomes.length-failures.length} saved; ${failures.length} failed. ${(failures[0] as PromiseRejectedResult).reason.message}`);});
- const createExport=(forCollection=false)=>run(()=>post('/v1/stock-exports',{profile:exportProfile,...forCollection?{collectionId:collection}:{stockProductionIds:selected},incremental,policy}));
- return <div className="stock-workspace">
-  <section className="stock-hero"><div><span className="eyebrow">STOCK FACTORY / CURATE · REFINE · EXPORT</span><h2>From an idea to a ready collection.</h2><p>Visible content. Considered keywords. Every file accounted for.</p><div className="stock-hero-tags"><span>VERSIONED METADATA</span><span>HUMAN APPROVED</span><span>IMMUTABLE EXPORTS</span></div></div><div className="stock-mark"><Layers3 size={56}/><small>CRAFT OVER VOLUME</small></div></section>
-  <div className="stock-kpis">{[['Generated today','generated_today'],['Stock-ready today','stock_ready_today'],['Metadata pending','metadata_pending'],['Ready for export','ready_for_export'],['Exported today','exported_today'],['Candidates','candidates'],['Processing','processing'],['Metadata review','metadata_review'],['Technical failures','technical_failures'],['Duplicate rejected','duplicate_rejected']].map(([label,key])=><div key={key}><small>{label}</small><b>{Number(dashboard.data?.[key]??0)}</b></div>)}</div>
-  <div className="stock-cost-summary"><span>QA rejection rate: {(Number(dashboard.data?.qa_rejection_rate??0)*100).toFixed(1)}%</span><span>Duplicate rejection rate: {(Number(dashboard.data?.duplicate_rejection_rate??0)*100).toFixed(1)}%</span>{Array.isArray(dashboard.data?.costs)&&dashboard.data.costs.map(c=><span key={c.currency}>Production: {c.total} {c.currency} · {c.cost_per_ready??'—'} per stock-ready asset</span>)}</div><div className="stock-tabs">{['Factory','Collections','Exports','Profiles'].map(t=><button className={tab===t?'selected':''} key={t} onClick={()=>setTab(t)}>{t}</button>)}</div>
-  {(notice||productions.error)&&<p role="status" className="notice">{notice||productions.error?.message}</p>}
-  {tab==='Profiles'?<div className="stock-profile-grid">{uniqueProfiles.map(p=><article className="panel" key={p.id}><h3>{p.profile_key} · v{p.version}</h3><p>{p.definition.enabled?'Enabled':'Requires platform review'}</p><pre>{JSON.stringify(p.definition,null,2)}</pre></article>)}</div>:tab==='Exports'?<section className="panel stock-export-list"><h3>Immutable export history</h3>{exports.data?.map(e=><article key={e.id}><div><b>{e.profile_key} · v{e.version}</b><small>{e.id} · {e.asset_count} assets · {new Date(e.created_at).toLocaleString()}</small><span className="badge">{e.status}</span> {e.failure_code}</div><div><button onClick={()=>run(async()=>setExportDetail(await api(`/v1/stock-exports/${e.id}`)))}>View</button><button onClick={()=>run(async()=>setExportDetail(await api(`/v1/stock-exports/${e.id}/validation`)))}>Validate</button><button onClick={()=>run(()=>post(`/v1/stock-exports/${e.id}/rebuild`))}>Rebuild as new export</button>{e.status==='READY'&&<a className="stock-download" href={`/api/v1/stock-exports/${e.id}/content`}><Download size={14}/>Download ZIP</a>}{e.status==='FAILED'&&<button onClick={()=>run(()=>post(`/v1/stock-exports/${e.id}/retry`))}>Retry storage failure</button>}</div></article>)}{!exports.data?.length&&<p>No exports yet. Select reviewed assets in the Factory.</p>}{exportDetail!==undefined&&<pre>{JSON.stringify(exportDetail,null,2)}</pre>}</section>:<div className="stock-layout"><div className="panel stock-controls"><h3><SlidersHorizontal size={16}/> Production desk</h3><label>Stock collection<select aria-label="Stock collection" value={collection} onChange={e=>{setCollection(e.target.value);setConcept('');setSelected([]);}}><option value="">All collections</option>{collections.data?.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label>Stock profile<select value={profile} onChange={e=>setProfile(e.target.value)}>{uniqueProfiles.map(p=><option key={p.id} disabled={!p.definition.enabled}>{p.profile_key}</option>)}</select></label><label>Concept<select aria-label="Stock concept" value={concept} onChange={e=>setConcept(e.target.value)}><option value="">Choose concept</option>{concepts.data?.filter(c=>c.collection_id===collection).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><button className="primary" disabled={!concept||action.isPending} onClick={()=>run(()=>post('/v1/stock-productions',{conceptId:concept,profile}))}><Sparkles size={14}/>Start stock production</button>
-   <details open={tab==='Collections'}><summary>Collection & concepts</summary><label>Project<select value={project} onChange={e=>setProject(e.target.value)}><option value="">Choose project</option>{projects.data?.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label><label>Title<input value={title} onChange={e=>setTitle(e.target.value)}/></label><button disabled={!project||!title} onClick={()=>run(()=>post('/v1/stock-collections',{projectId:project,title}))}><Plus size={14}/>New collection</button><label>Concept direction<textarea value={direction} onChange={e=>setDirection(e.target.value)}/></label><button disabled={!collection||!title||!direction} onClick={()=>run(()=>post('/concepts',{collectionId:collection,name:title,prompt:direction}))}>Add concept</button>{collection&&<><label>Target approved<input type="number" min={1} max={1000} value={target} onChange={e=>setTarget(Number(e.target.value))}/></label><p className="muted">Batches of 2 · maximum {target*2} attempts · mock budget 0 USD. Review candidates before the next batch.</p><button onClick={()=>run(()=>post(`/v1/stock-collections/${collection}/produce`,{profile,targetApproved:target,batchSize:2,maxGenerationAttempts:target*2,maxGenerationCost:0,reservedCostPerAttempt:0}))}>Start bounded plan</button>{progress.data?.plan.status&&<><p>{progress.data.plan.status} · {progress.data.plan.failure_reason}</p><button onClick={()=>run(()=>post(`/v1/stock-collections/${collection}/${progress.data?.plan.status==='RUNNING'?'pause':'resume'}`,{revision:progress.data?.plan.revision}))}>Pause / resume plan</button></>}</>}</details>
-   <details open><summary>Export settings</summary><label>Export profile<select value={exportProfile} onChange={e=>setExportProfile(e.target.value)}>{(exportProfiles.data??[]).filter((p,i,a)=>a.findIndex(x=>x.profile_key===p.profile_key)===i).map(p=><option key={p.id}>{p.profile_key}</option>)}</select></label><label>Invalid items<select aria-label="Export policy" value={policy} onChange={e=>setPolicy(e.target.value)}><option value="STRICT">STRICT · block the batch</option><option value="VALID_ONLY">VALID_ONLY · report skipped items</option></select></label><label className="stock-check"><input type="checkbox" checked={incremental} onChange={e=>setIncremental(e.target.checked)}/>Only versions not yet exported</label><button disabled={!selected.length||action.isPending} onClick={()=>createExport()}><Download size={14}/>Export selected</button><button disabled={!collection||action.isPending} onClick={()=>createExport(true)}>Export collection</button></details>
-  </div><section className="stock-content">
-   {collection&&progress.data&&<div className="panel stock-progress"><b>{progress.data.ready} / {progress.data.plan.target_approved??target} approved</b><span>{progress.data.attempts} attempts · {progress.data.review} awaiting review · {progress.data.rejected} rejected</span><progress value={progress.data.ready} max={progress.data.plan.target_approved??target}/><small>{progress.data.costs.map(c=>`${c.total} ${c.currency} · ${c.cost_per_ready??'—'} per ready asset`).join(' / ')}</small><details><summary>Similarity clusters & diversity</summary><pre>{JSON.stringify(progress.data.diversity,null,2)}</pre></details></div>}
-   <div className="stock-filters"><label className="stock-search"><Search size={16}/><input aria-label="Search stock" placeholder="Search this collection" value={query} onChange={e=>setQuery(e.target.value)}/></label><select aria-label="Stock stage" value={filter} onChange={e=>setFilter(e.target.value)}>{stages.map(s=><option key={s}>{s}</option>)}</select></div>
-   <div className="stock-toolbar"><span>{visible.length} candidates · {selected.length} selected</span><label className="stock-check"><input type="checkbox" checked={ack} onChange={e=>setAck(e.target.checked)}/>I reviewed metadata warnings</label><button disabled={!selected.length||action.isPending} onClick={()=>bulk(true)}>Approve selected</button><button disabled={!selected.length||action.isPending} onClick={()=>bulk(false)}>Reject selected</button></div>
-   <div className="stock-grid">{visible.map(p=><article className="stock-card" key={p.id}><div className="stock-image">{p.thumbnail_id?<img src={`/api/v1/variants/${p.thumbnail_id}/content`} alt={p.metadata?.title??'Stock candidate'} loading="lazy"/>:<div className="stock-placeholder"><Layers3/><span>{p.status.replaceAll('_',' ')}</span></div>}<input type="checkbox" aria-label={`Select ${p.metadata?.title??p.id}`} checked={selected.includes(p.id)} onChange={()=>setSelected(ids=>ids.includes(p.id)?ids.filter(id=>id!==p.id):[...ids,p.id])}/></div><div className="stock-card-copy"><span className="badge">{p.status.replaceAll('_',' ')}</span><h3>{p.metadata?.title??'Stock candidate'}</h3><small>{p.metadata?.keywords.length??0} ranked keywords · AI generated</small>{p.failure_code&&<p>{p.failure_code}</p>}<button onClick={()=>{setDetail(p.id);setEditing(undefined);setCompare('');setAck(false);setNotice('');}}>Review stock <ArrowUpRight size={14}/></button></div></article>)}</div>{!visible.length&&<div className="panel stock-empty"><Layers3 size={38}/><h3>A considered catalog starts here.</h3><p>Create a stock collection and a concept, then start production.</p></div>}
-  </section></div>}
-  {detail&&<div className="modal-backdrop"><section className="modal stock-detail" role="dialog" aria-label="Stock review"><button className="close" aria-label="Close stock review" onClick={()=>setDetail('')}><X/></button>{notice&&<p role="status" className="notice">{notice}</p>}{current?<><span className="eyebrow">STOCK REVIEW · {current.status}</span><h2>{latest?.data.title??'Stock candidate'}</h2><div className="stock-review-columns"><div>{!current.variant&&current.source_asset_id&&<img className="stock-review-image" src={`/api/assets/${current.source_asset_id}/content`} alt="Source awaiting visual QA"/>}{current.status==='QA_PENDING'&&<div className="panel stock-evidence"><p>The stock QA policy requires human review before processing.</p><button onClick={onQaReview}>Open visual QA review</button></div>}{current.variant&&<><img className="stock-review-image" src={`/api/v1/variants/${current.variant.id}/content`} alt="Stock master review"/><p>{current.variant.width} × {current.variant.height} · {(current.variant.width*current.variant.height/1000000).toFixed(3)} MP · {current.variant.format} · {(current.variant.size_bytes/1048576).toFixed(2)} MiB</p></>}<div className="stock-evidence"><p>Visual QA: <b>{current.qa?.final_decision??'Pending'}</b></p><p>Similarity: {current.similarity?.map(s=>s.final_classification).join(', ')||'No duplicate comparisons'}</p><details><summary>Technical validation</summary><pre>{JSON.stringify(current.technical?.[0]?.result??{},null,2)}</pre></details></div></div><div>{latest&&<><div className="stock-version-line"><b>Metadata v{latest.version} · {latest.source}</b><button onClick={()=>setEditing(structuredClone(latest.data))}>Edit metadata</button></div>{editing?<><label>Title<input value={editing.title} onChange={e=>setEditing({...editing,title:e.target.value})}/></label><label>Description<textarea rows={4} value={editing.description} onChange={e=>setEditing({...editing,description:e.target.value})}/></label><label>Category<select value={editing.categories[0]??''} onChange={e=>setEditing({...editing,categories:[e.target.value]})}>{categories.map(c=><option key={c}>{c}</option>)}</select></label><label>Content classification<select value={editing.contentType} onChange={e=>setEditing({...editing,contentType:e.target.value})}>{['UNDETERMINED','COMMERCIAL','EDITORIAL'].map(c=><option key={c}>{c}</option>)}</select></label><h3>Ranked keywords · {editing.keywords.length}</h3><div className="stock-keyword-editor">{editing.keywords.map((k,i)=><div draggable key={i} onDragStart={()=>setDragged(i)} onDragOver={e=>e.preventDefault()} onDrop={()=>{if(dragged!==undefined)moveKeyword(dragged,i);setDragged(undefined);}}><span>{i+1}</span><input aria-label={`Keyword ${i+1}`} value={k.value} onChange={e=>setEditing({...editing,keywords:editing.keywords.map((x,n)=>n===i?{...x,value:e.target.value,source:'MANUAL'}:x)})}/><button aria-label={`Move keyword ${i+1} up`} onClick={()=>moveKeyword(i,i-1)}>↑</button><button aria-label={`Move keyword ${i+1} down`} onClick={()=>moveKeyword(i,i+1)}>↓</button><button aria-label={`Remove keyword ${i+1}`} onClick={()=>setEditing({...editing,keywords:editing.keywords.filter((_,n)=>n!==i)})}>×</button>{editing.keywords.some((x,n)=>n!==i&&x.value.trim().toLowerCase()===k.value.trim().toLowerCase())&&<small>Duplicate</small>}</div>)}</div><div className="stock-add-keyword"><input aria-label="New keyword" value={keyword} onChange={e=>setKeyword(e.target.value)}/><button onClick={()=>{if(keyword.trim()){setEditing({...editing,keywords:[...editing.keywords,{value:keyword.trim(),source:'MANUAL',confidence:1}]});setKeyword('');}}}>Add keyword</button></div><button className="primary" disabled={action.isPending} onClick={()=>run(async()=>{await api(`/v1/stock-productions/${current.id}/metadata`,{revision:current.revision,data:editing},undefined,'PUT');setEditing(undefined);})}>Save as new version</button></>:<><p>{latest.data.description}</p><div className="stock-keywords">{latest.data.keywords.map((k,i)=><span key={i}><b>{i+1}</b>{k.value}</span>)}</div><p>{latest.data.categories.join(', ')} · {latest.data.contentType} · AI disclosure: {String(latest.data.aiGenerated)}</p></>}
-    <div className="stock-issues"><h3>Metadata QA · {latest.validation.status}</h3>{latest.validation.issues.map((i,n)=><p key={n}><b>{i.severity} · {i.code}</b><small>{i.field} · {i.value}</small></p>)}</div>
-    <div className="stock-regenerate">{['TITLE','DESCRIPTION','KEYWORDS','ALL'].map(scope=><button key={scope} disabled={action.isPending} onClick={()=>run(()=>post(`/v1/stock-productions/${current.id}/metadata/regenerate`,{revision:current.revision,scope}))}>Regenerate {scope.toLowerCase()}</button>)}</div>
-    <label className="stock-check"><input type="checkbox" checked={ack} onChange={e=>setAck(e.target.checked)}/>I reviewed the image and metadata warnings</label><div className="stock-review-actions"><button className="primary" disabled={current.status!=='METADATA_REVIEW'||action.isPending||!!editing} onClick={()=>run(()=>post(`/v1/stock-productions/${current.id}/approve`,{revision:current.revision,acknowledgeWarnings:ack}))}><Check size={15}/>Approve for export</button><button disabled={action.isPending} onClick={()=>run(()=>post(`/v1/stock-productions/${current.id}/reject`,{revision:current.revision}))}>Reject</button></div>
-    <details><summary>Metadata history & comparison</summary><select aria-label="Compare metadata version" value={compare} onChange={e=>setCompare(e.target.value)}><option value="">Choose an earlier version</option>{current.metadataVersions?.map(v=><option key={v.id} value={v.id}>v{v.version} · {v.source} · {v.lifecycle}</option>)}</select>{compare&&<div className="stock-compare"><pre>{JSON.stringify(current.metadataVersions?.find(v=>v.id===compare)?.data,null,2)}</pre><pre>{JSON.stringify(latest.data,null,2)}</pre></div>}</details></>}</div></div>{/FAILED/.test(current.status)&&<button onClick={()=>run(()=>post(`/v1/stock-productions/${current.id}/retry`,{revision:current.revision}))}>Retry failed stage</button>}<details><summary>Production & export history</summary><pre>{JSON.stringify({events:current.events,exports:current.exports},null,2)}</pre></details></>:<p>{details.error?.message??'Loading stock review…'}</p>}</section></div>}
- </div>;
+type Keyword = {
+  value: string;
+  normalizedValue?: string;
+  rank?: number;
+  source?: string;
+  confidence?: number
+};
+type Metadata = {
+  title: string;
+  description: string;
+  keywords: Keyword[];
+  categories: string[];
+  contentType: string;
+  aiGenerated: boolean;
+  riskFlags?: string[]
+};
+type Issue = { field: string; code: string; severity: string; value: string };
+type Version = {
+  id: string;
+  version: number;
+  source: string;
+  lifecycle: string;
+  created_at: string;
+  data: Metadata;
+  validation: { status: string; issues: Issue[] }
+};
+type Production = {
+  id: string;
+  concept_id: string;
+  collection_id: string;
+  revision: number;
+  status: string;
+  source_asset_id?: string;
+  thumbnail_id?: string;
+  metadata?: Metadata;
+  metadataVersions?: Version[];
+  failure_code?: string;
+  variant?: { id: string; width: number; height: number; format: string; size_bytes: number };
+  qa?: { final_decision: string };
+  similarity?: { final_classification: string; explanation: string }[];
+  technical?: {
+    result: {
+      valid: boolean;
+      checks: { type: string; status: string; actual: unknown; required: unknown }[]
+    }
+  }[];
+  events?: unknown[];
+  exports?: unknown[]
+};
+type Export = {
+  id: string;
+  profile_key: string;
+  version: number;
+  status: string;
+  asset_count: number;
+  failure_code?: string;
+  created_at: string;
+  completed_at?: string;
+  validation: unknown;
+  manifest: unknown
+};
+type Profile = {
+  id: string;
+  profile_key: string;
+  version: number;
+  definition: Record<string, unknown> & { enabled?: boolean }
+};
+type Collection = { id: string; name: string; production_status?: string };
+type Progress = {
+  attempts: number;
+  ready: number;
+  review: number;
+  rejected: number;
+  plan: { status?: string; revision: number; target_approved?: number; failure_reason?: string };
+  costs: { currency: string; total: number; cost_per_ready?: number }[];
+  diversity: unknown
+};
+const stages = ['All candidates', 'Metadata review', 'Ready for export', 'Exported', 'Failures'] as const;
+const categories = ['ANIMALS', 'TECHNOLOGY', 'NATURE', 'BUSINESS', 'PEOPLE', 'ABSTRACT', 'FOOD', 'TRAVEL', 'SCIENCE'];
+
+export function StockWorkspace({onQaReview}: { onQaReview?: () => void } = {}) {
+  const client = useQueryClient();
+  const [tab, setTab] = useState('Factory'), [filter, setFilter] = useState<string>('All candidates'), [query, setQuery] = useState(''), [collection, setCollection] = useState(''), [concept, setConcept] = useState(''), [profile, setProfile] = useState('STOCK_GENERIC');
+  const [selected, setSelected] = useState<string[]>([]), [detail, setDetail] = useState(''), [editing, setEditing] = useState<Metadata>(), [notice, setNotice] = useState(''), [ack, setAck] = useState(false), [compare, setCompare] = useState(''), [keyword, setKeyword] = useState(''), [dragged, setDragged] = useState<number>();
+  const [project, setProject] = useState(''), [title, setTitle] = useState(''), [direction, setDirection] = useState(''), [target, setTarget] = useState(10), [exportProfile, setExportProfile] = useState('GENERIC_CSV'), [policy, setPolicy] = useState('STRICT'), [incremental, setIncremental] = useState(false), [exportDetail, setExportDetail] = useState<unknown>();
+  const useData = <T, >(path: string) => useQuery({
+    queryKey: [path],
+    queryFn: () => api<T>(path),
+    refetchInterval: 5000
+  });
+  const productions = useData<Production[]>('/v1/stock-productions'),
+      collections = useData<Collection[]>('/v1/stock-collections'),
+      profiles = useData<Profile[]>('/v1/stock-profiles'),
+      exportProfiles = useData<Profile[]>('/v1/stock-export-profiles'),
+      exports = useData<Export[]>('/v1/stock-exports');
+  const dashboard = useData<Record<string, number | {
+        currency: string;
+        total: number;
+        cost_per_ready?: number
+      }[]>>('/v1/stock-dashboard'), projects = useData<{ id: string; name: string }[]>('/projects'),
+      concepts = useData<{ id: string; name: string; collection_id: string }[]>('/concepts');
+  const details = useQuery({
+    queryKey: ['stock-detail', detail],
+    queryFn: () => api<Production>(`/v1/stock-productions/${detail}`),
+    enabled: !!detail,
+    refetchInterval: 3000
+  });
+  const progress = useQuery({
+    queryKey: ['stock-progress', collection],
+    queryFn: () => api<Progress>(`/v1/stock-collections/${collection}/production-status`),
+    enabled: !!collection,
+    refetchInterval: 5000
+  });
+  const action = useMutation({
+    mutationFn: async (fn: () => Promise<unknown>) => fn(),
+    onSuccess: () => {
+      client.invalidateQueries();
+      setNotice('Saved');
+    },
+    onError: e => setNotice(e.message)
+  });
+  const run = (fn: () => Promise<unknown>) => action.mutate(fn);
+  const post = (path: string, body: unknown = {}) => api(path, body, crypto.randomUUID());
+  const rows = productions.data ?? [], current = details.data,
+      latest = current?.metadataVersions?.[0];
+  const visible = rows.filter(r => (!collection || r.collection_id === collection) && (!query || (r.metadata?.title ?? r.id).toLowerCase().includes(query.toLowerCase())) && (filter === 'All candidates' || filter === 'Metadata review' && r.status === 'METADATA_REVIEW' || filter === 'Ready for export' && r.status === 'READY_FOR_EXPORT' || filter === 'Exported' && r.status === 'EXPORTED' || filter === 'Failures' && /FAILED|REJECTED/.test(r.status)));
+  const uniqueProfiles = (profiles.data ?? []).filter((p, i, a) => a.findIndex(x => x.profile_key === p.profile_key) === i);
+  const moveKeyword = (from: number, to: number) => setEditing(d => {
+    if (!d || to < 0 || to >= d.keywords.length) return d;
+    const k = [...d.keywords];
+    k.splice(to, 0, k.splice(from, 1)[0]);
+    return {...d, keywords: k};
+  });
+  const bulk = (approve: boolean) => run(async () => {
+    const outcomes = await Promise.allSettled(selected.map(async id => {
+      const p = await api<Production>(`/v1/stock-productions/${id}`);
+      return post(`/v1/stock-productions/${id}/${approve ? 'approve' : 'reject'}`, {
+        revision: p.revision,
+        acknowledgeWarnings: ack
+      });
+    }));
+    const failures = outcomes.filter(r => r.status === 'rejected');
+    if (failures.length) throw Error(`${outcomes.length - failures.length} saved; ${failures.length} failed. ${(failures[0] as PromiseRejectedResult).reason.message}`);
+  });
+  const createExport = (forCollection = false) => run(() => post('/v1/stock-exports', {
+    profile: exportProfile, ...forCollection ? {collectionId: collection} : {stockProductionIds: selected},
+    incremental,
+    policy
+  }));
+  return <div className="stock-workspace">
+    <section className="stock-hero">
+      <div><span className="eyebrow">STOCK FACTORY / CURATE · REFINE · EXPORT</span><h2>From an idea
+        to a ready collection.</h2><p>Visible content. Considered keywords. Every file accounted
+        for.</p>
+        <div className="stock-hero-tags">
+          <span>VERSIONED METADATA</span><span>HUMAN APPROVED</span><span>IMMUTABLE EXPORTS</span>
+        </div>
+      </div>
+      <div className="stock-mark"><Layers3 size={56}/><small>CRAFT OVER VOLUME</small></div>
+    </section>
+    <div
+        className="stock-kpis">{[['Generated today', 'generated_today'], ['Stock-ready today', 'stock_ready_today'], ['Metadata pending', 'metadata_pending'], ['Ready for export', 'ready_for_export'], ['Exported today', 'exported_today'], ['Candidates', 'candidates'], ['Processing', 'processing'], ['Metadata review', 'metadata_review'], ['Technical failures', 'technical_failures'], ['Duplicate rejected', 'duplicate_rejected']].map(([label, key]) =>
+        <div key={key}><small>{label}</small><b>{Number(dashboard.data?.[key] ?? 0)}</b>
+        </div>)}</div>
+    <div className="stock-cost-summary">
+      <span>QA rejection rate: {(Number(dashboard.data?.qa_rejection_rate ?? 0) * 100).toFixed(1)}%</span><span>Duplicate rejection rate: {(Number(dashboard.data?.duplicate_rejection_rate ?? 0) * 100).toFixed(1)}%</span>{Array.isArray(dashboard.data?.costs) && dashboard.data.costs.map(c =>
+        <span key={c.currency}>Production: {c.total} {c.currency} · {c.cost_per_ready ?? '—'} per stock-ready asset</span>)}
+    </div>
+    <div className="stock-tabs">{['Factory', 'Collections', 'Exports', 'Profiles'].map(t => <button
+        className={tab === t ? 'selected' : ''} key={t}
+        onClick={() => setTab(t)}>{t}</button>)}</div>
+    {(notice || productions.error) &&
+        <p role="status" className="notice">{notice || productions.error?.message}</p>}
+    {tab === 'Profiles' ?
+        <div className="stock-profile-grid">{uniqueProfiles.map(p => <article className="panel"
+                                                                              key={p.id}>
+          <h3>{p.profile_key} · v{p.version}</h3>
+          <p>{p.definition.enabled ? 'Enabled' : 'Requires platform review'}</p>
+          <pre>{JSON.stringify(p.definition, null, 2)}</pre>
+        </article>)}</div> : tab === 'Exports' ?
+            <section className="panel stock-export-list"><h3>Immutable export
+              history</h3>{exports.data?.map(e => <article key={e.id}>
+              <div><b>{e.profile_key} · v{e.version}</b><small>{e.id} · {e.asset_count} assets
+                · {new Date(e.created_at).toLocaleString()}</small><span
+                  className="badge">{e.status}</span> {e.failure_code}</div>
+              <div>
+                <button
+                    onClick={() => run(async () => setExportDetail(await api(`/v1/stock-exports/${e.id}`)))}>View
+                </button>
+                <button
+                    onClick={() => run(async () => setExportDetail(await api(`/v1/stock-exports/${e.id}/validation`)))}>Validate
+                </button>
+                <button onClick={() => run(() => post(`/v1/stock-exports/${e.id}/rebuild`))}>Rebuild
+                  as new export
+                </button>
+                {e.status === 'READY' && <a className="stock-download"
+                                            href={`/api/v1/stock-exports/${e.id}/content`}><Download
+                    size={14}/>Download ZIP</a>}{e.status === 'FAILED' &&
+                  <button onClick={() => run(() => post(`/v1/stock-exports/${e.id}/retry`))}>Retry
+                    storage failure</button>}</div>
+            </article>)}{!exports.data?.length && <p>No exports yet. Select reviewed assets in the
+              Factory.</p>}{exportDetail !== undefined &&
+                <pre>{JSON.stringify(exportDetail, null, 2)}</pre>}</section> :
+            <div className="stock-layout">
+              <div className="panel stock-controls"><h3><SlidersHorizontal size={16}/> Production
+                desk</h3><label>Stock collection<select aria-label="Stock collection"
+                                                        value={collection} onChange={e => {
+                setCollection(e.target.value);
+                setConcept('');
+                setSelected([]);
+              }}>
+                <option value="">All collections</option>
+                {collections.data?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select></label><label>Stock profile<select value={profile}
+                                                           onChange={e => setProfile(e.target.value)}>{uniqueProfiles.map(p =>
+                  <option key={p.id}
+                          disabled={!p.definition.enabled}>{p.profile_key}</option>)}</select></label><label>Concept<select
+                  aria-label="Stock concept" value={concept}
+                  onChange={e => setConcept(e.target.value)}>
+                <option value="">Choose concept</option>
+                {concepts.data?.filter(c => c.collection_id === collection).map(c => <option
+                    key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+                <button className="primary" disabled={!concept || action.isPending}
+                        onClick={() => run(() => post('/v1/stock-productions', {
+                          conceptId: concept,
+                          profile
+                        }))}><Sparkles size={14}/>Start stock production
+                </button>
+                <details open={tab === 'Collections'}>
+                  <summary>Collection & concepts</summary>
+                  <label>Project<select value={project} onChange={e => setProject(e.target.value)}>
+                    <option value="">Choose project</option>
+                    {projects.data?.map(p => <option value={p.id} key={p.id}>{p.name}</option>)}
+                  </select></label><label>Title<input value={title}
+                                                      onChange={e => setTitle(e.target.value)}/></label>
+                  <button disabled={!project || !title}
+                          onClick={() => run(() => post('/v1/stock-collections', {
+                            projectId: project,
+                            title
+                          }))}><Plus size={14}/>New collection
+                  </button>
+                  <label>Concept direction<textarea value={direction}
+                                                    onChange={e => setDirection(e.target.value)}/></label>
+                  <button disabled={!collection || !title || !direction}
+                          onClick={() => run(() => post('/concepts', {
+                            collectionId: collection,
+                            name: title,
+                            prompt: direction
+                          }))}>Add concept
+                  </button>
+                  {collection && <><label>Target approved<input type="number" min={1} max={1000}
+                                                                value={target}
+                                                                onChange={e => setTarget(Number(e.target.value))}/></label>
+                    <p className="muted">Batches of 2 · maximum {target * 2} attempts · mock budget
+                      0 USD. Review candidates before the next batch.</p>
+                    <button
+                        onClick={() => run(() => post(`/v1/stock-collections/${collection}/produce`, {
+                          profile,
+                          targetApproved: target,
+                          batchSize: 2,
+                          maxGenerationAttempts: target * 2,
+                          maxGenerationCost: 0,
+                          reservedCostPerAttempt: 0
+                        }))}>Start bounded plan
+                    </button>
+                    {progress.data?.plan.status && <>
+                      <p>{progress.data.plan.status} · {progress.data.plan.failure_reason}</p>
+                      <button
+                          onClick={() => run(() => post(`/v1/stock-collections/${collection}/${progress.data?.plan.status === 'RUNNING' ? 'pause' : 'resume'}`, {revision: progress.data?.plan.revision}))}>Pause
+                        / resume plan
+                      </button>
+                    </>}</>}</details>
+                <details open>
+                  <summary>Export settings</summary>
+                  <label>Export profile<select value={exportProfile}
+                                               onChange={e => setExportProfile(e.target.value)}>{(exportProfiles.data ?? []).filter((p, i, a) => a.findIndex(x => x.profile_key === p.profile_key) === i).map(p =>
+                      <option key={p.id}>{p.profile_key}</option>)}</select></label><label>Invalid
+                  items<select aria-label="Export policy" value={policy}
+                               onChange={e => setPolicy(e.target.value)}>
+                    <option value="STRICT">STRICT · block the batch</option>
+                    <option value="VALID_ONLY">VALID_ONLY · report skipped items</option>
+                  </select></label><label className="stock-check"><input type="checkbox"
+                                                                         checked={incremental}
+                                                                         onChange={e => setIncremental(e.target.checked)}/>Only
+                  versions not yet exported</label>
+                  <button disabled={!selected.length || action.isPending}
+                          onClick={() => createExport()}><Download size={14}/>Export selected
+                  </button>
+                  <button disabled={!collection || action.isPending}
+                          onClick={() => createExport(true)}>Export collection
+                  </button>
+                </details>
+              </div>
+              <section className="stock-content">
+                {collection && progress.data && <div className="panel stock-progress">
+                  <b>{progress.data.ready} / {progress.data.plan.target_approved ?? target} approved</b><span>{progress.data.attempts} attempts · {progress.data.review} awaiting review · {progress.data.rejected} rejected</span>
+                  <progress value={progress.data.ready}
+                            max={progress.data.plan.target_approved ?? target}/>
+                  <small>{progress.data.costs.map(c => `${c.total} ${c.currency} · ${c.cost_per_ready ?? '—'} per ready asset`).join(' / ')}</small>
+                  <details>
+                    <summary>Similarity clusters & diversity</summary>
+                    <pre>{JSON.stringify(progress.data.diversity, null, 2)}</pre>
+                  </details>
+                </div>}
+                <div className="stock-filters"><label className="stock-search"><Search
+                    size={16}/><input aria-label="Search stock" placeholder="Search this collection"
+                                      value={query}
+                                      onChange={e => setQuery(e.target.value)}/></label><select
+                    aria-label="Stock stage" value={filter}
+                    onChange={e => setFilter(e.target.value)}>{stages.map(s => <option
+                    key={s}>{s}</option>)}</select></div>
+                <div className="stock-toolbar">
+                  <span>{visible.length} candidates · {selected.length} selected</span><label
+                    className="stock-check"><input type="checkbox" checked={ack}
+                                                   onChange={e => setAck(e.target.checked)}/>I
+                  reviewed metadata warnings</label>
+                  <button disabled={!selected.length || action.isPending}
+                          onClick={() => bulk(true)}>Approve selected
+                  </button>
+                  <button disabled={!selected.length || action.isPending}
+                          onClick={() => bulk(false)}>Reject selected
+                  </button>
+                </div>
+                <div className="stock-grid">{visible.map(p => <article className="stock-card"
+                                                                       key={p.id}>
+                  <div className="stock-image">{p.thumbnail_id ?
+                      <img src={`/api/v1/variants/${p.thumbnail_id}/content`}
+                           alt={p.metadata?.title ?? 'Stock candidate'} loading="lazy"/> :
+                      <div className="stock-placeholder">
+                        <Layers3/><span>{p.status.replaceAll('_', ' ')}</span></div>}<input
+                      type="checkbox" aria-label={`Select ${p.metadata?.title ?? p.id}`}
+                      checked={selected.includes(p.id)}
+                      onChange={() => setSelected(ids => ids.includes(p.id) ? ids.filter(id => id !== p.id) : [...ids, p.id])}/>
+                  </div>
+                  <div className="stock-card-copy"><span
+                      className="badge">{p.status.replaceAll('_', ' ')}</span>
+                    <h3>{p.metadata?.title ?? 'Stock candidate'}</h3>
+                    <small>{p.metadata?.keywords.length ?? 0} ranked keywords · AI
+                      generated</small>{p.failure_code && <p>{p.failure_code}</p>}
+                    <button onClick={() => {
+                      setDetail(p.id);
+                      setEditing(undefined);
+                      setCompare('');
+                      setAck(false);
+                      setNotice('');
+                    }}>Review stock <ArrowUpRight size={14}/></button>
+                  </div>
+                </article>)}</div>
+                {!visible.length &&
+                    <div className="panel stock-empty"><Layers3 size={38}/><h3>A considered catalog
+                      starts here.</h3><p>Create a stock collection and a concept, then start
+                      production.</p></div>}
+              </section>
+            </div>}
+    {detail && <div className="modal-backdrop">
+      <section className="modal stock-detail" role="dialog" aria-label="Stock review">
+        <button className="close" aria-label="Close stock review" onClick={() => setDetail('')}><X/>
+        </button>
+        {notice && <p role="status" className="notice">{notice}</p>}{current ? <><span
+          className="eyebrow">STOCK REVIEW · {current.status}</span>
+        <h2>{latest?.data.title ?? 'Stock candidate'}</h2>
+        <div className="stock-review-columns">
+          <div>{!current.variant && current.source_asset_id && <img className="stock-review-image"
+                                                                    src={`/api/assets/${current.source_asset_id}/content`}
+                                                                    alt="Source awaiting visual QA"/>}{current.status === 'QA_PENDING' &&
+              <div className="panel stock-evidence"><p>The stock QA policy requires human review
+                before processing.</p>
+                <button onClick={onQaReview}>Open visual QA review</button>
+              </div>}{current.variant && <><img className="stock-review-image"
+                                                src={`/api/v1/variants/${current.variant.id}/content`}
+                                                alt="Stock master review"/>
+            <p>{current.variant.width} × {current.variant.height} · {(current.variant.width * current.variant.height / 1000000).toFixed(3)} MP
+              · {current.variant.format} · {(current.variant.size_bytes / 1048576).toFixed(2)} MiB</p></>}
+            <div className="stock-evidence"><p>Visual
+              QA: <b>{current.qa?.final_decision ?? 'Pending'}</b></p>
+              <p>Similarity: {current.similarity?.map(s => s.final_classification).join(', ') || 'No duplicate comparisons'}</p>
+              <details>
+                <summary>Technical validation</summary>
+                <pre>{JSON.stringify(current.technical?.[0]?.result ?? {}, null, 2)}</pre>
+              </details>
+            </div>
+          </div>
+          <div>{latest && <>
+            <div className="stock-version-line"><b>Metadata v{latest.version} · {latest.source}</b>
+              <button onClick={() => setEditing(structuredClone(latest.data))}>Edit metadata
+              </button>
+            </div>
+            {editing ? <><label>Title<input value={editing.title} onChange={e => setEditing({
+              ...editing,
+              title: e.target.value
+            })}/></label><label>Description<textarea rows={4} value={editing.description}
+                                                     onChange={e => setEditing({
+                                                       ...editing,
+                                                       description: e.target.value
+                                                     })}/></label><label>Category<select
+                value={editing.categories[0] ?? ''} onChange={e => setEditing({
+              ...editing,
+              categories: [e.target.value]
+            })}>{categories.map(c => <option key={c}>{c}</option>)}</select></label><label>Content
+              classification<select value={editing.contentType} onChange={e => setEditing({
+                ...editing,
+                contentType: e.target.value
+              })}>{['UNDETERMINED', 'COMMERCIAL', 'EDITORIAL'].map(c => <option
+                  key={c}>{c}</option>)}</select></label><h3>Ranked keywords
+              · {editing.keywords.length}</h3>
+              <div className="stock-keyword-editor">{editing.keywords.map((k, i) => <div draggable
+                                                                                         key={i}
+                                                                                         onDragStart={() => setDragged(i)}
+                                                                                         onDragOver={e => e.preventDefault()}
+                                                                                         onDrop={() => {
+                                                                                           if (dragged !== undefined) moveKeyword(dragged, i);
+                                                                                           setDragged(undefined);
+                                                                                         }}>
+                <span>{i + 1}</span><input aria-label={`Keyword ${i + 1}`} value={k.value}
+                                           onChange={e => setEditing({
+                                             ...editing,
+                                             keywords: editing.keywords.map((x, n) => n === i ? {
+                                               ...x,
+                                               value: e.target.value,
+                                               source: 'MANUAL'
+                                             } : x)
+                                           })}/>
+                <button aria-label={`Move keyword ${i + 1} up`}
+                        onClick={() => moveKeyword(i, i - 1)}>↑
+                </button>
+                <button aria-label={`Move keyword ${i + 1} down`}
+                        onClick={() => moveKeyword(i, i + 1)}>↓
+                </button>
+                <button aria-label={`Remove keyword ${i + 1}`} onClick={() => setEditing({
+                  ...editing,
+                  keywords: editing.keywords.filter((_, n) => n !== i)
+                })}>×
+                </button>
+                {editing.keywords.some((x, n) => n !== i && x.value.trim().toLowerCase() === k.value.trim().toLowerCase()) &&
+                    <small>Duplicate</small>}</div>)}</div>
+              <div className="stock-add-keyword"><input aria-label="New keyword" value={keyword}
+                                                        onChange={e => setKeyword(e.target.value)}/>
+                <button onClick={() => {
+                  if (keyword.trim()) {
+                    setEditing({
+                      ...editing,
+                      keywords: [...editing.keywords, {
+                        value: keyword.trim(),
+                        source: 'MANUAL',
+                        confidence: 1
+                      }]
+                    });
+                    setKeyword('');
+                  }
+                }}>Add keyword
+                </button>
+              </div>
+              <button className="primary" disabled={action.isPending}
+                      onClick={() => run(async () => {
+                        await api(`/v1/stock-productions/${current.id}/metadata`, {
+                          revision: current.revision,
+                          data: editing
+                        }, undefined, 'PUT');
+                        setEditing(undefined);
+                      })}>Save as new version
+              </button>
+            </> : <><p>{latest.data.description}</p>
+              <div className="stock-keywords">{latest.data.keywords.map((k, i) => <span
+                  key={i}><b>{i + 1}</b>{k.value}</span>)}</div>
+              <p>{latest.data.categories.join(', ')} · {latest.data.contentType} · AI
+                disclosure: {String(latest.data.aiGenerated)}</p></>}
+            <div className="stock-issues"><h3>Metadata QA
+              · {latest.validation.status}</h3>{latest.validation.issues.map((i, n) => <p key={n}>
+              <b>{i.severity} · {i.code}</b><small>{i.field} · {i.value}</small></p>)}</div>
+            <div
+                className="stock-regenerate">{['TITLE', 'DESCRIPTION', 'KEYWORDS', 'ALL'].map(scope =>
+                <button key={scope} disabled={action.isPending}
+                        onClick={() => run(() => post(`/v1/stock-productions/${current.id}/metadata/regenerate`, {
+                          revision: current.revision,
+                          scope
+                        }))}>Regenerate {scope.toLowerCase()}</button>)}</div>
+            <label className="stock-check"><input type="checkbox" checked={ack}
+                                                  onChange={e => setAck(e.target.checked)}/>I
+              reviewed the image and metadata warnings</label>
+            <div className="stock-review-actions">
+              <button className="primary"
+                      disabled={current.status !== 'METADATA_REVIEW' || action.isPending || !!editing}
+                      onClick={() => run(() => post(`/v1/stock-productions/${current.id}/approve`, {
+                        revision: current.revision,
+                        acknowledgeWarnings: ack
+                      }))}><Check size={15}/>Approve for export
+              </button>
+              <button disabled={action.isPending}
+                      onClick={() => run(() => post(`/v1/stock-productions/${current.id}/reject`, {revision: current.revision}))}>Reject
+              </button>
+            </div>
+            <details>
+              <summary>Metadata history & comparison</summary>
+              <select aria-label="Compare metadata version" value={compare}
+                      onChange={e => setCompare(e.target.value)}>
+                <option value="">Choose an earlier version</option>
+                {current.metadataVersions?.map(v => <option key={v.id}
+                                                            value={v.id}>v{v.version} · {v.source} · {v.lifecycle}</option>)}
+              </select>{compare && <div className="stock-compare">
+              <pre>{JSON.stringify(current.metadataVersions?.find(v => v.id === compare)?.data, null, 2)}</pre>
+              <pre>{JSON.stringify(latest.data, null, 2)}</pre>
+            </div>}</details>
+          </>}</div>
+        </div>
+        {/FAILED/.test(current.status) && <button
+            onClick={() => run(() => post(`/v1/stock-productions/${current.id}/retry`, {revision: current.revision}))}>Retry
+          failed stage</button>}
+        <details>
+          <summary>Production & export history</summary>
+          <pre>{JSON.stringify({events: current.events, exports: current.exports}, null, 2)}</pre>
+        </details>
+      </> : <p>{details.error?.message ?? 'Loading stock review…'}</p>}</section>
+    </div>}
+  </div>;
 }
 
 

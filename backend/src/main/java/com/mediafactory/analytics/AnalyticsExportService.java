@@ -10,10 +10,18 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AnalyticsExportService {
+
   private final AnalyticsAggregationService aggregation;
 
   public AnalyticsExportService(AnalyticsAggregationService aggregation) {
     this.aggregation = aggregation;
+  }
+
+  static Object safe(Object value) {
+    if (!(value instanceof String text)) {
+      return value;
+    }
+    return text.matches("(?s)^[\\s]*[=+@-].*") ? "'" + text : text;
   }
 
   @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -72,20 +80,20 @@ public class AnalyticsExportService {
                 query.filters());
         var result = aggregation.query(q);
         long total = ((Number) result.get("total")).longValue();
-        if (total > 100000)
+        if (total > 100000) {
           throw new IllegalArgumentException("Export exceeds 100000 groups; narrow the filters");
+        }
         var rows = (List<Map<String, Object>>) result.get("rows");
-        for (var row : rows) csv.printRecord(columns.stream().map(k -> safe(row.get(k))).toList());
-        if ((page + 1L) * 200 >= total) break;
+        for (var row : rows) {
+          csv.printRecord(columns.stream().map(k -> safe(row.get(k))).toList());
+        }
+        if ((page + 1L) * 200 >= total) {
+          break;
+        }
       }
     } catch (java.io.IOException e) {
       throw new IllegalStateException("CSV generation failed", e);
     }
     return output.toString();
-  }
-
-  static Object safe(Object value) {
-    if (!(value instanceof String text)) return value;
-    return text.matches("(?s)^[\\s]*[=+@-].*") ? "'" + text : text;
   }
 }

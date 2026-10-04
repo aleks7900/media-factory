@@ -3,29 +3,10 @@ package com.mediafactory.bulk;
 import java.math.BigDecimal;
 import java.util.*;
 
-/** Batch lifecycle is shared; processors translate only provider requests/results. */
+/**
+ * Batch lifecycle is shared; processors translate only provider requests/results.
+ */
 public interface BulkProcessor {
-  record Input(
-      UUID taskId,
-      UUID generationId,
-      UUID attemptId,
-      String provider,
-      String model,
-      String prompt,
-      Map<String, Object> options,
-      List<BulkArchiveParser.Reference> references) {}
-
-  record Quote(BigDecimal amount, String currency) {}
-
-  record Output(
-      byte[] bytes,
-      String mediaType,
-      Map<String, Object> metadata,
-      Long inputUsage,
-      Long outputUsage,
-      BigDecimal estimatedCost,
-      BigDecimal actualCost,
-      String currency) {}
 
   String kind();
 
@@ -48,4 +29,32 @@ public interface BulkProcessor {
   }
 
   Output result(String remoteId, Input input);
+
+  record Input(
+      UUID taskId,
+      UUID generationId,
+      UUID attemptId,
+      String provider,
+      String model,
+      String prompt,
+      Map<String, Object> options,
+      List<BulkArchiveParser.Reference> references) {
+
+  }
+
+  record Quote(BigDecimal amount, String currency) {
+
+  }
+
+  record Output(
+      byte[] bytes,
+      String mediaType,
+      Map<String, Object> metadata,
+      Long inputUsage,
+      Long outputUsage,
+      BigDecimal estimatedCost,
+      BigDecimal actualCost,
+      String currency) {
+
+  }
 }

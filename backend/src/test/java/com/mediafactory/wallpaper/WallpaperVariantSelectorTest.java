@@ -6,6 +6,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class WallpaperVariantSelectorTest {
+
   private final List<WallpaperVariantSelector.Variant> variants =
       List.of(
           new WallpaperVariantSelector.Variant("ANDROID_FHD_PORTRAIT", 1080, 2400, "STANDARD"),

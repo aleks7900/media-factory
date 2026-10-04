@@ -21,10 +21,31 @@ import org.testcontainers.utility.DockerImageName;
     properties = "media.worker.enabled=false",
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class AnalyticsIntegrationTest {
+
   @Container
   static PostgreSQLContainer<?> postgres =
       new PostgreSQLContainer<>(
           DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"));
+  @Autowired
+  JdbcClient db;
+  @Autowired
+  AnalyticsIngestionService ingestion;
+  @Autowired
+  AnalyticsAggregationService aggregation;
+  @Autowired
+  AnalyticsImportService imports;
+  @Autowired
+  CostAttributionPolicy attribution;
+  @Autowired
+  AnalyticsJobs jobs;
+  @Autowired
+  AnalyticsDetailService details;
+  @Autowired
+  AnalyticsExportService exports;
+  @org.springframework.boot.test.web.server.LocalServerPort
+  int port;
+  UUID asset, generation, collection;
+  Instant at = Instant.parse("2026-01-02T12:00:00Z");
 
   @DynamicPropertySource
   static void props(DynamicPropertyRegistry r) {
@@ -32,18 +53,6 @@ class AnalyticsIntegrationTest {
     r.add("spring.datasource.username", postgres::getUsername);
     r.add("spring.datasource.password", postgres::getPassword);
   }
-
-  @Autowired JdbcClient db;
-  @Autowired AnalyticsIngestionService ingestion;
-  @Autowired AnalyticsAggregationService aggregation;
-  @Autowired AnalyticsImportService imports;
-  @Autowired CostAttributionPolicy attribution;
-  @Autowired AnalyticsJobs jobs;
-  @Autowired AnalyticsDetailService details;
-  @Autowired AnalyticsExportService exports;
-  @org.springframework.boot.test.web.server.LocalServerPort int port;
-  UUID asset, generation, collection;
-  Instant at = Instant.parse("2026-01-02T12:00:00Z");
 
   @BeforeEach
   void setup() {
@@ -106,25 +115,25 @@ class AnalyticsIntegrationTest {
   @SuppressWarnings("unchecked")
   Map<String, Object> overview() {
     return ((List<Map<String, Object>>)
-            aggregation
-                .query(
-                    new AnalyticsQuery(
-                        null,
-                        collection,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        "USD",
-                        "UTC",
-                        "overview",
-                        "cost",
-                        true,
-                        0,
-                        50))
-                .get("rows"))
+        aggregation
+            .query(
+                new AnalyticsQuery(
+                    null,
+                    collection,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    "USD",
+                    "UTC",
+                    "overview",
+                    "cost",
+                    true,
+                    0,
+                    50))
+            .get("rows"))
         .getFirst();
   }
 
@@ -193,14 +202,14 @@ class AnalyticsIntegrationTest {
     snapshot(ref, 1, "120");
     snapshot(ref, 3, "10");
     assertThat(
-            db.sql("select sum(delta) from analytics_snapshot_deltas")
-                .query(BigDecimal.class)
-                .single())
+        db.sql("select sum(delta) from analytics_snapshot_deltas")
+            .query(BigDecimal.class)
+            .single())
         .isEqualByComparingTo("50");
     assertThat(
-            db.sql("select count(*) from analytics_snapshot_deltas where quality='COUNTER_RESET'")
-                .query(Long.class)
-                .single())
+        db.sql("select count(*) from analytics_snapshot_deltas where quality='COUNTER_RESET'")
+            .query(Long.class)
+            .single())
         .isEqualTo(1L);
     assertThatThrownBy(() -> ingestion.event(event("mixed", "DOWNLOAD", "1", null)))
         .hasMessageContaining("snapshot stream");
@@ -256,7 +265,7 @@ class AnalyticsIntegrationTest {
     imports.commit(batch);
     imports.preview(request);
     assertThat(
-            db.sql("select sum(value) from performance_metrics").query(BigDecimal.class).single())
+        db.sql("select sum(value) from performance_metrics").query(BigDecimal.class).single())
         .isEqualByComparingTo("2.50");
     assertThat(db.sql("select count(*) from analytics_import_batches").query(Long.class).single())
         .isEqualTo(1L);
@@ -289,9 +298,9 @@ class AnalyticsIntegrationTest {
     attribution.allocate(request);
     attribution.allocate(request);
     assertThat(
-            db.sql("select sum(amount) from analytics_attributed_costs")
-                .query(BigDecimal.class)
-                .single())
+        db.sql("select sum(amount) from analytics_attributed_costs")
+            .query(BigDecimal.class)
+            .single())
         .isEqualByComparingTo("0.20");
     assertThat(overview().get("cost")).isEqualTo(new BigDecimal("0.200000000000"));
   }
@@ -458,12 +467,12 @@ class AnalyticsIntegrationTest {
         .update();
     db.sql(
             """
-            insert into generations(id,concept_id,status,prompt,width,height,created_at,final_provider,model,prompt_version_id,experiment_id,experiment_variant_id)
-            select md5('acceptance-gen-'||n)::uuid,concept_id,case when n<=70 then 'APPROVED' else 'REJECTED' end,'Acceptance',64,64,'2026-01-01',
-             'ProviderA','ModelB',case when n<=50 then '00000000-0000-0000-0000-000000000802'::uuid else '00000000-0000-0000-0000-000000000804'::uuid end,
-             cast(? as uuid),case when n<=50 then cast(? as uuid) else cast(? as uuid) end
-            from generate_series(1,100) n cross join (select concept_id from generations limit 1) c
-            """)
+                insert into generations(id,concept_id,status,prompt,width,height,created_at,final_provider,model,prompt_version_id,experiment_id,experiment_variant_id)
+                select md5('acceptance-gen-'||n)::uuid,concept_id,case when n<=70 then 'APPROVED' else 'REJECTED' end,'Acceptance',64,64,'2026-01-01',
+                 'ProviderA','ModelB',case when n<=50 then '00000000-0000-0000-0000-000000000802'::uuid else '00000000-0000-0000-0000-000000000804'::uuid end,
+                 cast(? as uuid),case when n<=50 then cast(? as uuid) else cast(? as uuid) end
+                from generate_series(1,100) n cross join (select concept_id from generations limit 1) c
+                """)
         .params(experiment, variantA, variantB)
         .update();
     db.sql(
@@ -566,8 +575,8 @@ class AnalyticsIntegrationTest {
     UUID firstAsset = db.sql("select md5('acceptance-asset-1')::uuid").query(UUID.class).single();
     var evidence = (Map<String, Object>) details.asset(firstAsset, "USD");
     assertThat(
-            (BigDecimal)
-                ((Map<String, Object>) evidence.get("cohorts")).get("revenue_first_30_days"))
+        (BigDecimal)
+            ((Map<String, Object>) evidence.get("cohorts")).get("revenue_first_30_days"))
         .isEqualByComparingTo("1");
   }
 
@@ -617,21 +626,21 @@ class AnalyticsIntegrationTest {
             java.time.LocalDate.parse("2026-01-02"),
             java.time.LocalDate.parse("2026-01-03")));
     assertThat(
-            db.sql("select sum(value) from analytics_daily_aggregate where day='2026-01-02'")
-                .query(BigDecimal.class)
-                .single())
+        db.sql("select sum(value) from analytics_daily_aggregate where day='2026-01-02'")
+            .query(BigDecimal.class)
+            .single())
         .isEqualByComparingTo("4");
     assertThat(
-            db.sql("select sum(value) from analytics_daily_aggregate where day='2026-01-03'")
-                .query(BigDecimal.class)
-                .single())
+        db.sql("select sum(value) from analytics_daily_aggregate where day='2026-01-03'")
+            .query(BigDecimal.class)
+            .single())
         .isEqualByComparingTo("2");
     aggregation.rebuild(
         "Collection refresh", "test", new AnalyticsRebuildScope(null, collection, null, null));
     assertThat(
-            db.sql("select sum(value) from analytics_daily_aggregate")
-                .query(BigDecimal.class)
-                .single())
+        db.sql("select sum(value) from analytics_daily_aggregate")
+            .query(BigDecimal.class)
+            .single())
         .isEqualByComparingTo("10");
   }
 
@@ -642,26 +651,26 @@ class AnalyticsIntegrationTest {
   void representativeVolumeBenchmark() throws Exception {
     db.sql(
             """
-            insert into generations(id,concept_id,status,prompt,width,height,created_at,final_provider,model)
-            select md5('bench-generation-'||n)::uuid,concept_id,'APPROVED','Benchmark',64,64,'2026-01-01','mock','fixture'
-            from generate_series(1,10000) n cross join (select concept_id from generations limit 1) c
-            """)
+                insert into generations(id,concept_id,status,prompt,width,height,created_at,final_provider,model)
+                select md5('bench-generation-'||n)::uuid,concept_id,'APPROVED','Benchmark',64,64,'2026-01-01','mock','fixture'
+                from generate_series(1,10000) n cross join (select concept_id from generations limit 1) c
+                """)
         .update();
     db.sql(
             """
-            insert into assets(id,generation_id,storage_key,sha256,media_type,size_bytes,width,height)
-            select md5('bench-asset-'||n)::uuid,md5('bench-generation-'||n)::uuid,'bench/'||n,repeat('0',64),'image/png',1,64,64
-            from generate_series(1,10000) n
-            """)
+                insert into assets(id,generation_id,storage_key,sha256,media_type,size_bytes,width,height)
+                select md5('bench-asset-'||n)::uuid,md5('bench-generation-'||n)::uuid,'bench/'||n,repeat('0',64),'image/png',1,64,64
+                from generate_series(1,10000) n
+                """)
         .update();
     long ingest = System.nanoTime();
     db.sql(
             """
-            insert into performance_metrics(id,asset_id,platform,name,value,measured_at,source,deduplication_key,reason,created_by)
-            select md5('bench-event-'||n)::uuid,md5('bench-asset-'||((n-1)%10000+1))::uuid,'BENCHMARK','VIEW',1,
-             '2026-01-01'::timestamptz+((n-1)%30)*interval '1 day','BENCHMARK',n::text,'Synthetic load test','test'
-            from generate_series(1,1000000) n
-            """)
+                insert into performance_metrics(id,asset_id,platform,name,value,measured_at,source,deduplication_key,reason,created_by)
+                select md5('bench-event-'||n)::uuid,md5('bench-asset-'||((n-1)%10000+1))::uuid,'BENCHMARK','VIEW',1,
+                 '2026-01-01'::timestamptz+((n-1)%30)*interval '1 day','BENCHMARK',n::text,'Synthetic load test','test'
+                from generate_series(1,1000000) n
+                """)
         .update();
     var report = new LinkedHashMap<String, Object>();
     report.put("assets", 10000);
@@ -698,9 +707,9 @@ class AnalyticsIntegrationTest {
         java.nio.file.Path.of("build/task10-benchmark.json"),
         com.mediafactory.processing.ProcessingJson.write(report));
     assertThat(
-            db.sql("select sum(value) from analytics_daily_aggregate where platform='BENCHMARK'")
-                .query(BigDecimal.class)
-                .single())
+        db.sql("select sum(value) from analytics_daily_aggregate where platform='BENCHMARK'")
+            .query(BigDecimal.class)
+            .single())
         .isEqualByComparingTo("1000000");
   }
 }

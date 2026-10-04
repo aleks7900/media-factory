@@ -10,9 +10,11 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class StockTechnicalValidator {
-  public record Check(String type, String status, Object actual, Object required) {}
 
-  public record Result(boolean valid, List<Check> checks, List<String> warnings) {}
+  private static void check(
+      List<Check> c, String type, boolean ok, Object actual, Object required) {
+    c.add(new Check(type, ok ? "PASS" : "FAIL", actual, required));
+  }
 
   public Result validate(
       byte[] bytes, String checksum, Map<String, Object> p, Map<String, Object> encoder) {
@@ -32,13 +34,16 @@ public class StockTechnicalValidator {
         p.get("maximumFileSize"));
     try (var input = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
       var readers = ImageIO.getImageReaders(input);
-      if (!readers.hasNext()) throw new IOException("Unreadable image");
+      if (!readers.hasNext()) {
+        throw new IOException("Unreadable image");
+      }
       var reader = readers.next();
       try {
         reader.setInput(input);
         int w = reader.getWidth(0), h = reader.getHeight(0);
-        if (w < 1 || h < 1 || w > 8192 || h > 8192 || (long) w * h > 64000000)
+        if (w < 1 || h < 1 || w > 8192 || h > 8192 || (long) w * h > 64000000) {
           throw new IOException("Decode bounds exceeded");
+        }
         String format = reader.getFormatName().toUpperCase(Locale.ROOT).replace("JPG", "JPEG");
         check(
             checks,
@@ -91,8 +96,8 @@ public class StockTechnicalValidator {
             "INTEGRITY",
             !format.equals("JPEG")
                 || (bytes.length > 2
-                    && bytes[bytes.length - 2] == (byte) 0xff
-                    && bytes[bytes.length - 1] == (byte) 0xd9),
+                && bytes[bytes.length - 2] == (byte) 0xff
+                && bytes[bytes.length - 1] == (byte) 0xd9),
             "DECODED",
             "COMPLETE");
         int quality =
@@ -105,13 +110,14 @@ public class StockTechnicalValidator {
               "ENCODER_QUALITY_UNKNOWN: JPEG quality cannot be inferred exactly from decoded"
                   + " pixels");
           checks.add(new Check("COMPRESSION", "WARNING", "UNKNOWN", p.get("preferredQuality")));
-        } else
+        } else {
           checks.add(
               new Check(
                   "COMPRESSION",
                   quality >= integer(p, "preferredQuality", 95) ? "PASS" : "WARNING",
                   quality,
                   p.get("preferredQuality")));
+        }
       } finally {
         reader.dispose();
       }
@@ -121,8 +127,11 @@ public class StockTechnicalValidator {
     return new Result(checks.stream().noneMatch(c -> c.status().equals("FAIL")), checks, warnings);
   }
 
-  private static void check(
-      List<Check> c, String type, boolean ok, Object actual, Object required) {
-    c.add(new Check(type, ok ? "PASS" : "FAIL", actual, required));
+  public record Check(String type, String status, Object actual, Object required) {
+
+  }
+
+  public record Result(boolean valid, List<Check> checks, List<String> warnings) {
+
   }
 }

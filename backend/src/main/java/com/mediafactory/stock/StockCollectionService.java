@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class StockCollectionService {
+
   final StockProductionService s;
   final CollectionClusteringService clusters;
 
@@ -19,8 +20,9 @@ public class StockCollectionService {
   }
 
   public Object create(UUID project, String name) {
-    if (name == null || name.isBlank() || name.length() > 200)
+    if (name == null || name.isBlank() || name.length() > 200) {
       throw new IllegalArgumentException("Collection title required");
+    }
     return s.tx.execute(
         t -> {
           var c = s.factory.collection(project, name);
@@ -115,11 +117,13 @@ public class StockCollectionService {
         || budget == null
         || reserve == null
         || budget.signum() < 0
-        || reserve.signum() < 0)
+        || reserve.signum() < 0) {
       throw new IllegalArgumentException("Invalid bounded production plan");
+    }
     s.profile(profile);
-    if (!Boolean.TRUE.equals(s.factory.one("collections", collection).get("stock")))
+    if (!Boolean.TRUE.equals(s.factory.one("collections", collection).get("stock"))) {
       throw conflict("Stock collection required");
+    }
     s.db
         .sql(
             "insert into"
@@ -139,13 +143,15 @@ public class StockCollectionService {
           default -> throw new IllegalArgumentException("Unknown plan action");
         };
     if (s.db
-            .sql(
-                "update stock_collection_plans set status=?,failure_reason=null,revision=revision+1"
-                    + " where collection_id=? and revision=? and status not in"
-                    + " ('COMPLETED','CANCELLED')")
-            .params(status, collection, revision)
-            .update()
-        != 1) throw conflict("Plan changed or completed");
+        .sql(
+            "update stock_collection_plans set status=?,failure_reason=null,revision=revision+1"
+                + " where collection_id=? and revision=? and status not in"
+                + " ('COMPLETED','CANCELLED')")
+        .params(status, collection, revision)
+        .update()
+        != 1) {
+      throw conflict("Plan changed or completed");
+    }
     return progress(collection);
   }
 
@@ -165,7 +171,9 @@ public class StockCollectionService {
             .param(id)
             .query()
             .singleRow();
-    if (!plan.get("status").equals("RUNNING")) return;
+    if (!plan.get("status").equals("RUNNING")) {
+      return;
+    }
     var p = progress(id);
     if (integer(p, "ready", 0) >= integer(plan, "target_approved", 1)) {
       s.db
@@ -176,7 +184,9 @@ public class StockCollectionService {
           .update();
       return;
     }
-    if (integer(p, "active", 0) > 0) return;
+    if (integer(p, "active", 0) > 0) {
+      return;
+    }
     if (integer(p, "attempts", 0) >= integer(plan, "max_attempts", 1)) {
       pause(id, "MAX_ATTEMPTS");
       return;
@@ -210,9 +220,13 @@ public class StockCollectionService {
                   .query()
                   .singleRow();
           if (!fresh.get("status").equals("RUNNING")
-              || !fresh.get("revision").equals(plan.get("revision"))) return;
+              || !fresh.get("revision").equals(plan.get("revision"))) {
+            return;
+          }
           var current = progress(id);
-          if (integer(current, "active", 0) > 0) return;
+          if (integer(current, "active", 0) > 0) {
+            return;
+          }
           int count =
               Math.min(
                   integer(plan, "batch_size", 1),
@@ -225,8 +239,8 @@ public class StockCollectionService {
                   c ->
                       integer(c, "unknown", 0) > 0
                           || !Objects.toString(c.get("currency"), "UNKNOWN")
-                              .trim()
-                              .equals("USD"))) {
+                          .trim()
+                          .equals("USD"))) {
             pause(id, "UNKNOWN_OR_MIXED_COST");
             return;
           }
@@ -235,10 +249,10 @@ public class StockCollectionService {
                   .map(c -> (BigDecimal) c.get("total"))
                   .reduce(BigDecimal.ZERO, BigDecimal::add);
           if (total
-                  .add(
-                      ((BigDecimal) plan.get("reserve_per_attempt"))
-                          .multiply(BigDecimal.valueOf(count)))
-                  .compareTo((BigDecimal) plan.get("max_cost"))
+              .add(
+                  ((BigDecimal) plan.get("reserve_per_attempt"))
+                      .multiply(BigDecimal.valueOf(count)))
+              .compareTo((BigDecimal) plan.get("max_cost"))
               > 0) {
             pause(id, "MAX_COST");
             return;

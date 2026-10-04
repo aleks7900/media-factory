@@ -27,6 +27,7 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers
 @SpringBootTest(properties = "media.worker.enabled=false")
 class VideoIntegrationTest {
+
   @Container
   static PostgreSQLContainer<?> postgres =
       new PostgreSQLContainer<>(
@@ -35,6 +36,25 @@ class VideoIntegrationTest {
   @Container
   static GenericContainer<?> ffmpeg =
       new GenericContainer<>("media-factory-video:latest").withExposedPorts(8000);
+  @Autowired
+  VideoProductionService service;
+  @Autowired
+  VideoWorkerClient client;
+  @Autowired
+  VideoSemanticQa semantic;
+  @Autowired
+  FactoryService factory;
+  @Autowired
+  JdbcClient db;
+  @Autowired
+  MediaStorage storage;
+  @Autowired
+  ProviderRateLimiter limiter;
+  @Autowired
+  RetryDecisionService retry;
+  @Autowired
+  VideoCollectionService collections;
+  UUID source;
 
   @DynamicPropertySource
   static void props(DynamicPropertyRegistry r) {
@@ -46,17 +66,6 @@ class VideoIntegrationTest {
         "VIDEO_WORKER_ENDPOINT",
         () -> "http://" + ffmpeg.getHost() + ":" + ffmpeg.getMappedPort(8000));
   }
-
-  @Autowired VideoProductionService service;
-  @Autowired VideoWorkerClient client;
-  @Autowired VideoSemanticQa semantic;
-  @Autowired FactoryService factory;
-  @Autowired JdbcClient db;
-  @Autowired MediaStorage storage;
-  @Autowired ProviderRateLimiter limiter;
-  @Autowired RetryDecisionService retry;
-  @Autowired VideoCollectionService collections;
-  UUID source;
 
   @BeforeEach
   void setup() throws Exception {
@@ -71,10 +80,12 @@ class VideoIntegrationTest {
     source = UUID.randomUUID();
     UUID review = UUID.randomUUID();
     var image = new BufferedImage(320, 240, BufferedImage.TYPE_INT_RGB);
-    for (int y = 0; y < 240; y++)
-      for (int x = 0; x < 320; x++)
+    for (int y = 0; y < 240; y++) {
+      for (int x = 0; x < 320; x++) {
         image.setRGB(
             x, y, ((x * 17 + y * 7) % 256) << 16 | ((x + y * 2) % 256) << 8 | (y * 3) % 256);
+      }
+    }
     var output = new ByteArrayOutputStream();
     ImageIO.write(image, "png", output);
     byte[] bytes = output.toByteArray();
@@ -157,26 +168,26 @@ class VideoIntegrationTest {
       assertThat(service.one(id).get("master_variant_id")).isNotEqualTo(first);
       assertThat(service.source(raw).get("sha256")).isEqualTo(checksum);
       assertThat(
-              db.sql("select count(*) from video_generation_attempts where production_id=?")
-                  .param(id)
-                  .query(Integer.class)
-                  .single())
+          db.sql("select count(*) from video_generation_attempts where production_id=?")
+              .param(id)
+              .query(Integer.class)
+              .single())
           .isEqualTo(1);
       assertThat(
-              db.sql(
-                      "select count(*) from video_processing_runs where production_id=? and"
-                          + " status='COMPLETED'")
-                  .param(id)
-                  .query(Integer.class)
-                  .single())
+          db.sql(
+                  "select count(*) from video_processing_runs where production_id=? and"
+                      + " status='COMPLETED'")
+              .param(id)
+              .query(Integer.class)
+              .single())
           .isEqualTo(2);
       assertThat(
-              db.sql(
-                      "select sum(coalesce(actual_cost,estimated_cost)) from generation_costs where"
-                          + " generation_id=?")
-                  .param(v.get("generation_id"))
-                  .query(BigDecimal.class)
-                  .single())
+          db.sql(
+                  "select sum(coalesce(actual_cost,estimated_cost)) from generation_costs where"
+                      + " generation_id=?")
+              .param(v.get("generation_id"))
+              .query(BigDecimal.class)
+              .single())
           .isEqualByComparingTo(BigDecimal.ZERO);
     }
   }
@@ -184,19 +195,21 @@ class VideoIntegrationTest {
   @Test
   void twentyQueuedProductionsRespectThreeRemoteSlots() {
     var ids = new ArrayList<UUID>();
-    for (int n = 0; n < 20; n++) ids.add((UUID) start("bulk-" + n).get("id"));
+    for (int n = 0; n < 20; n++) {
+      ids.add((UUID) start("bulk-" + n).get("id"));
+    }
     try (var gen = new VideoGenerationWorker(service, limiter, retry, 3, 2)) {
       ids.parallelStream().forEach(gen::step);
     }
     assertThat(
-            db.sql("select count(*) from video_generation_attempts where status='SUBMITTED'")
-                .query(Integer.class)
-                .single())
+        db.sql("select count(*) from video_generation_attempts where status='SUBMITTED'")
+            .query(Integer.class)
+            .single())
         .isEqualTo(3);
     assertThat(
-            db.sql("select count(*) from video_generation_attempts where status='REQUESTED'")
-                .query(Integer.class)
-                .single())
+        db.sql("select count(*) from video_generation_attempts where status='REQUESTED'")
+            .query(Integer.class)
+            .single())
         .isEqualTo(17);
   }
 
@@ -210,10 +223,10 @@ class VideoIntegrationTest {
     assertThat(db.sql("select count(*) from video_productions").query(Integer.class).single())
         .isEqualTo(1);
     assertThat(
-            db.sql("select failure_reason from video_collection_plans where collection_id=?")
-                .param(collection)
-                .query(String.class)
-                .single())
+        db.sql("select failure_reason from video_collection_plans where collection_id=?")
+            .param(collection)
+            .query(String.class)
+            .single())
         .isEqualTo("ATTEMPT_LIMIT");
   }
 
@@ -245,10 +258,10 @@ class VideoIntegrationTest {
     assertThat(fake.submissions).isEqualTo(1);
     assertThat(fake.polls).isEqualTo(2);
     assertThat(
-            db.sql("select status from video_generation_attempts where production_id=?")
-                .param(id)
-                .query(String.class)
-                .single())
+        db.sql("select status from video_generation_attempts where production_id=?")
+            .param(id)
+            .query(String.class)
+            .single())
         .isEqualTo("PROVIDER_PROCESSING");
   }
 
@@ -319,10 +332,10 @@ class VideoIntegrationTest {
     assertThat(first.submissions).isEqualTo(1);
     assertThat(second.submissions).isEqualTo(1);
     assertThat(
-            db.sql("select count(*) from generation_costs where generation_id=?")
-                .param(isolated.one(id).get("generation_id"))
-                .query(Integer.class)
-                .single())
+        db.sql("select count(*) from generation_costs where generation_id=?")
+            .param(isolated.one(id).get("generation_id"))
+            .query(Integer.class)
+            .single())
         .isEqualTo(2);
     assertThat(isolated.costs(id).getFirst().get("total").toString()).isEqualTo("0.35000000");
   }
@@ -341,6 +354,7 @@ class VideoIntegrationTest {
   }
 
   static class FakeProvider implements com.mediafactory.provider.video.VideoGenerationProvider {
+
     final String id;
     int submissions, polls;
     boolean uncertain, failed;
@@ -386,13 +400,14 @@ class VideoIntegrationTest {
     public com.mediafactory.provider.video.VideoTypes.Submission submit(
         com.mediafactory.provider.video.VideoTypes.Request r, byte[] source, String type) {
       submissions++;
-      if (uncertain)
+      if (uncertain) {
         throw new ImageGenerationException(
             ImageGenerationException.Type.TIMEOUT,
             "fixture timeout",
             java.time.Duration.ZERO,
             true,
             null);
+      }
       return new com.mediafactory.provider.video.VideoTypes.Submission(
           UUID.randomUUID().toString(), "fixture", Map.of());
     }

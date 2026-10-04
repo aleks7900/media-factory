@@ -11,29 +11,11 @@ import javax.imageio.ImageIO;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-/** Reads archive contents as bounded data. Archive paths are never filesystem destinations. */
+/**
+ * Reads archive contents as bounded data. Archive paths are never filesystem destinations.
+ */
 @Component
 public class BulkArchiveParser {
-  public record Limits(
-      long archiveBytes,
-      long extractedBytes,
-      int entryBytes,
-      int files,
-      int tasks,
-      int depth,
-      int ratio,
-      int promptBytes,
-      long pixels) {}
-
-  public record Reference(String name, String mediaType, byte[] bytes) {}
-
-  public record Task(String name, String prompt, List<Reference> references, String error) {
-    public boolean valid() {
-      return error == null;
-    }
-  }
-
-  public record Parsed(List<Task> tasks, long extractedBytes, int referenceCount) {}
 
   final Limits limits;
 
@@ -56,7 +38,38 @@ public class BulkArchiveParser {
   }
 
   static void require(boolean value, String message) {
-    if (!value) throw new IllegalArgumentException(message);
+    if (!value) {
+      throw new IllegalArgumentException(message);
+    }
+  }
+
+  static boolean isOsMetadataPart(String part) {
+    String lower = part.toLowerCase(Locale.ROOT);
+    return lower.equals(".ds_store")
+        || lower.equals("thumbs.db")
+        || lower.equals("desktop.ini")
+        || lower.startsWith("._")
+        || lower.equals("__macosx");
+  }
+
+  static boolean isOsMetadataPath(String path) {
+    for (String part : path.split("/", -1)) {
+      if (isOsMetadataPart(part)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static void copy(InputStream input, OutputStream out, long limit) throws IOException {
+    byte[] buffer = new byte[8192];
+    long size = 0;
+    int n;
+    while ((n = input.read(buffer)) != -1) {
+      size += n;
+      require(size <= limit, "Archive byte limit exceeded");
+      out.write(buffer, 0, n);
+    }
   }
 
   public Parsed parse(InputStream input) throws IOException {
@@ -76,7 +89,9 @@ public class BulkArchiveParser {
           var e = all.nextElement();
           require(++count <= limits.files(), "Archive file count exceeded");
           String name = Normalizer.normalize(e.getName(), Normalizer.Form.NFC);
-          if (isOsMetadataPath(name)) continue;
+          if (isOsMetadataPath(name)) {
+            continue;
+          }
           require(
               !name.isBlank()
                   && !name.startsWith("/")
@@ -87,10 +102,11 @@ public class BulkArchiveParser {
           String path = e.isDirectory() ? name.substring(0, name.length() - 1) : name;
           var parts = path.split("/", -1);
           require(parts.length <= limits.depth(), "Archive nesting limit exceeded");
-          for (String part : parts)
+          for (String part : parts) {
             require(
                 !part.isBlank() && !part.equals(".") && !part.equals("..") && part.length() <= 200,
                 "Unsafe archive path");
+          }
           require(names.add(path.toLowerCase(Locale.ROOT)), "Duplicate archive path");
           if (e.isDirectory()) {
             topDirectories.add(parts[0]);
@@ -158,20 +174,26 @@ public class BulkArchiveParser {
           var sortedFiles = new ArrayList<>(group.getValue().entrySet());
           sortedFiles.sort(Comparator.comparingInt(f -> {
             String l = f.getKey().toLowerCase(Locale.ROOT);
-            if (l.equals("task.md") || l.equals("prompt.md")) return 0;
-            if (l.equals("task.txt") || l.equals("prompt.txt")) return 1;
+            if (l.equals("task.md") || l.equals("prompt.md")) {
+              return 0;
+            }
+            if (l.equals("task.txt") || l.equals("prompt.txt")) {
+              return 1;
+            }
             return 2;
           }));
           for (var file : sortedFiles) {
             String name = file.getKey(), lower = name.toLowerCase(Locale.ROOT);
-            if (isOsMetadataPart(name)) continue;
+            if (isOsMetadataPart(name)) {
+              continue;
+            }
             byte[] bytes = file.getValue();
             boolean promptFile =
                 directories
                     ? (lower.equals("task.md")
-                        || lower.equals("task.txt")
-                        || lower.equals("prompt.md")
-                        || lower.equals("prompt.txt"))
+                       || lower.equals("task.txt")
+                       || lower.equals("prompt.md")
+                       || lower.equals("prompt.txt"))
                     : lower.endsWith(".md") || lower.endsWith(".txt");
             if (promptFile) {
               if (prompt != null && (lower.equals("task.txt") || lower.equals("prompt.txt"))) {
@@ -192,7 +214,9 @@ public class BulkArchiveParser {
                 && (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg"))) {
               String type = imageType(bytes);
               refs.add(new Reference(name, type, bytes));
-            } else throw new IllegalArgumentException("Unsupported task file: " + name);
+            } else {
+              throw new IllegalArgumentException("Unsupported task file: " + name);
+            }
           }
           require(prompt != null, "Missing task.md or prompt file");
         } catch (IllegalArgumentException | IOException invalid) {
@@ -209,22 +233,6 @@ public class BulkArchiveParser {
     } finally {
       Files.deleteIfExists(spool);
     }
-  }
-
-  static boolean isOsMetadataPart(String part) {
-    String lower = part.toLowerCase(Locale.ROOT);
-    return lower.equals(".ds_store")
-        || lower.equals("thumbs.db")
-        || lower.equals("desktop.ini")
-        || lower.startsWith("._")
-        || lower.equals("__macosx");
-  }
-
-  static boolean isOsMetadataPath(String path) {
-    for (String part : path.split("/", -1)) {
-      if (isOsMetadataPart(part)) return true;
-    }
-    return false;
   }
 
   String imageType(byte[] bytes) throws IOException {
@@ -247,14 +255,31 @@ public class BulkArchiveParser {
     }
   }
 
-  static void copy(InputStream input, OutputStream out, long limit) throws IOException {
-    byte[] buffer = new byte[8192];
-    long size = 0;
-    int n;
-    while ((n = input.read(buffer)) != -1) {
-      size += n;
-      require(size <= limit, "Archive byte limit exceeded");
-      out.write(buffer, 0, n);
+  public record Limits(
+      long archiveBytes,
+      long extractedBytes,
+      int entryBytes,
+      int files,
+      int tasks,
+      int depth,
+      int ratio,
+      int promptBytes,
+      long pixels) {
+
+  }
+
+  public record Reference(String name, String mediaType, byte[] bytes) {
+
+  }
+
+  public record Task(String name, String prompt, List<Reference> references, String error) {
+
+    public boolean valid() {
+      return error == null;
     }
+  }
+
+  public record Parsed(List<Task> tasks, long extractedBytes, int referenceCount) {
+
   }
 }

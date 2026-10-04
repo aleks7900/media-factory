@@ -9,6 +9,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class AnalyticsJobs {
+
   private final JdbcClient db;
   private final TransactionTemplate tx;
   private final AnalyticsImportService imports;
@@ -26,11 +27,13 @@ public class AnalyticsJobs {
   }
 
   public Object enqueue(String type, Map<String, Object> payload, String key) {
-    if (!Set.of("IMPORT", "NORMALIZE", "AGGREGATE", "REBUILD", "RECONCILE").contains(type))
+    if (!Set.of("IMPORT", "NORMALIZE", "AGGREGATE", "REBUILD", "RECONCILE").contains(type)) {
       throw new IllegalArgumentException("Invalid analytics job type");
+    }
     AnalyticsIngestionService.required(key, "Idempotency-Key", 200);
-    if (write(payload).length() > 16000)
+    if (write(payload).length() > 16000) {
       throw new IllegalArgumentException("Job payload too large");
+    }
     db.sql(
             "insert into analytics_jobs(type,payload,idempotency_key) values(?,cast(? as jsonb),?)"
                 + " on conflict(idempotency_key) do nothing")
@@ -41,8 +44,9 @@ public class AnalyticsJobs {
             .param(key)
             .query()
             .singleRow();
-    if (!job.get("type").equals(type) || !map(job.get("payload")).equals(payload))
+    if (!job.get("type").equals(type) || !map(job.get("payload")).equals(payload)) {
       throw new IllegalArgumentException("Job idempotency conflict");
+    }
     return job;
   }
 
@@ -69,7 +73,9 @@ public class AnalyticsJobs {
                               + " limit 1")
                       .query()
                       .listOfRows();
-              if (rows.isEmpty()) return null;
+              if (rows.isEmpty()) {
+                return null;
+              }
               var row = rows.getFirst();
               UUID token = UUID.randomUUID();
               row.put("lease_token", token);
@@ -81,18 +87,19 @@ public class AnalyticsJobs {
                   .update();
               return row;
             });
-    if (job == null) return;
+    if (job == null) {
+      return;
+    }
     try {
       var payload = map(job.get("payload"));
       Object result =
           switch (job.get("type").toString()) {
             case "IMPORT" -> imports.commit(UUID.fromString(payload.get("batchId").toString()));
             case "RECONCILE" -> aggregation.diagnostics();
-            default ->
-                aggregation.rebuild(
-                    Objects.toString(payload.get("reason"), "Scheduled analytics rollup"),
-                    Objects.toString(payload.get("createdBy"), "analytics-worker"),
-                    AnalyticsRebuildScope.parse(payload));
+            default -> aggregation.rebuild(
+                Objects.toString(payload.get("reason"), "Scheduled analytics rollup"),
+                Objects.toString(payload.get("createdBy"), "analytics-worker"),
+                AnalyticsRebuildScope.parse(payload));
           };
       db.sql(
               "update analytics_jobs set status='SUCCEEDED',completed_at=now(),result=cast(? as"
@@ -130,10 +137,11 @@ public class AnalyticsJobs {
             .query(Boolean.class)
             .optional()
             .orElse(false);
-    if (dirty)
+    if (dirty) {
       enqueue(
           "AGGREGATE",
           Map.of(),
           "scheduled-rollup-" + java.time.Instant.now().getEpochSecond() / 60);
+    }
   }
 }

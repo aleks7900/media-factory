@@ -138,7 +138,9 @@ public class PromptEngine {
             "Generation is outside experiment scope");
         experiments = List.of(e);
       } else {
-        experiments = db.sql("select * from prompt_experiments where status='RUNNING' and source_hypothesis_id is null").query()
+        experiments = db.sql(
+                "select * from prompt_experiments where status='RUNNING' and source_hypothesis_id is null")
+            .query()
             .listOfRows().stream()
             .filter(e -> eligible(e, template, collectionId, request.pipeline())).toList();
       }

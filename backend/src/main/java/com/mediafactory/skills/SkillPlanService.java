@@ -15,9 +15,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 
-/** Read-only plan construction. Domain services remain the eligibility/policy authorities. */
+/**
+ * Read-only plan construction. Domain services remain the eligibility/policy authorities.
+ */
 @Service
 public class SkillPlanService {
+
   public static final Set<String> SKILLS =
       Set.of(
           "research-trends", "create-collection", "run-qa", "prepare-stock", "create-wallpapers");
@@ -55,23 +58,10 @@ public class SkillPlanService {
     this.visionProvider = visionProvider;
   }
 
-  public void checkAuxiliaryAdmission(String skill, Map<String, Object> input) {
-    boolean invokesQa =
-        Set.of("run-qa", "prepare-stock", "create-wallpapers").contains(skill)
-            || Boolean.TRUE.equals(input.get("generate"));
-    if (invokesQa)
-      check(
-          qa.route().stream().allMatch("mock"::equals),
-          "BUDGET_EXCEEDED: paid QA preflight pricing is unavailable for this workflow");
-    if (skill.equals("prepare-stock"))
-      check(
-          "mock".equals(textProvider.textIdentity().get("provider"))
-              && "mock".equals(visionProvider.visionIdentity().get("provider")),
-          "BUDGET_EXCEEDED: paid stock metadata preflight pricing is unavailable");
-  }
-
   public static void check(boolean ok, String message) {
-    if (!ok) throw new IllegalArgumentException(message);
+    if (!ok) {
+      throw new IllegalArgumentException(message);
+    }
   }
 
   public static UUID id(Map<String, Object> p, String key) {
@@ -85,7 +75,9 @@ public class SkillPlanService {
   }
 
   public static List<UUID> ids(Object value) {
-    if (value == null) return List.of();
+    if (value == null) {
+      return List.of();
+    }
     check(value instanceof List<?>, "Expected an ID list");
     var list = (List<?>) value;
     check(list.size() <= 1000, "At most 1000 IDs");
@@ -110,16 +102,79 @@ public class SkillPlanService {
     return s;
   }
 
+  public static void validateResearch(Map<String, Object> input) {
+    check(
+        input.get("directions") instanceof List<?> d && !d.isEmpty() && d.size() <= 30,
+        "Provide 1–30 sourced directions");
+    for (Object raw : (List<?>) input.get("directions")) {
+      var d = map(raw);
+      keys(
+          d,
+          "name",
+          "description",
+          "visualAttributes",
+          "evidence",
+          "externalSignal",
+          "internalCoverage",
+          "notes");
+      safeName(text(d, "name"));
+      check(text(d, "description").length() <= 4000, "Description too long");
+      check(
+          d.get("evidence") instanceof List<?> e && !e.isEmpty() && e.size() <= 30,
+          "Every direction needs evidence");
+      for (Object source : (List<?>) d.get("evidence")) {
+        var e = map(source);
+        keys(e, "source", "url", "observedAt", "sourceType", "observation");
+        text(e, "source");
+        text(e, "sourceType");
+        text(e, "observation");
+        URI uri = URI.create(text(e, "url"));
+        check(
+            Set.of("http", "https").contains(uri.getScheme())
+                && uri.getHost() != null
+                && uri.getUserInfo() == null
+                && uri.getFragment() == null,
+            "Use a public HTTP(S) citation without credentials/fragments");
+        check(
+            !uri.toString()
+                .toLowerCase(Locale.ROOT)
+                .matches(".*(token=|signature=|api_key=|password=|credential=).*"),
+            "Do not persist signed or credential-bearing URLs");
+        check(
+            !Instant.parse(text(e, "observedAt")).isAfter(Instant.now().plusSeconds(300)),
+            "Evidence observation cannot be in the future");
+      }
+    }
+  }
+
+  public void checkAuxiliaryAdmission(String skill, Map<String, Object> input) {
+    boolean invokesQa =
+        Set.of("run-qa", "prepare-stock", "create-wallpapers").contains(skill)
+            || Boolean.TRUE.equals(input.get("generate"));
+    if (invokesQa) {
+      check(
+          qa.route().stream().allMatch("mock"::equals),
+          "BUDGET_EXCEEDED: paid QA preflight pricing is unavailable for this workflow");
+    }
+    if (skill.equals("prepare-stock")) {
+      check(
+          "mock".equals(textProvider.textIdentity().get("provider"))
+              && "mock".equals(visionProvider.visionIdentity().get("provider")),
+          "BUDGET_EXCEEDED: paid stock metadata preflight pricing is unavailable");
+    }
+  }
+
   public Map<String, Object> plan(
       String skill, UUID project, UUID collection, Map<String, Object> input) {
     check(enabled, "Skills are disabled");
     check(SKILLS.contains(skill), "Unknown skill");
     check(write(input).length() <= 100000, "Input too large");
     factory.one("projects", project);
-    if (collection != null)
+    if (collection != null) {
       check(
           factory.one("collections", collection).get("project_id").equals(project),
           "Collection is outside project scope");
+    }
     var p = new LinkedHashMap<String, Object>();
     p.put("skill", skill);
     p.put("version", 1);
@@ -207,12 +262,12 @@ public class SkillPlanService {
           UUID candidate = id(input, "trendCandidateId");
           check(
               db.sql(
-                          "select count(*) from trend_candidates c join trend_research_runs r on"
-                              + " r.id=c.research_run_id join skill_executions e on"
-                              + " e.id=r.execution_id where c.id=? and e.project_id=?")
-                      .params(candidate, project)
-                      .query(Long.class)
-                      .single()
+                      "select count(*) from trend_candidates c join trend_research_runs r on"
+                          + " r.id=c.research_run_id join skill_executions e on"
+                          + " e.id=r.execution_id where c.id=? and e.project_id=?")
+                  .params(candidate, project)
+                  .query(Long.class)
+                  .single()
                   == 1,
               "Trend candidate outside project scope");
         }
@@ -224,7 +279,7 @@ public class SkillPlanService {
         }
       }
       case "run-qa", "prepare-stock" -> {
-        if (skill.equals("run-qa"))
+        if (skill.equals("run-qa")) {
           keys(
               input,
               "assetIds",
@@ -237,7 +292,7 @@ public class SkillPlanService {
               "technicalOnly",
               "visualQa",
               "maxAssets");
-        else
+        } else {
           keys(
               input,
               "assetIds",
@@ -250,6 +305,7 @@ public class SkillPlanService {
               "reprocess",
               "exportPackage",
               "exportProfile");
+        }
         var assets = selectAssets(project, collection, input);
         check(!assets.isEmpty(), "No assets match the explicit scope");
         p.put("items", assets);
@@ -258,7 +314,9 @@ public class SkillPlanService {
               !Boolean.TRUE.equals(input.get("technicalOnly"))
                   && !Boolean.FALSE.equals(input.get("visualQa")),
               "The current QA service runs its complete policy; technical-only is unsupported");
-          if (input.containsKey("profile")) qa.policy(text(input, "profile"));
+          if (input.containsKey("profile")) {
+            qa.policy(text(input, "profile"));
+          }
           p.put("qaProvider", qa.provider());
           warnings.add(
               "Completed matching reviews are reused; review decisions are never automatically"
@@ -280,14 +338,18 @@ public class SkillPlanService {
                   "Stock sources require a STOCK_STRICT collection");
               eligibleAssets.add(asset);
             } catch (IllegalArgumentException failure) {
-              if (input.containsKey("assetIds")) throw failure;
+              if (input.containsKey("assetIds")) {
+                throw failure;
+              }
               excluded.add(Map.of("assetId", asset, "reason", failure.getMessage()));
             }
           }
           check(!eligibleAssets.isEmpty(), "No eligible approved stock assets in scope");
           p.put("items", eligibleAssets);
           p.put("excluded", excluded);
-          if (Boolean.TRUE.equals(input.get("exportPackage"))) text(input, "exportProfile");
+          if (Boolean.TRUE.equals(input.get("exportPackage"))) {
+            text(input, "exportProfile");
+          }
           warnings.add("Stock metadata approval remains a human gate before export");
         }
       }
@@ -332,7 +394,7 @@ public class SkillPlanService {
         check(
             !input.containsKey("deviceProfiles")
                 || new HashSet<>((List<?>) input.get("deviceProfiles"))
-                    .equals(new HashSet<>((List<?>) def.get("processingProfiles"))),
+                .equals(new HashSet<>((List<?>) def.get("processingProfiles"))),
             "Device profiles must match the versioned wallpaper production profile");
         check(
             !Boolean.FALSE.equals(input.get("createPreview")), "Profile controls preview creation");
@@ -359,7 +421,7 @@ public class SkillPlanService {
               !Boolean.FALSE.equals(input.get("generate")),
               "Choose processOnly with assets or generation");
           var concepts = ids(input.get("conceptIds"));
-          if (concepts.isEmpty())
+          if (concepts.isEmpty()) {
             concepts =
                 db.sql(
                         "select id from concepts where collection_id=? order by created_at,id limit"
@@ -367,11 +429,13 @@ public class SkillPlanService {
                     .param(collection)
                     .query(UUID.class)
                     .list();
+          }
           check(!concepts.isEmpty() && concepts.size() <= 1000, "Select 1–1000 concepts");
-          for (UUID concept : concepts)
+          for (UUID concept : concepts) {
             check(
                 factory.one("concepts", concept).get("collection_id").equals(collection),
                 "Concept outside collection");
+          }
           int count = integer(input, "targetCount", concepts.size());
           check(count >= 1 && count <= 1000, "Target must be 1–1000");
           p.put("items", concepts);
@@ -433,18 +497,22 @@ public class SkillPlanService {
             : quote.estimatedCost().multiply(BigDecimal.valueOf(count)));
     p.put("paid", !provider.equals("mock"));
     p.put("approvalRequired", !provider.equals("mock") && count >= threshold);
-    if (input.containsKey("currency"))
+    if (input.containsKey("currency")) {
       check(
           quote.currency().equals(input.get("currency")),
           "Requested budget currency differs from pricing currency");
+    }
     if (input.containsKey("maxBudget")) {
       var budget = new BigDecimal(input.get("maxBudget").toString());
       check(budget.signum() >= 0, "Budget must be non-negative");
-      if (p.get("estimatedGenerationCost") != null)
+      if (p.get("estimatedGenerationCost") != null) {
         check(
             budget.compareTo((BigDecimal) p.get("estimatedGenerationCost")) >= 0,
             "BUDGET_EXCEEDED: budget below estimate");
-    } else check(provider.equals("mock"), "Paid generation requires maxBudget");
+      }
+    } else {
+      check(provider.equals("mock"), "Paid generation requires maxBudget");
+    }
   }
 
   public Map<String, Object> eligible(UUID asset) {
@@ -493,7 +561,7 @@ public class SkillPlanService {
               + " b.batch_id=:batch)");
       args.put("batch", id(input, "generationBatchId"));
     }
-    for (String boundary : List.of("from", "to"))
+    for (String boundary : List.of("from", "to")) {
       if (input.containsKey(boundary)) {
         sql.append(" and g.created_at ")
             .append(boundary.equals("from") ? ">=" : "<")
@@ -502,6 +570,7 @@ public class SkillPlanService {
             .append(" as timestamptz)");
         args.put(boundary, Instant.parse(text(input, boundary)).toString());
       }
+    }
     if (input.containsKey("status")) {
       sql.append(" and g.status=:status");
       args.put("status", text(input, "status"));
@@ -515,50 +584,5 @@ public class SkillPlanService {
         selected.isEmpty() || found.size() == selected.size(),
         "Asset selection is outside project/collection scope or filters");
     return found;
-  }
-
-  public static void validateResearch(Map<String, Object> input) {
-    check(
-        input.get("directions") instanceof List<?> d && !d.isEmpty() && d.size() <= 30,
-        "Provide 1–30 sourced directions");
-    for (Object raw : (List<?>) input.get("directions")) {
-      var d = map(raw);
-      keys(
-          d,
-          "name",
-          "description",
-          "visualAttributes",
-          "evidence",
-          "externalSignal",
-          "internalCoverage",
-          "notes");
-      safeName(text(d, "name"));
-      check(text(d, "description").length() <= 4000, "Description too long");
-      check(
-          d.get("evidence") instanceof List<?> e && !e.isEmpty() && e.size() <= 30,
-          "Every direction needs evidence");
-      for (Object source : (List<?>) d.get("evidence")) {
-        var e = map(source);
-        keys(e, "source", "url", "observedAt", "sourceType", "observation");
-        text(e, "source");
-        text(e, "sourceType");
-        text(e, "observation");
-        URI uri = URI.create(text(e, "url"));
-        check(
-            Set.of("http", "https").contains(uri.getScheme())
-                && uri.getHost() != null
-                && uri.getUserInfo() == null
-                && uri.getFragment() == null,
-            "Use a public HTTP(S) citation without credentials/fragments");
-        check(
-            !uri.toString()
-                .toLowerCase(Locale.ROOT)
-                .matches(".*(token=|signature=|api_key=|password=|credential=).*"),
-            "Do not persist signed or credential-bearing URLs");
-        check(
-            !Instant.parse(text(e, "observedAt")).isAfter(Instant.now().plusSeconds(300)),
-            "Evidence observation cannot be in the future");
-      }
-    }
   }
 }

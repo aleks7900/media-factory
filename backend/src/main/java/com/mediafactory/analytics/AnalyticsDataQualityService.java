@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class AnalyticsDataQualityService {
+
   private final JdbcClient db;
 
   public AnalyticsDataQualityService(JdbcClient db) {
@@ -40,13 +41,13 @@ public class AnalyticsDataQualityService {
         "metricWarnings",
         db.sql(
                 """
-                with totals as (select asset_id,platform,sum(value) filter(where metric_type='VIEW') as views,
-                 sum(value) filter(where metric_type='LIKE') as likes,sum(value) filter(where metric_type='DOWNLOAD') as downloads
-                 from analytics_daily_aggregate group by asset_id,platform)
-                select *,case when views<0 or likes<0 or downloads<0 then 'NEGATIVE_CORRECTED_TOTAL'
-                 else 'ENGAGEMENT_EXCEEDS_RECORDED_VIEWS' end as warning from totals
-                where views<0 or likes<0 or downloads<0 or likes>views or downloads>views limit 200
-                """)
+                    with totals as (select asset_id,platform,sum(value) filter(where metric_type='VIEW') as views,
+                     sum(value) filter(where metric_type='LIKE') as likes,sum(value) filter(where metric_type='DOWNLOAD') as downloads
+                     from analytics_daily_aggregate group by asset_id,platform)
+                    select *,case when views<0 or likes<0 or downloads<0 then 'NEGATIVE_CORRECTED_TOTAL'
+                     else 'ENGAGEMENT_EXCEEDS_RECORDED_VIEWS' end as warning from totals
+                    where views<0 or likes<0 or downloads<0 or likes>views or downloads>views limit 200
+                    """)
             .query()
             .listOfRows());
     result.put(

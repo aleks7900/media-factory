@@ -193,12 +193,15 @@ CREATE TABLE wallpaper_production_events
     created_at    timestamptz   NOT NULL DEFAULT now()
 );
 CREATE TRIGGER immutable_wallpaper_events
-    BEFORE UPDATE OR DELETE ON wallpaper_production_events FOR EACH ROW
+    BEFORE UPDATE OR
+DELETE
+ON wallpaper_production_events FOR EACH ROW
 EXECUTE FUNCTION immutable_review_action();
 CREATE FUNCTION protect_wallpaper_snapshot() RETURNS trigger
     LANGUAGE plpgsql AS $$
 BEGIN
- IF (NEW.concept_id,NEW.profile_key,NEW.profile_snapshot,NEW.request_key,NEW.request_hash,NEW.parent_id) IS DISTINCT FROM (OLD.concept_id,OLD.profile_key,OLD.profile_snapshot,OLD.request_key,OLD.request_hash,OLD.parent_id) THEN RAISE EXCEPTION 'Wallpaper production identity is immutable';
+ IF
+(NEW.concept_id,NEW.profile_key,NEW.profile_snapshot,NEW.request_key,NEW.request_hash,NEW.parent_id) IS DISTINCT FROM (OLD.concept_id,OLD.profile_key,OLD.profile_snapshot,OLD.request_key,OLD.request_hash,OLD.parent_id) THEN RAISE EXCEPTION 'Wallpaper production identity is immutable';
 END IF;
 RETURN NEW;
 END $$;
@@ -239,7 +242,8 @@ CREATE TABLE wallpaper_publication_packages
 CREATE FUNCTION protect_wallpaper_package() RETURNS trigger
     LANGUAGE plpgsql AS $$
 BEGIN
- IF TG_OP='DELETE' OR (NEW.production_id,NEW.version,NEW.manifest,NEW.manifest_sha256) IS DISTINCT FROM (OLD.production_id,OLD.version,OLD.manifest,OLD.manifest_sha256) THEN RAISE EXCEPTION 'Publication manifest is immutable';
+ IF
+TG_OP='DELETE' OR (NEW.production_id,NEW.version,NEW.manifest,NEW.manifest_sha256) IS DISTINCT FROM (OLD.production_id,OLD.version,OLD.manifest,OLD.manifest_sha256) THEN RAISE EXCEPTION 'Publication manifest is immutable';
 END IF;
  IF
 OLD.approved_at IS NOT NULL AND (NEW.approved_by,NEW.approved_at) IS DISTINCT FROM (OLD.approved_by,OLD.approved_at) THEN RAISE EXCEPTION 'Publication approval is immutable';
@@ -247,7 +251,9 @@ END IF;
 RETURN NEW;
 END $$;
 CREATE TRIGGER wallpaper_package_immutable
-    BEFORE UPDATE OR DELETE ON wallpaper_publication_packages FOR EACH ROW
+    BEFORE UPDATE OR
+DELETE
+ON wallpaper_publication_packages FOR EACH ROW
 EXECUTE FUNCTION protect_wallpaper_package();
 CREATE TABLE wallpaper_deliveries
 (
@@ -307,7 +313,9 @@ CREATE TABLE wallpaper_amoled_analyses
     UNIQUE (production_id, stage, source_checksum)
 );
 CREATE TRIGGER immutable_amoled_analysis
-    BEFORE UPDATE OR DELETE ON wallpaper_amoled_analyses FOR EACH ROW
+    BEFORE UPDATE OR
+DELETE
+ON wallpaper_amoled_analyses FOR EACH ROW
 EXECUTE FUNCTION immutable_review_action();
 ALTER TABLE wallpaper_exports
     ADD COLUMN lease_token uuid,ADD COLUMN lease_until timestamptz;

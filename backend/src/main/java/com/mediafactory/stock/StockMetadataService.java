@@ -17,6 +17,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class StockMetadataService {
+
   final JdbcClient db;
   final TransactionTemplate tx;
   final PromptEngine prompts;
@@ -72,19 +73,21 @@ public class StockMetadataService {
     d.put(
         "keywords",
         map(write(
-                Map.of(
-                    "k",
-                    StockKeywords.normalize(
-                        (List<?>) input.getOrDefault("keywords", List.of()),
-                        integer(profile, "maximumKeywords", 49),
-                        source))))
+            Map.of(
+                "k",
+                StockKeywords.normalize(
+                    (List<?>) input.getOrDefault("keywords", List.of()),
+                    integer(profile, "maximumKeywords", 49),
+                    source))))
             .get("k"));
     d.put("categories", input.getOrDefault("categories", List.of()));
     d.put("contentType", input.getOrDefault("contentType", "UNDETERMINED"));
     d.put("aiGenerated", input.getOrDefault("aiGenerated", true));
     d.put("riskFlags", input.getOrDefault("riskFlags", List.of()));
     d.put("language", profile.getOrDefault("language", "en"));
-    if (write(d).length() > 32000) throw new IllegalArgumentException("Metadata too large");
+    if (write(d).length() > 32000) {
+      throw new IllegalArgumentException("Metadata too large");
+    }
     return d;
   }
 
@@ -122,18 +125,20 @@ public class StockMetadataService {
           title.equals(ot)
               ? "IDENTICAL_TITLE"
               : !union.isEmpty() && (double) intersection.size() / union.size() >= .8
-                  ? "NEAR_IDENTICAL_TITLE"
+                ? "NEAR_IDENTICAL_TITLE"
                   : null;
       if (code == null
           && keywords.equals(
-              new HashSet<>(
-                  ((List<Map<String, Object>>) other.get("keywords"))
-                      .stream()
-                          .map(
-                              k ->
-                                  Objects.toString(
-                                      k.get("normalizedValue"), k.get("value").toString()))
-                          .toList()))) code = "IDENTICAL_KEYWORD_SET";
+          new HashSet<>(
+              ((List<Map<String, Object>>) other.get("keywords"))
+                  .stream()
+                  .map(
+                      k ->
+                          Objects.toString(
+                              k.get("normalizedValue"), k.get("value").toString()))
+                  .toList()))) {
+        code = "IDENTICAL_KEYWORD_SET";
+      }
       if (code != null) {
         issues.add(
             Map.of(
@@ -149,7 +154,9 @@ public class StockMetadataService {
       }
     }
     result.put("issues", issues);
-    if (!issues.isEmpty() && result.get("status").equals("PASS")) result.put("status", "WARNING");
+    if (!issues.isEmpty() && result.get("status").equals("PASS")) {
+      result.put("status", "WARNING");
+    }
     return result;
   }
 
@@ -190,7 +197,7 @@ public class StockMetadataService {
             source,
             source.equals("GENERATED") ? "metadata-worker" : "local-workspace")
         .update();
-    for (var k : (List<Map<String, Object>>) data.get("keywords"))
+    for (var k : (List<Map<String, Object>>) data.get("keywords")) {
       db.sql(
               "insert into"
                   + " stock_keywords(metadata_version_id,rank,value,normalized_value,source,confidence)"
@@ -203,6 +210,7 @@ public class StockMetadataService {
               k.get("source"),
               k.get("confidence"))
           .update();
+    }
     return version(id);
   }
 
@@ -217,8 +225,9 @@ public class StockMetadataService {
                       .singleRow());
           if (integer(s, "revision", -1) != revision
               || !Set.of("METADATA_REVIEW", "READY_FOR_EXPORT", "EXPORTED", "REVIEW_REJECTED")
-                  .contains(s.get("status")))
+              .contains(s.get("status"))) {
             throw conflict("Metadata changed or production is not editable");
+          }
           var old = version((UUID) s.get("metadata_version_id"));
           var data = new LinkedHashMap<>(input);
           data.put("riskFlags", map(old.get("data")).getOrDefault("riskFlags", List.of()));
@@ -242,8 +251,9 @@ public class StockMetadataService {
   }
 
   public Object regenerate(UUID production, int revision, String scope) {
-    if (!Set.of("ALL", "TITLE", "DESCRIPTION", "KEYWORDS").contains(scope))
+    if (!Set.of("ALL", "TITLE", "DESCRIPTION", "KEYWORDS").contains(scope)) {
       throw new IllegalArgumentException("Invalid metadata scope");
+    }
     return tx.execute(
         t -> {
           var s =
@@ -254,12 +264,14 @@ public class StockMetadataService {
           if (integer(s, "revision", -1) != revision
               || s.get("stock_variant_id") == null
               || !Set.of(
-                      "METADATA_REVIEW",
-                      "READY_FOR_EXPORT",
-                      "EXPORTED",
-                      "METADATA_FAILED",
-                      "REVIEW_REJECTED")
-                  .contains(s.get("status"))) throw conflict("Metadata cannot be regenerated now");
+                  "METADATA_REVIEW",
+                  "READY_FOR_EXPORT",
+                  "EXPORTED",
+                  "METADATA_FAILED",
+                  "REVIEW_REJECTED")
+              .contains(s.get("status"))) {
+            throw conflict("Metadata cannot be regenerated now");
+          }
           UUID request = UUID.randomUUID();
           db.sql(
                   "update stock_productions set"
@@ -279,8 +291,9 @@ public class StockMetadataService {
             .query()
             .singleRow();
     byte[] bytes = storage.read(v.get("storage_key").toString());
-    if (!PerceptualHash.sha(bytes).equals(v.get("sha256")))
+    if (!PerceptualHash.sha(bytes).equals(v.get("sha256"))) {
       throw conflict("Stock image checksum changed");
+    }
     // A checksum-keyed observation cache avoids repeat Vision calls after metadata-only edits.
     String visionKey =
         ProcessingPlannerHash(List.of("stock-vision-v1", v.get("sha256"), vision.visionIdentity()));
@@ -290,14 +303,15 @@ public class StockMetadataService {
             .query(String.class)
             .optional();
     Map<String, Object> observations;
-    if (cached.isPresent()) observations = map(cached.get());
-    else {
+    if (cached.isPresent()) {
+      observations = map(cached.get());
+    } else {
       observations =
           map(
               operation(
-                      s,
-                      "STOCK_VISION_ANALYSIS",
-                      () -> vision.inspect(new Media(bytes, "image/jpeg")))
+                  s,
+                  "STOCK_VISION_ANALYSIS",
+                  () -> vision.inspect(new Media(bytes, "image/jpeg")))
                   .output());
       db.sql(
               "insert into stock_metadata_cache(cache_key,result) values(?,?::jsonb) on conflict do"
@@ -370,20 +384,21 @@ public class StockMetadataService {
             .query(String.class)
             .optional();
     Map<String, Object> generated;
-    if (existing.isPresent()) generated = map(existing.get());
-    else {
+    if (existing.isPresent()) {
+      generated = map(existing.get());
+    } else {
       generated =
           map(
               operation(
-                      s,
-                      "STOCK_METADATA_GENERATION",
-                      () ->
-                          text.generateText(
-                              new Request(
-                                  s.get("metadata_request_id").toString(),
-                                  rendered.canonical().positivePrompt(),
-                                  0,
-                                  0)))
+                  s,
+                  "STOCK_METADATA_GENERATION",
+                  () ->
+                      text.generateText(
+                          new Request(
+                              s.get("metadata_request_id").toString(),
+                              rendered.canonical().positivePrompt(),
+                              0,
+                              0)))
                   .output());
       db.sql(
               "insert into stock_metadata_cache(cache_key,result) values(?,?::jsonb) on conflict do"
@@ -402,9 +417,15 @@ public class StockMetadataService {
         new LinkedHashSet<String>((List<String>) generated.getOrDefault("riskFlags", List.of()));
     for (var finding : qa) {
       String code = finding.get("code").toString();
-      if (code.equals("UNWANTED_LOGO")) risk.add("VISIBLE_LOGO");
-      if (code.equals("UNWANTED_TEXT")) risk.add("TRADEMARK_LIKE_TEXT");
-      if (code.equals("POSSIBLE_WATERMARK")) risk.add("COPYRIGHT_RISK");
+      if (code.equals("UNWANTED_LOGO")) {
+        risk.add("VISIBLE_LOGO");
+      }
+      if (code.equals("UNWANTED_TEXT")) {
+        risk.add("TRADEMARK_LIKE_TEXT");
+      }
+      if (code.equals("POSSIBLE_WATERMARK")) {
+        risk.add("COPYRIGHT_RISK");
+      }
     }
     generated = new LinkedHashMap<>(generated);
     generated.put("riskFlags", List.copyOf(risk));
@@ -426,7 +447,9 @@ public class StockMetadataService {
                       .query()
                       .singleRow());
           if (!Objects.equals(fresh.get("revision"), s.get("revision"))
-              || !fresh.get("status").equals("METADATA_GENERATION")) return;
+              || !fresh.get("status").equals("METADATA_GENERATION")) {
+            return;
+          }
           var m =
               save(
                   fresh,

@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class StockExportService {
+
   final StockProductionService s;
   final Map<String, StockExportAdapter> adapters;
   final java.util.concurrent.ConcurrentMap<UUID, UUID> active =
@@ -21,8 +22,18 @@ public class StockExportService {
   public StockExportService(StockProductionService s, List<StockExportAdapter> adapters) {
     this.s = s;
     var map = new HashMap<String, StockExportAdapter>();
-    for (var a : adapters) map.put(a.platformId(), a);
+    for (var a : adapters) {
+      map.put(a.platformId(), a);
+    }
     this.adapters = Map.copyOf(map);
+  }
+
+  static void entry(ZipOutputStream zip, String name, byte[] bytes) throws IOException {
+    var e = new ZipEntry(name);
+    e.setTime(0);
+    zip.putNextEntry(e);
+    zip.write(bytes);
+    zip.closeEntry();
   }
 
   public Object profiles() {
@@ -37,14 +48,16 @@ public class StockExportService {
   }
 
   public Object profile(String key, int previous, Map<String, Object> definition) {
-    if (!key.matches("[A-Z_]{2,60}") || !adapters.containsKey(definition.get("adapter")))
+    if (!key.matches("[A-Z_]{2,60}") || !adapters.containsKey(definition.get("adapter"))) {
       throw new IllegalArgumentException("Unknown adapter");
+    }
     if (integer(definition, "maximumAssets", 0) < 1
         || integer(definition, "maximumAssets", 0) > 500
         || number(definition, "maximumBytes", 0) < 1
         || number(definition, "maximumBytes", 0) > 536870912
-        || !"UTF-8".equals(definition.get("encoding")))
+        || !"UTF-8".equals(definition.get("encoding"))) {
       throw new IllegalArgumentException("Invalid export limits");
+    }
     adapters.get(definition.get("adapter")).csv(List.of(), definition);
     return s.tx.execute(
         t -> {
@@ -61,7 +74,9 @@ public class StockExportService {
                   .param(key)
                   .query(Integer.class)
                   .single();
-          if (version != previous) throw conflict("Export profile changed");
+          if (version != previous) {
+            throw conflict("Export profile changed");
+          }
           return json(
               s.db
                   .sql(
@@ -84,10 +99,12 @@ public class StockExportService {
     if (!Set.of("STRICT", "VALID_ONLY").contains(policy)
         || key == null
         || key.isBlank()
-        || key.length() > 180)
+        || key.length() > 180) {
       throw new IllegalArgumentException("Policy and Idempotency-Key required");
-    if ((collection == null) == (ids == null || ids.isEmpty()))
+    }
+    if ((collection == null) == (ids == null || ids.isEmpty())) {
       throw new IllegalArgumentException("Provide production IDs or a collection");
+    }
     String hash =
         com.mediafactory.processing.ProcessingPlanner.hash(
             Arrays.asList(
@@ -111,8 +128,9 @@ public class StockExportService {
                   .query()
                   .listOfRows();
           if (!replay.isEmpty()) {
-            if (!hash.equals(replay.getFirst().get("request_hash")))
+            if (!hash.equals(replay.getFirst().get("request_hash"))) {
               throw conflict("Export idempotency input differs");
+            }
             return detail((UUID) replay.getFirst().get("id"));
           }
           var p =
@@ -131,13 +149,13 @@ public class StockExportService {
                   : s.db
                       .sql(
                           "select s.id from stock_productions s join concepts c on"
-                              + " c.id=s.concept_id where c.collection_id=? order by s.id limit"
-                              + " 501")
+                          + " c.id=s.concept_id where c.collection_id=? order by s.id limit"
+                          + " 501")
                       .param(collection)
                       .query(UUID.class)
                       .list();
           selected = selected.stream().distinct().sorted().toList();
-          if (incremental)
+          if (incremental) {
             selected =
                 selected.stream()
                     .filter(
@@ -155,8 +173,10 @@ public class StockExportService {
                                 .query(Boolean.class)
                                 .single())
                     .toList();
-          if (selected.isEmpty() || selected.size() > integer(config, "maximumAssets", 500))
+          }
+          if (selected.isEmpty() || selected.size() > integer(config, "maximumAssets", 500)) {
             throw conflict("Export selection is empty or exceeds profile asset limit");
+          }
           UUID id = UUID.randomUUID();
           s.db
               .sql(
@@ -269,7 +289,9 @@ public class StockExportService {
                     + " ('STORAGE_FAILURE','LEASE_EXHAUSTED')")
             .param(id)
             .update();
-    if (changed != 1) throw conflict("Correct invalid items and rebuild as a new export");
+    if (changed != 1) {
+      throw conflict("Correct invalid items and rebuild as a new export");
+    }
     return detail(id);
   }
 
@@ -284,18 +306,22 @@ public class StockExportService {
 
   public byte[] download(UUID id) {
     var e = detail(id);
-    if (!e.get("status").equals("READY")) throw conflict("Export not ready");
+    if (!e.get("status").equals("READY")) {
+      throw conflict("Export not ready");
+    }
     byte[] bytes = s.storage.read(e.get("storage_key").toString());
-    if (!PerceptualHash.sha(bytes).equals(e.get("sha256")))
+    if (!PerceptualHash.sha(bytes).equals(e.get("sha256"))) {
       throw conflict("Export checksum mismatch");
+    }
     return bytes;
   }
 
   public Object validate(UUID id) {
     var e = detail(id);
     var results = new ArrayList<Map<String, Object>>();
-    for (var i : (List<Map<String, Object>>) e.get("items"))
+    for (var i : (List<Map<String, Object>>) e.get("items")) {
       results.add(Map.of("productionId", i.get("production_id"), "issues", eligibility(i)));
+    }
     return Map.of(
         "exportId", id, "currentValidation", results, "frozenValidation", e.get("validation"));
   }
@@ -304,8 +330,9 @@ public class StockExportService {
     var row = s.one((UUID) i.get("production_id"));
     var errors = new ArrayList<>(s.gates(row, true));
     if (!Objects.equals(row.get("metadata_version_id"), i.get("metadata_version_id"))
-        || !Objects.equals(row.get("stock_variant_id"), i.get("variant_id")))
+        || !Objects.equals(row.get("stock_variant_id"), i.get("variant_id"))) {
       errors.add("FROZEN_SELECTION_CHANGED");
+    }
     return errors;
   }
 
@@ -320,7 +347,9 @@ public class StockExportService {
                     + " ('VALIDATING','BUILDING') and lease_until<now()))")
             .params(token, id)
             .update();
-    if (claimed == 0) return;
+    if (claimed == 0) {
+      return;
+    }
     active.put(id, token);
     Path workspace = null;
     try {
@@ -339,9 +368,13 @@ public class StockExportService {
         var prod = map(snap.get("production"));
         if (!variant.isEmpty()) {
           String checksum = variant.get("sha256").toString();
-          if (!checksums.add(checksum)) errors.add("EXACT_DUPLICATE_IN_BATCH");
+          if (!checksums.add(checksum)) {
+            errors.add("EXACT_DUPLICATE_IN_BATCH");
+          }
           UUID source = UUID.fromString(prod.get("source_asset_id").toString());
-          if (!sources.add(source)) errors.add("REPEATED_SOURCE_IN_BATCH");
+          if (!sources.add(source)) {
+            errors.add("REPEATED_SOURCE_IN_BATCH");
+          }
         }
         if (errors.isEmpty()) {
           byte[] content = s.storage.read(variant.get("storage_key").toString());
@@ -351,8 +384,11 @@ public class StockExportService {
                   variant.get("sha256").toString(),
                   map(snap.get("profile")),
                   s.encoderEvidence(UUID.fromString(variant.get("id").toString())));
-          if (!tech.valid()) errors.add("TECHNICAL_REVALIDATION_FAILED");
-          else total += content.length;
+          if (!tech.valid()) {
+            errors.add("TECHNICAL_REVALIDATION_FAILED");
+          } else {
+            total += content.length;
+          }
         }
         var validation =
             Map.of(
@@ -377,7 +413,9 @@ public class StockExportService {
                 item.get("production_id"),
                 token)
             .update();
-        if (errors.isEmpty()) included.add(item);
+        if (errors.isEmpty()) {
+          included.add(item);
+        }
       }
       var validation =
           Map.of(
@@ -394,15 +432,19 @@ public class StockExportService {
           .params(write(validation), id, token)
           .update();
       if (included.isEmpty()
-          || ("STRICT".equals(e.get("policy")) && included.size() != items.size()))
+          || ("STRICT".equals(e.get("policy")) && included.size() != items.size())) {
         throw new ExportFailure("ELIGIBILITY_FAILED");
-      if (total > number(config, "maximumBytes", 536870912))
+      }
+      if (total > number(config, "maximumBytes", 536870912)) {
         throw new ExportFailure("PACKAGE_SIZE_LIMIT");
+      }
       if (s.db
-              .sql("update stock_exports set status='BUILDING' where id=? and lease_token=?")
-              .params(id, token)
-              .update()
-          != 1) throw new ExportFailure("LEASE_LOST");
+          .sql("update stock_exports set status='BUILDING' where id=? and lease_token=?")
+          .params(id, token)
+          .update()
+          != 1) {
+        throw new ExportFailure("LEASE_LOST");
+      }
       workspace = Files.createTempDirectory("stock-export-" + id + "-");
       Path zipPath = workspace.resolve("package.zip");
       var csvRows = new ArrayList<Map<String, Object>>();
@@ -447,16 +489,18 @@ public class StockExportService {
         for (var a : assets) {
           var v = map(a.get("variant"));
           byte[] bytes = s.storage.read(v.get("storage_key").toString());
-          if (!PerceptualHash.sha(bytes).equals(a.get("checksum")))
+          if (!PerceptualHash.sha(bytes).equals(a.get("checksum"))) {
             throw new ExportFailure("SOURCE_CHECKSUM_CHANGED");
+          }
           entry(zip, "images/" + a.get("filename"), bytes);
         }
         entry(zip, "metadata.csv", csv);
         entry(zip, "manifest.json", manifestBytes);
         entry(zip, "validation-report.json", validationBytes);
       }
-      if (Files.size(zipPath) > number(config, "maximumBytes", 536870912) + 8388608)
+      if (Files.size(zipPath) > number(config, "maximumBytes", 536870912) + 8388608) {
         throw new ExportFailure("PACKAGE_SIZE_LIMIT");
+      }
       byte[] zipBytes = Files.readAllBytes(zipPath);
       String prefix = "stock-exports/" + id + "/" + token + "/";
       s.storage.putOriginal(prefix + "metadata.csv", csv, "text/csv; charset=utf-8");
@@ -470,14 +514,18 @@ public class StockExportService {
                     .param(id)
                     .query()
                     .singleRow();
-            if (!token.equals(locked.get("lease_token"))) throw new ExportFailure("LEASE_LOST");
+            if (!token.equals(locked.get("lease_token"))) {
+              throw new ExportFailure("LEASE_LOST");
+            }
             for (var item : included) {
               s.db
                   .sql("select id from stock_productions where id=? for update")
                   .param(item.get("production_id"))
                   .query()
                   .singleRow();
-              if (!eligibility(item).isEmpty()) throw new ExportFailure("ELIGIBILITY_CHANGED");
+              if (!eligibility(item).isEmpty()) {
+                throw new ExportFailure("ELIGIBILITY_CHANGED");
+              }
             }
             s.db
                 .sql(
@@ -523,7 +571,7 @@ public class StockExportService {
           .warn("stock_export_failed exportId={} code={}", id, code);
     } finally {
       active.remove(id, token);
-      if (workspace != null)
+      if (workspace != null) {
         try {
           Files.deleteIfExists(workspace.resolve("package.zip"));
           Files.deleteIfExists(workspace);
@@ -531,15 +579,8 @@ public class StockExportService {
           org.slf4j.LoggerFactory.getLogger(getClass())
               .warn("stock_export_cleanup_failed exportId={}", id);
         }
+      }
     }
-  }
-
-  static void entry(ZipOutputStream zip, String name, byte[] bytes) throws IOException {
-    var e = new ZipEntry(name);
-    e.setTime(0);
-    zip.putNextEntry(e);
-    zip.write(bytes);
-    zip.closeEntry();
   }
 
   public void heartbeat() {
@@ -554,6 +595,7 @@ public class StockExportService {
   }
 
   static class ExportFailure extends RuntimeException {
+
     final String code;
 
     ExportFailure(String code) {

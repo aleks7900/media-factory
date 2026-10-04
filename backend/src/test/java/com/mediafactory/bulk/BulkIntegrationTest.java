@@ -25,10 +25,24 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers
 @SpringBootTest(properties = "media.worker.enabled=false")
 class BulkIntegrationTest {
+
   @Container
   static PostgreSQLContainer<?> postgres =
       new PostgreSQLContainer<>(
           DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"));
+  @Autowired
+  BulkGenerationService service;
+  @Autowired
+  JdbcClient db;
+  @Autowired
+  ProviderRateLimiter limiter;
+  @Autowired
+  RetryDecisionService retries;
+  @MockitoBean
+  MediaStorage storage;
+  Map<String, byte[]> files = new ConcurrentHashMap<>();
+  UUID project;
+  BulkGenerationWorker worker;
 
   @DynamicPropertySource
   static void props(DynamicPropertyRegistry r) {
@@ -37,34 +51,29 @@ class BulkIntegrationTest {
     r.add("spring.datasource.password", postgres::getPassword);
   }
 
-  @Autowired BulkGenerationService service;
-  @Autowired JdbcClient db;
-  @Autowired ProviderRateLimiter limiter;
-  @Autowired RetryDecisionService retries;
-  @MockitoBean MediaStorage storage;
-  Map<String, byte[]> files = new ConcurrentHashMap<>();
-  UUID project;
-  BulkGenerationWorker worker;
-
   @BeforeEach
   void setup() {
     db.sql("truncate projects cascade").update();
     project = UUID.randomUUID();
     db.sql("insert into projects(id,name) values(?,'Bulk test')").param(project).update();
     doAnswer(
-            call -> {
-              String key = call.getArgument(0);
-              byte[] bytes = call.getArgument(1);
-              if (files.putIfAbsent(key, bytes) != null) throw new IllegalStateException("exists");
-              return null;
-            })
+        call -> {
+          String key = call.getArgument(0);
+          byte[] bytes = call.getArgument(1);
+          if (files.putIfAbsent(key, bytes) != null) {
+            throw new IllegalStateException("exists");
+          }
+          return null;
+        })
         .when(storage)
         .putOriginal(anyString(), any(byte[].class), anyString());
     when(storage.read(anyString()))
         .thenAnswer(
             call -> {
               var data = files.get(call.getArgument(0));
-              if (data == null) throw new IllegalArgumentException("missing");
+              if (data == null) {
+                throw new IllegalArgumentException("missing");
+              }
               return data;
             });
     worker = new BulkGenerationWorker(service, limiter, retries, 3, 1000, 3);
@@ -106,8 +115,8 @@ class BulkIntegrationTest {
   UUID upload(int count, boolean invalid) throws Exception {
     return (UUID)
         ((Map<?, ?>)
-                service.importArchive(
-                    request(), UUID.randomUUID().toString(), "tasks.zip", archive(count, invalid)))
+            service.importArchive(
+                request(), UUID.randomUUID().toString(), "tasks.zip", archive(count, invalid)))
             .get("id");
   }
 
@@ -139,7 +148,7 @@ class BulkIntegrationTest {
     assertThat(((Map<?, ?>) first.get("counts")).get("FAILED")).isEqualTo(1L);
     assertThat(db.sql("select count(*) from bulk_batches").query(Long.class).single()).isEqualTo(1);
     assertThatThrownBy(
-            () -> service.importArchive(request(), key, "different.zip", archive(1, false)))
+        () -> service.importArchive(request(), key, "different.zip", archive(1, false)))
         .hasMessageContaining("conflicts");
     assertThat((List<?>) service.tasks((UUID) first.get("id"), "ALL", "", 1)).hasSize(26);
   }
@@ -150,9 +159,9 @@ class BulkIntegrationTest {
     runOne();
     runOne();
     assertThat(
-            db.sql("select count(*) from bulk_tasks where status='COMPLETED'")
-                .query(Long.class)
-                .single())
+        db.sql("select count(*) from bulk_tasks where status='COMPLETED'")
+            .query(Long.class)
+            .single())
         .isEqualTo(2);
     assertThat(db.sql("select count(*) from generation_costs").query(Long.class).single())
         .isEqualTo(2);
@@ -443,9 +452,11 @@ class BulkIntegrationTest {
         .thenAnswer(
             call -> {
               BulkProcessor.Input input = call.getArgument(1);
-              submissions.computeIfAbsent(input.taskId(), k -> new java.util.concurrent.atomic.AtomicInteger()).incrementAndGet();
+              submissions.computeIfAbsent(input.taskId(),
+                  k -> new java.util.concurrent.atomic.AtomicInteger()).incrementAndGet();
               return new BulkProcessor.Output(
-                  validPng, "image/png", Map.of(), 100L, 100L, java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, "USD");
+                  validPng, "image/png", Map.of(), 100L, 100L, java.math.BigDecimal.ZERO,
+                  java.math.BigDecimal.ZERO, "USD");
             });
 
     var sharedService =

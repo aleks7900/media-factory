@@ -6,6 +6,7 @@ import java.util.*;
 import org.junit.jupiter.api.Test;
 
 class ProcessingPlannerTest {
+
   ProcessingPlanner planner = new ProcessingPlanner();
 
   Map<String, Object> profile(int w, int h) {

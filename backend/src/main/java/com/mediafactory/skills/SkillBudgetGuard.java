@@ -9,9 +9,12 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/** Last admission check before every image-provider attempt, including backend retries/fallback. */
+/**
+ * Last admission check before every image-provider attempt, including backend retries/fallback.
+ */
 @Service
 public class SkillBudgetGuard {
+
   final JdbcClient db;
   final TransactionTemplate tx;
   final PricingService pricing;
@@ -33,19 +36,26 @@ public class SkillBudgetGuard {
                       .param(generation)
                       .query()
                       .listOfRows();
-              if (rows.isEmpty()) return true;
+              if (rows.isEmpty()) {
+                return true;
+              }
               var e = SkillExecutionService.json(rows.getFirst());
-              if (!e.get("status").equals("RUNNING")) return false;
+              if (!e.get("status").equals("RUNNING")) {
+                return false;
+              }
               var plan = map(e.get("plan"));
               String reason = null;
               if (!Objects.equals(plan.get("provider"), provider)
-                  || !Objects.equals(plan.get("model"), model))
+                  || !Objects.equals(plan.get("model"), model)) {
                 reason = "Provider or model differs from frozen skill plan";
+              }
               if (db.sql("select count(*) from skill_budget_reservations where job_id=?")
-                      .param(job)
-                      .query(Long.class)
-                      .single()
-                  > 0) reason = "Interrupted attempt reservation requires reconciliation";
+                  .param(job)
+                  .query(Long.class)
+                  .single()
+                  > 0) {
+                reason = "Interrupted attempt reservation requires reconciliation";
+              }
               var quote = pricing.quote(provider, model, Map.of());
               var costs =
                   db.sql(
@@ -67,13 +77,15 @@ public class SkillBudgetGuard {
               if (quote.estimatedCost() == null
                   || !quote.currency().equals(e.get("currency").toString().trim())
                   || ((Number) costs.get("unknown")).longValue() > 0
-                  || e.get("max_budget") == null)
+                  || e.get("max_budget") == null) {
                 reason = "Authoritative generation price or charge unavailable";
-              else if (((BigDecimal) costs.get("spent"))
-                      .add(reserved)
-                      .add(quote.estimatedCost())
-                      .compareTo((BigDecimal) e.get("max_budget"))
-                  > 0) reason = "Generation admission budget exceeded";
+              } else if (((BigDecimal) costs.get("spent"))
+                  .add(reserved)
+                  .add(quote.estimatedCost())
+                  .compareTo((BigDecimal) e.get("max_budget"))
+                  > 0) {
+                reason = "Generation admission budget exceeded";
+              }
               if (reason != null) {
                 db.sql(
                         "update skill_executions set"

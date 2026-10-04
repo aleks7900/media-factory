@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/analytics")
 public class AnalyticsController {
+
   private final AnalyticsAggregationService aggregation;
   private final AnalyticsIngestionService ingestion;
   private final AnalyticsImportService imports;
@@ -37,16 +38,16 @@ public class AnalyticsController {
   }
 
   @GetMapping({
-    "/overview",
-    "/assets",
-    "/collections",
-    "/prompts",
-    "/providers",
-    "/platforms",
-    "/costs",
-    "/revenue",
-    "/timeseries",
-    "/experiments"
+      "/overview",
+      "/assets",
+      "/collections",
+      "/prompts",
+      "/providers",
+      "/platforms",
+      "/costs",
+      "/revenue",
+      "/timeseries",
+      "/experiments"
   })
   public Object query(
       @RequestParam Map<String, String> p, jakarta.servlet.http.HttpServletRequest request) {

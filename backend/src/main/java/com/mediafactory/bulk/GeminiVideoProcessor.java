@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class GeminiVideoProcessor implements BulkProcessor {
+
   final VideoProviderRouter router;
 
   public GeminiVideoProcessor(VideoProviderRouter router) {
@@ -24,7 +25,7 @@ public class GeminiVideoProcessor implements BulkProcessor {
   VideoTypes.Request request(Input i) {
     var o = i.options();
     var providerOptions = new LinkedHashMap<String, Object>();
-    if (i.provider().equals("gemini"))
+    if (i.provider().equals("gemini")) {
       providerOptions.put(
           "referenceImages",
           i.references().stream()
@@ -36,6 +37,7 @@ public class GeminiVideoProcessor implements BulkProcessor {
                           "data",
                           Base64.getEncoder().encodeToString(r.bytes())))
               .toList());
+    }
     return new VideoTypes.Request(
         i.generationId(),
         i.attemptId(),
@@ -54,8 +56,12 @@ public class GeminiVideoProcessor implements BulkProcessor {
   }
 
   byte[] source(Input i) {
-    if (i.provider().equals("gemini")) return new byte[0];
-    if (!i.references().isEmpty()) return i.references().getFirst().bytes();
+    if (i.provider().equals("gemini")) {
+      return new byte[0];
+    }
+    if (!i.references().isEmpty()) {
+      return i.references().getFirst().bytes();
+    }
     try {
       var out = new ByteArrayOutputStream();
       ImageIO.write(new BufferedImage(320, 240, BufferedImage.TYPE_INT_RGB), "png", out);
@@ -70,13 +76,16 @@ public class GeminiVideoProcessor implements BulkProcessor {
   }
 
   public void validate(Input i) {
-    if (!Set.of("gemini", "mock-video").contains(i.provider()))
+    if (!Set.of("gemini", "mock-video").contains(i.provider())) {
       throw new IllegalArgumentException("Select Gemini or explicit mock-video test mode");
+    }
     if (!Set.of("width", "height", "durationSeconds", "negativePrompt", "seed")
-        .containsAll(i.options().keySet()))
+        .containsAll(i.options().keySet())) {
       throw new IllegalArgumentException("Unsupported video option");
-    if (i.provider().equals("mock-video") && i.references().size() > 1)
+    }
+    if (i.provider().equals("mock-video") && i.references().size() > 1) {
       throw new IllegalArgumentException("Mock motion supports one reference image");
+    }
     router.provider(i.provider()).validateInput(request(i), source(i), sourceType(i));
   }
 

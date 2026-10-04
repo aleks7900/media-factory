@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class RunwayVideoGenerationProvider implements VideoGenerationProvider {
+
   final RunwayVideoClient client;
   final RunwayVideoProperties config;
 
@@ -79,9 +80,13 @@ public class RunwayVideoGenerationProvider implements VideoGenerationProvider {
 
   public Result result(String id, Request r, byte[] source, String type) {
     var task = client.task(id);
-    if (!"SUCCEEDED".equals(task.get("status"))) throw new VideoFailure("REMOTE_RESULT_NOT_READY");
+    if (!"SUCCEEDED".equals(task.get("status"))) {
+      throw new VideoFailure("REMOTE_RESULT_NOT_READY");
+    }
     var urls = (List<?>) task.get("output");
-    if (urls == null || urls.isEmpty()) throw new VideoFailure("REMOTE_RESULT_MISSING");
+    if (urls == null || urls.isEmpty()) {
+      throw new VideoFailure("REMOTE_RESULT_MISSING");
+    }
     return new Result(
         client.download(urls.getFirst().toString()), "video/mp4", Map.of("providerJobId", id));
   }

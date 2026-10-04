@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/skills")
 public class SkillController {
+
   final SkillExecutionService service;
 
   public SkillController(SkillExecutionService service) {

@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.*;
 
 class BulkGeminiProviderTest {
+
   HttpServer server;
   URI endpoint;
   AtomicReference<String> body = new AtomicReference<>(), auth = new AtomicReference<>();
@@ -84,12 +85,12 @@ class BulkGeminiProviderTest {
   @Test
   void rejectsUnsupportedReferenceDurationBeforeSubmission() {
     assertThatThrownBy(
-            () ->
-                provider()
-                    .validateInput(
-                        request(4, List.of(Map.of("mediaType", "image/png", "data", "aW1hZ2U="))),
-                        new byte[0],
-                        "image/png"))
+        () ->
+            provider()
+                .validateInput(
+                    request(4, List.of(Map.of("mediaType", "image/png", "data", "aW1hZ2U="))),
+                    new byte[0],
+                    "image/png"))
         .hasMessageContaining("eight seconds");
   }
 
@@ -107,9 +108,9 @@ class BulkGeminiProviderTest {
         200,
         "{\"done\":true,\"response\":{\"generateVideoResponse\":{\"generatedSamples\":[{\"video\":{\"uri\":\"http://169.254.169.254/latest/meta-data\"}}]}}}");
     assertThatThrownBy(
-            () ->
-                provider()
-                    .result("operations/test", request(8, List.of()), new byte[0], "image/png"))
+        () ->
+            provider()
+                .result("operations/test", request(8, List.of()), new byte[0], "image/png"))
         .isInstanceOf(ImageGenerationException.class);
   }
 

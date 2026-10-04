@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class HypothesisGenerationService {
+
   private final FeedbackStore store;
   private final TextGenerationProvider text;
   private final VisualFeatureService features;
@@ -21,6 +22,17 @@ public class HypothesisGenerationService {
     this.features = features;
   }
 
+  public static void validateNarrative(Map<String, Object> n) {
+    check(
+        n.keySet().equals(Set.of("title", "description", "rationale")),
+        "Hypothesis output may contain narrative fields only, never numerical evidence");
+    for (String key : n.keySet()) {
+      check(n.get(key) instanceof String, "Narrative must be text");
+      required((String) n.get(key), key);
+    }
+    check(n.get("title").toString().length() <= 200, "Hypothesis title too long");
+  }
+
   @Transactional
   public Object generate(UUID finding, String intent) {
     check(
@@ -30,7 +42,7 @@ public class HypothesisGenerationService {
     check(
         !Set.of("STALE", "DISMISSED").contains(f.get("status"))
             && !java.time.Instant.now()
-                .isAfter(((java.sql.Timestamp) f.get("stale_at")).toInstant()),
+            .isAfter(((java.sql.Timestamp) f.get("stale_at")).toInstant()),
         "Finding is stale or dismissed");
     check(
         !f.get("evidence_status").equals("INSUFFICIENT_DATA") || intent.equals("EXPLORATION"),
@@ -63,19 +75,19 @@ public class HypothesisGenerationService {
                 template
                     + "\nEVIDENCE_DATA\n"
                     + write(
-                        Map.of(
-                            "scope",
-                            f.get("scope"),
-                            "metric",
-                            f.get("target_metric"),
-                            "attribute",
-                            f.get("attribute_key"),
-                            "value",
-                            f.get("attribute_value"),
-                            "statistics",
-                            f.get("statistics"),
-                            "warnings",
-                            f.get("warnings"))),
+                    Map.of(
+                        "scope",
+                        f.get("scope"),
+                        "metric",
+                        f.get("target_metric"),
+                        "attribute",
+                        f.get("attribute_key"),
+                        "value",
+                        f.get("attribute_value"),
+                        "statistics",
+                        f.get("statistics"),
+                        "warnings",
+                        f.get("warnings"))),
                 0,
                 0));
     var narrative = map(response.output());
@@ -129,17 +141,6 @@ public class HypothesisGenerationService {
             cost)
         .update();
     return store.one("experiment_hypotheses", id);
-  }
-
-  public static void validateNarrative(Map<String, Object> n) {
-    check(
-        n.keySet().equals(Set.of("title", "description", "rationale")),
-        "Hypothesis output may contain narrative fields only, never numerical evidence");
-    for (String key : n.keySet()) {
-      check(n.get(key) instanceof String, "Narrative must be text");
-      required((String) n.get(key), key);
-    }
-    check(n.get("title").toString().length() <= 200, "Hypothesis title too long");
   }
 
   @Transactional

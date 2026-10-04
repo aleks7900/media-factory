@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class VisualFeatureService {
+
   private final FeedbackStore store;
   private final MediaStorage storage;
   private final VisionProvider vision;
@@ -21,6 +22,39 @@ public class VisualFeatureService {
     this.store = store;
     this.storage = storage;
     this.vision = vision;
+  }
+
+  public static void validateSemantic(
+      Map<String, Object> output, Map<String, Map<String, Object>> definitions) {
+    check(output.keySet().equals(Set.of("features", "warnings")), "Invalid Vision schema keys");
+    check(
+        output.get("features") instanceof List<?> && output.get("warnings") instanceof List<?>,
+        "Invalid Vision schema arrays");
+    check(((List<?>) output.get("features")).size() <= 50, "Too many semantic features");
+    Set<Object> keys = new HashSet<>();
+    for (Object item : (List<?>) output.get("features")) {
+      var f = map(item);
+      check(f.keySet().equals(Set.of("key", "value", "confidence")), "Invalid feature schema");
+      check(keys.add(f.get("key")), "Duplicate semantic feature");
+      var d = definitions.get(f.get("key"));
+      check(d != null, "Unknown semantic attribute");
+      validateValue(d, f.get("value"));
+      check(f.get("confidence") instanceof Number, "Missing confidence");
+      double c = ((Number) f.get("confidence")).doubleValue();
+      check(Double.isFinite(c) && c >= 0 && c <= 1, "Invalid confidence");
+    }
+  }
+
+  public static void validateValue(Map<String, Object> d, Object v) {
+    boolean valid =
+        switch (d.get("value_type").toString()) {
+          case "BOOLEAN" -> v instanceof Boolean;
+          case "NUMBER" -> v instanceof Number n && Double.isFinite(n.doubleValue());
+          case "ENUM" ->
+              v instanceof String && ((List<?>) json(d).get("allowed_values")).contains(v);
+          default -> v instanceof String s && !s.isBlank() && s.length() <= 500;
+        };
+    check(valid, "Attribute value type mismatch: " + d.get("key"));
   }
 
   public List<Map<String, Object>> taxonomy() {
@@ -97,7 +131,9 @@ public class VisualFeatureService {
             .params(asset, version)
             .query(UUID.class)
             .list();
-    if (!existing.isEmpty()) return store.one("visual_feature_extractions", existing.getFirst());
+    if (!existing.isEmpty()) {
+      return store.one("visual_feature_extractions", existing.getFirst());
+    }
     var a =
         store
             .db
@@ -222,10 +258,11 @@ public class VisualFeatureService {
           .sql("update visual_feature_extractions set provider=?,model=?,cost_id=? where id=?")
           .params(response.usage().provider(), response.usage().model(), cost, id)
           .update();
-    } else
+    } else {
       warnings.add(
           "VIDEO_SEMANTICS_UNAVAILABLE: image extraction skipped; existing video lineage remains"
               + " available");
+    }
     if (a.get("prompt_snapshot_id") != null) {
       var snapshots =
           store
@@ -265,39 +302,6 @@ public class VisualFeatureService {
         .params(write(warnings), id)
         .update();
     return store.one("visual_feature_extractions", id);
-  }
-
-  public static void validateSemantic(
-      Map<String, Object> output, Map<String, Map<String, Object>> definitions) {
-    check(output.keySet().equals(Set.of("features", "warnings")), "Invalid Vision schema keys");
-    check(
-        output.get("features") instanceof List<?> && output.get("warnings") instanceof List<?>,
-        "Invalid Vision schema arrays");
-    check(((List<?>) output.get("features")).size() <= 50, "Too many semantic features");
-    Set<Object> keys = new HashSet<>();
-    for (Object item : (List<?>) output.get("features")) {
-      var f = map(item);
-      check(f.keySet().equals(Set.of("key", "value", "confidence")), "Invalid feature schema");
-      check(keys.add(f.get("key")), "Duplicate semantic feature");
-      var d = definitions.get(f.get("key"));
-      check(d != null, "Unknown semantic attribute");
-      validateValue(d, f.get("value"));
-      check(f.get("confidence") instanceof Number, "Missing confidence");
-      double c = ((Number) f.get("confidence")).doubleValue();
-      check(Double.isFinite(c) && c >= 0 && c <= 1, "Invalid confidence");
-    }
-  }
-
-  public static void validateValue(Map<String, Object> d, Object v) {
-    boolean valid =
-        switch (d.get("value_type").toString()) {
-          case "BOOLEAN" -> v instanceof Boolean;
-          case "NUMBER" -> v instanceof Number n && Double.isFinite(n.doubleValue());
-          case "ENUM" ->
-              v instanceof String && ((List<?>) json(d).get("allowed_values")).contains(v);
-          default -> v instanceof String s && !s.isBlank() && s.length() <= 500;
-        };
-    check(valid, "Attribute value type mismatch: " + d.get("key"));
   }
 
   private void feature(

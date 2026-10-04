@@ -23,10 +23,27 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers
 @SpringBootTest(properties = {"media.worker.enabled=false"})
 class ProcessingIntegrationTest {
+
   @Container
   static PostgreSQLContainer<?> postgres =
       new PostgreSQLContainer<>(
           DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"));
+  @Autowired
+  JdbcClient db;
+  @Autowired
+  ProcessingService service;
+  @Autowired
+  MediaStorage storage;
+  @Autowired
+  TransactionTemplate tx;
+  @Autowired
+  MeterRegistry metrics;
+  @Autowired
+  PostProcessingQa qa;
+  UUID asset;
+  byte[] original = "original-test-bytes".getBytes();
+  MockProcessing provider;
+  ProcessingExecutor executor;
 
   @DynamicPropertySource
   static void properties(DynamicPropertyRegistry r) {
@@ -35,17 +52,6 @@ class ProcessingIntegrationTest {
     r.add("spring.datasource.password", postgres::getPassword);
     r.add("media.storage.root", () -> "build/processing-test/" + UUID.randomUUID());
   }
-
-  @Autowired JdbcClient db;
-  @Autowired ProcessingService service;
-  @Autowired MediaStorage storage;
-  @Autowired TransactionTemplate tx;
-  @Autowired MeterRegistry metrics;
-  @Autowired PostProcessingQa qa;
-  UUID asset;
-  byte[] original = "original-test-bytes".getBytes();
-  MockProcessing provider;
-  ProcessingExecutor executor;
 
   @BeforeEach
   void setup() {
@@ -105,37 +111,37 @@ class ProcessingIntegrationTest {
     assertThat(service.run(run).get("status")).isEqualTo("COMPLETED");
     assertThat(provider.upscales.get()).isEqualTo(1);
     assertThat(
-            db.sql("select count(*) from asset_variants where asset_id=?")
-                .param(asset)
-                .query(Long.class)
-                .single())
+        db.sql("select count(*) from asset_variants where asset_id=?")
+            .param(asset)
+            .query(Long.class)
+            .single())
         .isEqualTo(2);
     assertThat(
-            db.sql(
-                    "select count(*) from processing_artifacts where source_asset_id=? and"
-                        + " parent_artifact_id is not null")
-                .param(asset)
-                .query(Long.class)
-                .single())
+        db.sql(
+                "select count(*) from processing_artifacts where source_asset_id=? and"
+                    + " parent_artifact_id is not null")
+            .param(asset)
+            .query(Long.class)
+            .single())
         .isEqualTo(2);
     assertThat(storage.read(service.asset(asset).get("storage_key").toString()))
         .isEqualTo(original);
     assertThat(
-            db.sql(
-                    "select count(*) from asset_embeddings where asset_id in(select id from"
-                        + " asset_variants where asset_id=?)")
-                .param(asset)
-                .query(Long.class)
-                .single())
+        db.sql(
+                "select count(*) from asset_embeddings where asset_id in(select id from"
+                    + " asset_variants where asset_id=?)")
+            .param(asset)
+            .query(Long.class)
+            .single())
         .isZero();
     assertThatThrownBy(
-            () ->
-                db.sql("update processing_manifests set manifest='{}' where run_id=?")
-                    .param(run)
-                    .update())
+        () ->
+            db.sql("update processing_manifests set manifest='{}' where run_id=?")
+                .param(run)
+                .update())
         .hasMessageContaining("immutable");
     assertThatThrownBy(
-            () -> db.sql("update processing_runs set plan='{}' where id=?").param(run).update())
+        () -> db.sql("update processing_runs set plan='{}' where id=?").param(run).update())
         .hasMessageContaining("immutable");
   }
 
@@ -151,10 +157,10 @@ class ProcessingIntegrationTest {
     assertThat(service.run(run).get("status")).isEqualTo("COMPLETED");
     assertThat(provider.upscales.get()).isEqualTo(1);
     assertThat(
-            db.sql("select count(*) from processing_manifests where run_id=?")
-                .param(run)
-                .query(Long.class)
-                .single())
+        db.sql("select count(*) from processing_manifests where run_id=?")
+            .param(run)
+            .query(Long.class)
+            .single())
         .isEqualTo(2);
   }
 
@@ -162,7 +168,7 @@ class ProcessingIntegrationTest {
   void rejectsUnapprovedAndDifferentIdempotencyPayload() {
     service.request(asset, List.of("PREVIEW"), Map.of(), "key-" + asset, 10);
     assertThatThrownBy(
-            () -> service.request(asset, List.of("THUMBNAIL"), Map.of(), "key-" + asset, 10))
+        () -> service.request(asset, List.of("THUMBNAIL"), Map.of(), "key-" + asset, 10))
         .isInstanceOf(IllegalArgumentException.class);
     db.sql("update assets set current_review_id=null where id=?").param(asset).update();
     assertThatThrownBy(() -> request("PREVIEW")).hasMessageContaining("QA-approved");
@@ -172,10 +178,10 @@ class ProcessingIntegrationTest {
   void publishedVersionImmutableAndDraftEditable() {
     var p = service.profile("PREVIEW");
     assertThatThrownBy(
-            () ->
-                db.sql("update processing_profile_versions set definition='{}' where id=?")
-                    .param(p.get("id"))
-                    .update())
+        () ->
+            db.sql("update processing_profile_versions set definition='{}' where id=?")
+                .param(p.get("id"))
+                .update())
         .hasMessageContaining("immutable");
     var draft =
         service.draft(
@@ -183,10 +189,10 @@ class ProcessingIntegrationTest {
             ProcessingJson.map(p.get("definition")));
     service.transition((UUID) draft.get("id"), "PUBLISHED");
     assertThatThrownBy(
-            () ->
-                db.sql("delete from processing_profile_versions where id=?")
-                    .param(draft.get("id"))
-                    .update())
+        () ->
+            db.sql("delete from processing_profile_versions where id=?")
+                .param(draft.get("id"))
+                .update())
         .hasMessageContaining("immutable");
   }
 
@@ -201,6 +207,7 @@ class ProcessingIntegrationTest {
   }
 
   static class MockProcessing implements ProcessingProvider {
+
     AtomicInteger upscales = new AtomicInteger();
     boolean failSquare;
 
@@ -208,7 +215,8 @@ class ProcessingIntegrationTest {
       return Map.of();
     }
 
-    public void cancel(UUID id) {}
+    public void cancel(UUID id) {
+    }
 
     public Map<String, Object> cropPreview(
         byte[] b, Map<String, Object> p, List<Map<String, Object>> r) {
@@ -217,9 +225,12 @@ class ProcessingIntegrationTest {
 
     public Output execute(UUID run, byte[] source, Map<String, Object> node) {
       boolean up = node.get("operation").equals("UPSCALE");
-      if (up) upscales.incrementAndGet();
-      if (failSquare && "SOCIAL_SQUARE".equals(node.get("key")))
+      if (up) {
+        upscales.incrementAndGet();
+      }
+      if (failSquare && "SOCIAL_SQUARE".equals(node.get("key"))) {
         throw new ProcessingFailure("OUTPUT_TOO_LARGE");
+      }
       var profile = up ? Map.<String, Object>of() : ProcessingJson.map(node.get("profile"));
       var metadata =
           new HashMap<String, Object>(
@@ -240,9 +251,9 @@ class ProcessingIntegrationTest {
       }
       int
           w =
-              up
-                  ? 1000 * ((Number) node.get("scale")).intValue()
-                  : ProcessingJson.integer(profile, "width", 2000),
+          up
+              ? 1000 * ((Number) node.get("scale")).intValue()
+              : ProcessingJson.integer(profile, "width", 2000),
           h = up ? w : ProcessingJson.integer(profile, "height", 2000);
       return new Output(
           (run + ":" + node.get("key")).getBytes(),

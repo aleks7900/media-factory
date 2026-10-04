@@ -4,6 +4,7 @@ import java.util.*;
 import tools.jackson.databind.json.JsonMapper;
 
 public final class VideoJson {
+
   private static final JsonMapper JSON = JsonMapper.builder().build();
   private static final Set<String> JSON_COLUMNS =
       Set.of(
@@ -21,7 +22,8 @@ public final class VideoJson {
           "metadata",
           "details");
 
-  private VideoJson() {}
+  private VideoJson() {
+  }
 
   public static Map<String, Object> row(Map<String, Object> input) {
     var out = new LinkedHashMap<>(input);

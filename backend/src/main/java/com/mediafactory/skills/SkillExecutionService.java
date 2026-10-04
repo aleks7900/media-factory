@@ -17,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class SkillExecutionService {
+
   final JdbcClient db;
   final SkillPlanService plans;
   final ReviewActor actor;
@@ -39,23 +40,33 @@ public class SkillExecutionService {
     this.metrics = metrics;
   }
 
-  public record Request(
-      String skillName,
-      String operationId,
-      UUID projectId,
-      UUID collectionId,
-      Map<String, Object> input) {}
-
   public static Map<String, Object> json(Map<String, Object> row) {
     var copy = new LinkedHashMap<>(row);
     copy.replaceAll(
         (k, v) ->
             v != null && v.getClass().getSimpleName().equals("PGobject")
                 ? tools.jackson.databind.json.JsonMapper.builder()
-                    .build()
-                    .readValue(v.toString(), Object.class)
+                .build()
+                .readValue(v.toString(), Object.class)
                 : v);
     return copy;
+  }
+
+  public static String classify(Exception e) {
+    String m = Objects.toString(e.getMessage(), "").toUpperCase(Locale.ROOT);
+    if (m.contains("DIVERSITY") || m.contains("SIMILARITY_BLOCKED")) {
+      return "SIMILARITY_BLOCKED";
+    }
+    if (m.contains("BUDGET") || m.contains("PRICE")) {
+      return "BUDGET_EXCEEDED";
+    }
+    if (m.contains("APPROV")) {
+      return "APPROVAL_REQUIRED";
+    }
+    if (e instanceof IllegalArgumentException) {
+      return "VALIDATION_ERROR";
+    }
+    return "UNKNOWN";
   }
 
   public Map<String, Object> one(UUID id) {
@@ -99,9 +110,10 @@ public class SkillExecutionService {
             .query()
             .listOfRows();
     if (!previous.isEmpty()) {
-      if (!hash.equals(previous.getFirst().get("input_hash")))
+      if (!hash.equals(previous.getFirst().get("input_hash"))) {
         throw new ResponseStatusException(
             HttpStatus.CONFLICT, "Operation ID conflicts with original input");
+      }
       return detail((UUID) previous.getFirst().get("id"));
     }
     var plan = plans.plan(r.skillName(), r.projectId(), r.collectionId(), r.input());
@@ -144,26 +156,30 @@ public class SkillExecutionService {
         check(
             Set.of("PLANNED", "WAITING_FOR_APPROVAL").contains(status),
             "Approval requires a planned or waiting execution");
-        if (e.get("approved_at") == null)
+        if (e.get("approved_at") == null) {
           db.sql(
                   "update skill_executions set approved_by=?,approval_reason=?,approved_at=now()"
                       + " where id=?")
               .params(actor.current(), reason, id)
               .update();
+        }
       }
       case "start", "resume" -> {
         check(plans.enabled, "Skills are disabled");
         plans.checkAuxiliaryAdmission(e.get("skill_name").toString(), map(e.get("input_summary")));
-        if (status.equals("RUNNING") || status.equals("COMPLETED")) return detail(id);
+        if (status.equals("RUNNING") || status.equals("COMPLETED")) {
+          return detail(id);
+        }
         check(
             Set.of("PLANNED", "WAITING_FOR_APPROVAL", "PARTIALLY_COMPLETED", "FAILED")
                 .contains(status),
             "Execution cannot resume from this state; inspect existing domain jobs");
-        if (Boolean.TRUE.equals(plan.get("paid")))
+        if (Boolean.TRUE.equals(plan.get("paid"))) {
           check(
               plan.get("estimatedGenerationCost") != null,
               "Cost estimate unavailable; paid generation is blocked until authoritative pricing is"
                   + " available");
+        }
         if (Boolean.TRUE.equals(plan.get("approvalRequired")) && e.get("approved_at") == null) {
           db.sql(
                   "update skill_executions set"
@@ -238,14 +254,14 @@ public class SkillExecutionService {
         "costs",
         db.sql(
                 """
-                select currency,sum(estimated_cost) estimated_cost,sum(actual_cost) actual_cost,
-                count(*) filter(where actual_cost is null) actual_unavailable
-                from generation_costs c where c.created_at >= (select created_at from skill_executions where id=?) and (
-                  c.generation_id in (select id from generations where skill_execution_id=?)
-                  or c.review_id in (select resource_id from skill_execution_items where execution_id=? and resource_type='quality_reviews')
-                  or c.generation_id in (select generation_id from stock_productions where skill_execution_id=?
-                  union select generation_id from wallpaper_productions where skill_execution_id=?)) group by currency
-                """)
+                    select currency,sum(estimated_cost) estimated_cost,sum(actual_cost) actual_cost,
+                    count(*) filter(where actual_cost is null) actual_unavailable
+                    from generation_costs c where c.created_at >= (select created_at from skill_executions where id=?) and (
+                      c.generation_id in (select id from generations where skill_execution_id=?)
+                      or c.review_id in (select resource_id from skill_execution_items where execution_id=? and resource_type='quality_reviews')
+                      or c.generation_id in (select generation_id from stock_productions where skill_execution_id=?
+                      union select generation_id from wallpaper_productions where skill_execution_id=?)) group by currency
+                    """)
             .params(id, id, id, id, id)
             .query()
             .listOfRows());
@@ -257,7 +273,9 @@ public class SkillExecutionService {
   }
 
   public void runOne() {
-    if (!plans.enabled) return;
+    if (!plans.enabled) {
+      return;
+    }
     UUID selected =
         tx.execute(
             s -> {
@@ -268,7 +286,9 @@ public class SkillExecutionService {
                               + " limit 1")
                       .query(UUID.class)
                       .list();
-              if (rows.isEmpty()) return null;
+              if (rows.isEmpty()) {
+                return null;
+              }
               UUID id = rows.getFirst();
               db.sql(
                       "update skill_executions set next_poll_at=now()+interval '30 seconds' where"
@@ -277,7 +297,9 @@ public class SkillExecutionService {
                   .update();
               return id;
             });
-    if (selected == null) return;
+    if (selected == null) {
+      return;
+    }
     long started = System.nanoTime();
     try {
       tx.executeWithoutResult(
@@ -287,7 +309,9 @@ public class SkillExecutionService {
                 .query()
                 .singleRow();
             var e = one(selected);
-            if (!e.get("status").equals("RUNNING")) return;
+            if (!e.get("status").equals("RUNNING")) {
+              return;
+            }
             operations.advance(e);
           });
     } catch (Exception error) {
@@ -343,12 +367,12 @@ public class SkillExecutionService {
     }
   }
 
-  public static String classify(Exception e) {
-    String m = Objects.toString(e.getMessage(), "").toUpperCase(Locale.ROOT);
-    if (m.contains("DIVERSITY") || m.contains("SIMILARITY_BLOCKED")) return "SIMILARITY_BLOCKED";
-    if (m.contains("BUDGET") || m.contains("PRICE")) return "BUDGET_EXCEEDED";
-    if (m.contains("APPROV")) return "APPROVAL_REQUIRED";
-    if (e instanceof IllegalArgumentException) return "VALIDATION_ERROR";
-    return "UNKNOWN";
+  public record Request(
+      String skillName,
+      String operationId,
+      UUID projectId,
+      UUID collectionId,
+      Map<String, Object> input) {
+
   }
 }

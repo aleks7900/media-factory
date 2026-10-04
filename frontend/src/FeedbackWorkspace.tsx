@@ -1,89 +1,481 @@
 import {useState} from 'react';
-import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';
+import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {api} from './api';
 import './feedback.css';
 
-type RecordData = Record<string,any>;
-const sections=['Overview','Visual Attributes','Findings','Hypotheses','Experiment Proposals','Experiments','Saturation','Learnings','Data Quality'] as const;
-const metrics=['DOWNLOADS','DOWNLOAD_RATE','VIEWS','LIKES','LIKE_RATE','REVENUE','PROFIT','ROI','QA_APPROVAL_RATE','COST_PER_APPROVED_ASSET'];
-export const feedbackNumber=(v:unknown)=>v===null||v===undefined?'Unavailable':typeof v==='number'?new Intl.NumberFormat('en',{maximumFractionDigits:4}).format(v):String(v);
-function Evidence({value}:{value:unknown}){return <details><summary>Provenance and complete evidence</summary><pre>{JSON.stringify(value,null,2)}</pre></details>}
-function Distribution({title,data}:{title:string;data:RecordData}){const low=Number(data?.p25??0),high=Number(data?.p90??0);const x=(n:number)=>20+(n-low)/Math.max(high-low,1)*260;return <article className="feedback-distribution"><h4>{title}</h4>{data?.median!=null&&<svg viewBox="0 0 300 55" role="img" aria-label={`${title} quantile band from p25 to p90`}><line x1="20" x2="280" y1="22" y2="22" stroke="#57787a"/><rect x="20" y="12" width={Math.max(2,x(Number(data.p75))-20)} height="20" rx="3" fill="#315d54"/><line x1={x(Number(data.median))} x2={x(Number(data.median))} y1="8" y2="36" stroke="#a0f1d7" strokeWidth="2"/><text x="20" y="51" fill="#8aabb0" fontSize="10">p25</text><text x="255" y="51" fill="#8aabb0" fontSize="10">p90</text></svg>}<div className="feedback-stats">{['count','mean','median','p25','p75','p90'].map(k=><div key={k}><small>{k}</small><b>{feedbackNumber(data?.[k])}</b></div>)}</div></article>}
-export function FeedbackWorkspace(){
- const [section,setSection]=useState<string>('Overview'),[page,setPage]=useState(0),[selected,setSelected]=useState(''),[filter,setFilter]=useState('');
- const [collection,setCollection]=useState(''),[metric,setMetric]=useState('DOWNLOADS'),[platform,setPlatform]=useState(''),[period,setPeriod]=useState('90D');
- const [from,setFrom]=useState(''),[to,setTo]=useState(''),[attributes,setAttributes]=useState('dark_pixel_ratio,dominant_color'),[extractor,setExtractor]=useState('visual-v1');
- const [asset,setAsset]=useState(''),[feature,setFeature]=useState(''),[override,setOverride]=useState(''),[reason,setReason]=useState(''),[user,setUser]=useState('local-workspace');
- const [control,setControl]=useState(''),[concept,setConcept]=useState(''),[variable,setVariable]=useState('background'),[treatment,setTreatment]=useState('black'),[sample,setSample]=useState(50),[budget,setBudget]=useState('0');
- const [observationDays,setObservationDays]=useState(30),[featureRole,setFeatureRole]=useState('OBSERVED'),[assetType,setAssetType]=useState(''),[provider,setProvider]=useState(''),[model,setModel]=useState('');
- const [intent,setIntent]=useState('EXPLOITATION'),[notice,setNotice]=useState(''),[related,setRelated]=useState('');
- const client=useQueryClient();
- const overview=useQuery({queryKey:['feedback','overview'],queryFn:()=>api<RecordData>('/v1/feedback/overview')});
- const collections=useQuery({queryKey:['/collections'],queryFn:()=>api<RecordData[]>('/collections')});
- const concepts=useQuery({queryKey:['/concepts'],queryFn:()=>api<RecordData[]>('/concepts')});
- const versions=useQuery({queryKey:['feedback','versions'],queryFn:()=>api<RecordData[]>('/v1/prompt-versions')});
- const taxonomy=useQuery({queryKey:['feedback','attributes'],queryFn:()=>api<RecordData[]>('/v1/feedback/attributes')});
- const resource=section==='Experiment Proposals'||section==='Experiments'?'experiments':section==='Visual Attributes'?'attributes':section==='Data Quality'?'data-quality':section.toLowerCase();
- const list=useQuery({queryKey:['feedback',resource,page],queryFn:()=>api<RecordData[]|RecordData>(`/v1/feedback/${resource}?page=${page}`),enabled:section!=='Overview'});
- const detail=useQuery({queryKey:['feedback','detail',resource,selected],queryFn:()=>api<RecordData>(`/v1/feedback/${resource}/${selected}`),enabled:!!selected&&['findings','hypotheses','experiments','learnings'].includes(resource)});
- const visual=useQuery({queryKey:['feedback','visual',asset],queryFn:()=>api<RecordData>(`/v1/feedback/assets/${asset}/visual-features`),enabled:!!asset});
- const jobs=useQuery({queryKey:['feedback','jobs'],queryFn:()=>api<RecordData[]>('/v1/feedback/jobs'),refetchInterval:5000});
- const action=useMutation({mutationFn:({path,body}:{path:string;body:unknown})=>api<RecordData>('/v1/feedback/'+path,body,crypto.randomUUID()),onSuccess:r=>{setNotice(r.status==='QUEUED'?'Job queued. Progress appears below.':'Saved. Evidence and history are preserved.');client.invalidateQueries({queryKey:['feedback']});}});
- function submit(path:string,body:unknown){setNotice('');action.mutate({path,body});}
- function navigate(next:string,id=''){setSection(next);setSelected(id);setPage(0);setFilter('');}
- const scope={collectionId:collection,...(platform?{platform}: {}),...(assetType?{assetType}:{}),...(provider?{provider}:{}),...(model?{model}:{})};
- const analysisInput={scope,metric,period,observationDays,featureRole,attributes:attributes.split(',').map(s=>s.trim()).filter(Boolean),extractorVersion:extractor,...(from?{from:new Date(from+'T00:00:00Z').toISOString()}:{}),...(to?{to:new Date(to+'T00:00:00Z').toISOString()}:{})};
- const review={reason,user};
- const rows=(Array.isArray(list.data)?list.data:[]).filter(r=>!filter||JSON.stringify(r).toLowerCase().includes(filter.toLowerCase()));
- const current=detail.data;
- return <div className="feedback-workspace">
-  <header className="feedback-heading"><div><small>CONTROLLED LEARNING / HUMAN REVIEW</small><h2>Feedback & experiments</h2><p>Observe patterns. Test hypotheses. Preserve the evidence.</p></div><span className="feedback-pill">Approval required</span></header>
-  <nav className="feedback-tabs" aria-label="Feedback sections">{sections.map(s=><button key={s} className={s===section?'selected':''} onClick={()=>navigate(s)}>{s}</button>)}</nav>
-  <div className="feedback-caution">Associations are observational. Small samples, missing exposure and model labels carry uncertainty. Nothing here automatically changes production prompts.</div>
-  {(action.error||list.error||detail.error||overview.error||visual.error)&&<p role="alert">{(action.error||list.error||detail.error||overview.error||visual.error)?.message}</p>}
-  {notice&&<p role="status">{notice}</p>}
-  {section==='Overview'&&<><div className="feedback-cards">{Object.entries(overview.data??{}).map(([k,v])=><article key={k}><small>{k.replaceAll('_',' ')}</small><strong>{feedbackNumber(v)}</strong></article>)}</div><section className="panel"><h3>The evidence loop</h3><div className="feedback-loop">{['Historical assets','Visual features','Findings','Hypotheses','Human approval','Prompt experiments','Learnings'].map((v,i)=><span key={v}><b>{String(i+1).padStart(2,'0')}</b>{v}</span>)}</div><p>Each analysis snapshots its population, feature versions, observation period and seed. Compare distributions and review confounding before proposing a controlled test.</p></section></>}
-  {['Overview','Visual Attributes','Findings','Saturation'].includes(section)&&<section className="panel"><h3>Analysis scope</h3><div className="feedback-form">
-   <label>Collection<select aria-label="Feedback collection" value={collection} onChange={e=>setCollection(e.target.value)}><option value="">Select a collection</option>{collections.data?.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-   <label>Metric<select aria-label="Feedback metric" value={metric} onChange={e=>setMetric(e.target.value)}>{metrics.map(m=><option key={m}>{m}</option>)}</select></label>
-   <label>Platform<input aria-label="Feedback platform" value={platform} placeholder="All recorded platforms" onChange={e=>setPlatform(e.target.value)}/></label>
-   <label>Asset type<select aria-label="Feedback asset type" value={assetType} onChange={e=>setAssetType(e.target.value)}><option value="">All asset types</option>{['IMAGE','WALLPAPER','STOCK','VIDEO'].map(t=><option key={t}>{t}</option>)}</select></label>
-   <label>Provider<input aria-label="Feedback provider" value={provider} onChange={e=>setProvider(e.target.value)} placeholder="All providers"/></label><label>Model<input aria-label="Feedback model" value={model} onChange={e=>setModel(e.target.value)} placeholder="All models"/></label>
-   <label>Observation days<select aria-label="Observation days" value={observationDays} onChange={e=>setObservationDays(+e.target.value)}>{[7,30,90,180].map(d=><option key={d}>{d}</option>)}</select></label>
-   <label>Feature role<select aria-label="Feature role" value={featureRole} onChange={e=>setFeatureRole(e.target.value)}><option value="OBSERVED">Observed visual properties</option><option value="REQUESTED">Requested prompt variables</option></select></label>
-   <label>Period<select aria-label="Feedback period" value={period} onChange={e=>setPeriod(e.target.value)}>{['7D','30D','90D','180D','LIFETIME','CUSTOM'].map(p=><option key={p}>{p}</option>)}</select></label>
-   {period==='CUSTOM'&&<><label>From (UTC)<input type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label><label>Until, exclusive (UTC)<input type="date" value={to} onChange={e=>setTo(e.target.value)}/></label></>}
-   <label>Attributes<input aria-label="Analysis attributes" value={attributes} onChange={e=>setAttributes(e.target.value)} list="feedback-attribute-keys"/><datalist id="feedback-attribute-keys">{taxonomy.data?.map(a=><option key={a.id} value={a.key}/>)}</datalist></label>
-   <label>Extractor version<input aria-label="Extractor version" value={extractor} onChange={e=>setExtractor(e.target.value)}/></label>
-  </div><div className="feedback-actions"><button disabled={!collection||action.isPending} onClick={()=>submit('jobs/FEATURE_EXTRACTION',{collectionId:collection,extractorVersion:extractor})}>Extract collection features</button><button disabled={!collection||action.isPending} onClick={()=>submit('analyses',analysisInput)}>Analyze patterns</button><button disabled={!collection||action.isPending} onClick={()=>submit('jobs/SATURATION_ANALYSIS',analysisInput)}>Analyze saturation</button></div><p className="feedback-muted">Market analyses use the selected number of days after publication and exclude assets without a complete observation window. The selected period filters publication cohorts.</p></section>}
-  {section==='Visual Attributes'&&<section className="panel"><h3>Visual feature history</h3><label>Asset ID<input aria-label="Feature asset ID" value={asset} onChange={e=>setAsset(e.target.value)} placeholder="Asset UUID"/></label><button disabled={!asset||action.isPending} onClick={()=>submit(`assets/${asset}/visual-features/extract`,{extractorVersion:extractor})}>Extract selected asset</button>
-   {visual.data&&<><div className="feedback-table"><table><thead><tr>{['Attribute','Value','Source','Role','Confidence','Version'].map(k=><th key={k}>{k}</th>)}</tr></thead><tbody>{visual.data.history?.map((f:RecordData)=><tr key={f.id} onClick={()=>setFeature(f.id)}><td><button onClick={()=>setFeature(f.id)}>{f.key}</button></td><td>{JSON.stringify(f.value)}</td><td>{f.source}</td><td>{f.role}</td><td>{feedbackNumber(f.confidence)}</td><td>{f.extractor_version}</td></tr>)}</tbody></table></div><Evidence value={visual.data.overrides}/></>}
-   <div className="feedback-form"><label>Original feature ID<input aria-label="Override feature ID" value={feature} onChange={e=>setFeature(e.target.value)}/></label><label>Correction (JSON value)<input aria-label="Override value" value={override} onChange={e=>setOverride(e.target.value)} placeholder='true, 0.8 or "CLOSE_UP"'/></label></div>
-   <button disabled={!asset||!feature||!reason||!user||!override||action.isPending} onClick={()=>{try{submit(`assets/${asset}/visual-features/override`,{featureId:feature,value:JSON.parse(override),...review});}catch{setNotice('Enter a valid JSON value for the correction.');}}}>Save human correction</button></section>}
-  {section!=='Overview'&&<section className="panel"><div className="feedback-section-title"><h3>{section}</h3><input aria-label="Filter feedback records" placeholder="Filter this page by scope, metric or status…" value={filter} onChange={e=>setFilter(e.target.value)}/></div>
-   {list.isPending?<p>Loading evidence…</p>:section==='Data Quality'?<Evidence value={list.data}/>:rows.length===0?<p className="feedback-empty">No records yet. Run an analysis or adjust your filter.</p>:<div className="feedback-records">{rows.map(r=><article key={r.id} className={selected===r.id?'selected':''}>
-    <div><span className="feedback-pill">{r.evidence_status??r.feedback_stage??r.status??r.value_type??'Recorded'}</span><h4>{r.title??r.name??r.attribute_key??r.summary??r.key??'Saturation analysis'}</h4><small>{r.target_metric??r.primary_metric??r.category??r.analysis_run_id}</small></div>
-    {r.statistics&&<p>Observed difference <b>{feedbackNumber(r.statistics.absoluteDifference)}</b> · {r.confidence} confidence · {feedbackNumber(r.statistics.treatment?.count)} / {feedbackNumber(r.statistics.control?.count)} assets</p>}
-    {r.max_budget!==undefined&&<p>Budget {r.currency} {feedbackNumber(r.max_budget)} · Estimate {feedbackNumber(r.estimated_cost)} · {r.target_sample} per variant · {r.observation_days} days</p>}
-    {['findings','hypotheses','experiments','learnings'].includes(resource)?<button onClick={()=>setSelected(r.id)}>Review details</button>:<Evidence value={r.result??r}/>}
-   </article>)}</div>}
-   <div className="feedback-pagination"><button disabled={page===0} onClick={()=>setPage(p=>p-1)}>Previous</button><span>Page {page+1}</span><button disabled={!Array.isArray(list.data)||list.data.length<50} onClick={()=>setPage(p=>p+1)}>Next</button></div>
-  </section>}
-  {current&&selected&&<section className="panel feedback-detail"><div className="feedback-section-title"><h3>{current.title??current.name??current.attribute_key??'Learning detail'}</h3><button onClick={()=>setSelected('')}>Close detail</button></div>
-   {resource==='findings'&&<><p>{current.target_metric} · {JSON.stringify(current.attribute_value)} · {current.confidence} confidence</p><div className="feedback-columns"><Distribution title="Comparison group" data={current.statistics?.control}/><Distribution title="Attribute group" data={current.statistics?.treatment}/></div><p>Observed difference: <b>{feedbackNumber(current.statistics?.absoluteDifference)}</b> · 95% bootstrap interval: {current.statistics?.confidenceInterval?.map(feedbackNumber).join(' to ')??'Unavailable'}</p><ul>{current.warnings?.map((w:string)=><li key={w}>{w}</li>)}</ul>
-    <div className="feedback-examples">{current.evidence?.map((e:RecordData)=><button key={e.asset_id+e.role} onClick={()=>{setAsset(e.asset_id);navigate('Visual Attributes');}}>{e.thumbnail_variant_id?<img loading="lazy" src={`/api/v1/variants/${e.thumbnail_variant_id}/content`} alt={`${e.role} asset`}/>:<span className="feedback-no-preview">Preview unavailable</span>}<small>{e.role.replaceAll('_',' ')}</small><b>{feedbackNumber(e.value)}</b></button>)}</div>
-    <label>Experiment intent<select aria-label="Hypothesis intent" value={intent} onChange={e=>setIntent(e.target.value)}>{['EXPLOITATION','EXPLORATION','SATURATION'].map(i=><option key={i}>{i}</option>)}</select></label><button disabled={action.isPending} onClick={()=>submit('jobs/HYPOTHESIS_GENERATION',{findingId:selected,intent})}>Generate hypothesis</button>
-   </>}
-   {resource==='hypotheses'&&<><p>{current.description}</p><p className="feedback-muted">{current.rationale}</p><button onClick={()=>navigate('Findings',current.finding_id)}>Open source finding</button><div className="feedback-actions">{['approve','reject','archive'].map(a=><button key={a} disabled={!reason||!user||action.isPending} onClick={()=>submit(`hypotheses/${selected}/${a}`,review)}>{a[0].toUpperCase()+a.slice(1)} hypothesis</button>)}</div>
-    {current.status==='APPROVED'&&<><h4>Register a controlled prompt-variable experiment</h4><div className="feedback-form"><label>Control prompt version<select aria-label="Control prompt version" value={control} onChange={e=>setControl(e.target.value)}><option value="">Select published version</option>{versions.data?.map(v=><option key={v.id} value={v.id}>{v.template_name} v{v.version}</option>)}</select></label><label>Concept<select aria-label="Experiment concept" value={concept} onChange={e=>setConcept(e.target.value)}><option value="">Select concept</option>{concepts.data?.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label>Changed variable<input value={variable} onChange={e=>setVariable(e.target.value)}/></label><label>Treatment value<input value={treatment} onChange={e=>setTreatment(e.target.value)}/></label><label>Target per variant<input type="number" value={sample} min="20" max="1000" onChange={e=>setSample(+e.target.value)}/></label><label>Maximum budget (USD)<input value={budget} onChange={e=>setBudget(e.target.value)}/></label></div><p className="feedback-muted">Mock provider, zero generation charge. A new immutable treatment prompt version will be created. Proposal registration does not start generation.</p><button disabled={!control||!concept||action.isPending} onClick={()=>submit(`hypotheses/${selected}/experiment`,{controlVersionId:control,conceptId:concept,variable,treatmentValue:treatment,targetSample:sample,maxBudget:budget,provider:'mock',model:'studio-mock-v1'})}>Create experiment proposal</button></>}
-   </>}
-   {resource==='experiments'&&<><button onClick={()=>navigate('Hypotheses',current.source_hypothesis_id)}>Open source hypothesis</button><div className="feedback-columns"><article><h4>Control</h4><p>{current.plan?.definition.controlVersionId}</p></article><article><h4>Treatment</h4><p>{current.plan?.definition.treatmentVersionId}</p><p>{JSON.stringify(current.plan?.definition.change)}</p></article></div><p>Primary metric: <b>{current.plan?.primary_metric}</b> · Sample: {current.plan?.target_sample} each · Observation: {current.plan?.observation_days} days</p><p>Estimated: {current.plan?.currency} {feedbackNumber(current.plan?.estimated_cost)} · Maximum budget: {feedbackNumber(current.plan?.max_budget)}</p><div className="feedback-actions">{['approve','start','pause','cancel'].map(a=><button key={a} disabled={!reason||!user||action.isPending||(a==='approve'&&!!current.plan?.approved_at)} onClick={()=>submit(`experiments/${selected}/${a}`,review)}>{a[0].toUpperCase()+a.slice(1)} experiment</button>)}<button disabled={!current.plan?.approved_at||current.status!=='RUNNING'||action.isPending} onClick={()=>submit('jobs/EXPERIMENT_GENERATION',{experimentId:selected})}>Queue next 25 generations</button><button disabled={!current.plan?.approved_at||action.isPending} onClick={()=>submit('jobs/EXPERIMENT_ANALYSIS',{experimentId:selected})}>Analyze experiment results</button></div><h4>Variant production funnel</h4><div className="feedback-table"><table><thead><tr>{['Variant','Assigned','Generated','QA approved','QA rejected','Duplicate rejected','Failed','Processed','Published'].map(k=><th key={k}>{k}</th>)}</tr></thead><tbody>{current.funnel?.map((v:RecordData)=><tr key={v.id}>{['key','assigned','generated','qa_approved','qa_rejected','duplicate_rejected','failed','processed','published'].map(k=><td key={k}>{feedbackNumber(v[k])}</td>)}</tr>)}</tbody></table></div><h4>Experiment comparisons</h4>{current.results?.map((r:RecordData)=><article key={r.id}><p>{r.analysis_status} · {r.result.primaryMetric} · {r.result.observationDays} day window</p><div className="feedback-columns">{r.result.variants?.map((v:RecordData)=><article key={v.variantId}><h4>{v.key === 'A' ? 'Control' : 'Treatment'}</h4><p>Observed: {feedbackNumber(v.observed)} · Primary metric: {feedbackNumber(v.primary_metric)}</p><p>Revenue: {feedbackNumber(v.revenue)} · Cost per asset: {feedbackNumber(v.cost_per_asset)} · Profit: {feedbackNumber(v.profit)}</p></article>)}</div><p>Effect: {feedbackNumber(r.result.comparison?.absoluteDifference)} · Interval: {r.result.comparison?.confidenceInterval?.map(feedbackNumber).join(' to ')??'Unavailable'}</p></article>)}<h4>Prompt comparison</h4><div className="feedback-columns"><article><pre>{current.controlPrompt?.positive_template}</pre><Evidence value={current.controlPrompt?.variables}/></article><article><pre>{current.treatmentPrompt?.positive_template}</pre><Evidence value={current.treatmentPrompt?.variables}/></article></div><p>Remaining budget: {feedbackNumber(current.budget?.remaining)} · Unknown charges: {feedbackNumber(current.budget?.unknown_charges)}</p><h4>Recorded costs and timeline</h4><Evidence value={{costs:current.costs,timeline:current.timeline}}/></>}
-   {resource==='learnings'&&<><p>{current.summary}</p><p>{current.evidence_status} · {current.status}</p><button onClick={()=>navigate('Experiments',current.experiment_id)}>Open experiment</button><button onClick={()=>navigate('Hypotheses',current.hypothesis_id)}>Open hypothesis</button><label>Related learning ID<input value={related} onChange={e=>setRelated(e.target.value)}/></label><div className="feedback-actions">{['CONTRADICTED','SUPERSEDED','STALE'].map(s=><button key={s} disabled={!reason||!user||(s!=='STALE'&&!related)||action.isPending} onClick={()=>submit(`learnings/${selected}/relate`,{status:s,...(related?{relatedLearningId:related}:{}),...review})}>Mark {s.toLowerCase()}</button>)}</div></>}
-   <Evidence value={current}/>
-  </section>}
-  <section className="panel feedback-review"><h3>Review attribution</h3><div className="feedback-form"><label>Reviewer<input aria-label="Feedback reviewer" value={user} onChange={e=>setUser(e.target.value)}/></label><label>Reason<input aria-label="Feedback review reason" placeholder="Required for approval, correction and status changes" value={reason} onChange={e=>setReason(e.target.value)}/></label></div></section>
-  <section className="panel"><h3>Durable job queue</h3><div className="feedback-table"><table><thead><tr><th>Operation</th><th>Status</th><th>Attempts</th><th>Details</th></tr></thead><tbody>{jobs.data?.slice(0,10).map(j=><tr key={j.id}><td>{j.type}</td><td>{j.status}</td><td>{j.attempts}</td><td>{j.failure_reason??(j.result?<Evidence value={j.result}/>:'Waiting')}</td></tr>)}</tbody></table></div>{jobs.data?.length===0&&<p className="feedback-muted">No feedback jobs queued.</p>}</section>
- </div>
+type RecordData = Record<string, any>;
+const sections = ['Overview', 'Visual Attributes', 'Findings', 'Hypotheses', 'Experiment Proposals', 'Experiments', 'Saturation', 'Learnings', 'Data Quality'] as const;
+const metrics = ['DOWNLOADS', 'DOWNLOAD_RATE', 'VIEWS', 'LIKES', 'LIKE_RATE', 'REVENUE', 'PROFIT', 'ROI', 'QA_APPROVAL_RATE', 'COST_PER_APPROVED_ASSET'];
+export const feedbackNumber = (v: unknown) => v === null || v === undefined ? 'Unavailable' : typeof v === 'number' ? new Intl.NumberFormat('en', {maximumFractionDigits: 4}).format(v) : String(v);
+
+function Evidence({value}: { value: unknown }) {
+  return <details>
+    <summary>Provenance and complete evidence</summary>
+    <pre>{JSON.stringify(value, null, 2)}</pre>
+  </details>
+}
+
+function Distribution({title, data}: { title: string; data: RecordData }) {
+  const low = Number(data?.p25 ?? 0), high = Number(data?.p90 ?? 0);
+  const x = (n: number) => 20 + (n - low) / Math.max(high - low, 1) * 260;
+  return <article className="feedback-distribution"><h4>{title}</h4>{data?.median != null &&
+      <svg viewBox="0 0 300 55" role="img" aria-label={`${title} quantile band from p25 to p90`}>
+        <line x1="20" x2="280" y1="22" y2="22" stroke="#57787a"/>
+        <rect x="20" y="12" width={Math.max(2, x(Number(data.p75)) - 20)} height="20" rx="3"
+              fill="#315d54"/>
+        <line x1={x(Number(data.median))} x2={x(Number(data.median))} y1="8" y2="36"
+              stroke="#a0f1d7" strokeWidth="2"/>
+        <text x="20" y="51" fill="#8aabb0" fontSize="10">p25</text>
+        <text x="255" y="51" fill="#8aabb0" fontSize="10">p90</text>
+      </svg>}
+    <div className="feedback-stats">{['count', 'mean', 'median', 'p25', 'p75', 'p90'].map(k => <div
+        key={k}><small>{k}</small><b>{feedbackNumber(data?.[k])}</b></div>)}</div>
+  </article>
+}
+
+export function FeedbackWorkspace() {
+  const [section, setSection] = useState<string>('Overview'), [page, setPage] = useState(0), [selected, setSelected] = useState(''), [filter, setFilter] = useState('');
+  const [collection, setCollection] = useState(''), [metric, setMetric] = useState('DOWNLOADS'), [platform, setPlatform] = useState(''), [period, setPeriod] = useState('90D');
+  const [from, setFrom] = useState(''), [to, setTo] = useState(''), [attributes, setAttributes] = useState('dark_pixel_ratio,dominant_color'), [extractor, setExtractor] = useState('visual-v1');
+  const [asset, setAsset] = useState(''), [feature, setFeature] = useState(''), [override, setOverride] = useState(''), [reason, setReason] = useState(''), [user, setUser] = useState('local-workspace');
+  const [control, setControl] = useState(''), [concept, setConcept] = useState(''), [variable, setVariable] = useState('background'), [treatment, setTreatment] = useState('black'), [sample, setSample] = useState(50), [budget, setBudget] = useState('0');
+  const [observationDays, setObservationDays] = useState(30), [featureRole, setFeatureRole] = useState('OBSERVED'), [assetType, setAssetType] = useState(''), [provider, setProvider] = useState(''), [model, setModel] = useState('');
+  const [intent, setIntent] = useState('EXPLOITATION'), [notice, setNotice] = useState(''), [related, setRelated] = useState('');
+  const client = useQueryClient();
+  const overview = useQuery({
+    queryKey: ['feedback', 'overview'],
+    queryFn: () => api<RecordData>('/v1/feedback/overview')
+  });
+  const collections = useQuery({
+    queryKey: ['/collections'],
+    queryFn: () => api<RecordData[]>('/collections')
+  });
+  const concepts = useQuery({
+    queryKey: ['/concepts'],
+    queryFn: () => api<RecordData[]>('/concepts')
+  });
+  const versions = useQuery({
+    queryKey: ['feedback', 'versions'],
+    queryFn: () => api<RecordData[]>('/v1/prompt-versions')
+  });
+  const taxonomy = useQuery({
+    queryKey: ['feedback', 'attributes'],
+    queryFn: () => api<RecordData[]>('/v1/feedback/attributes')
+  });
+  const resource = section === 'Experiment Proposals' || section === 'Experiments' ? 'experiments' : section === 'Visual Attributes' ? 'attributes' : section === 'Data Quality' ? 'data-quality' : section.toLowerCase();
+  const list = useQuery({
+    queryKey: ['feedback', resource, page],
+    queryFn: () => api<RecordData[] | RecordData>(`/v1/feedback/${resource}?page=${page}`),
+    enabled: section !== 'Overview'
+  });
+  const detail = useQuery({
+    queryKey: ['feedback', 'detail', resource, selected],
+    queryFn: () => api<RecordData>(`/v1/feedback/${resource}/${selected}`),
+    enabled: !!selected && ['findings', 'hypotheses', 'experiments', 'learnings'].includes(resource)
+  });
+  const visual = useQuery({
+    queryKey: ['feedback', 'visual', asset],
+    queryFn: () => api<RecordData>(`/v1/feedback/assets/${asset}/visual-features`),
+    enabled: !!asset
+  });
+  const jobs = useQuery({
+    queryKey: ['feedback', 'jobs'],
+    queryFn: () => api<RecordData[]>('/v1/feedback/jobs'),
+    refetchInterval: 5000
+  });
+  const action = useMutation({
+    mutationFn: ({path, body}: {
+      path: string;
+      body: unknown
+    }) => api<RecordData>('/v1/feedback/' + path, body, crypto.randomUUID()), onSuccess: r => {
+      setNotice(r.status === 'QUEUED' ? 'Job queued. Progress appears below.' : 'Saved. Evidence and history are preserved.');
+      client.invalidateQueries({queryKey: ['feedback']});
+    }
+  });
+
+  function submit(path: string, body: unknown) {
+    setNotice('');
+    action.mutate({path, body});
+  }
+
+  function navigate(next: string, id = '') {
+    setSection(next);
+    setSelected(id);
+    setPage(0);
+    setFilter('');
+  }
+
+  const scope = {collectionId: collection, ...(platform ? {platform} : {}), ...(assetType ? {assetType} : {}), ...(provider ? {provider} : {}), ...(model ? {model} : {})};
+  const analysisInput = {
+    scope,
+    metric,
+    period,
+    observationDays,
+    featureRole,
+    attributes: attributes.split(',').map(s => s.trim()).filter(Boolean),
+    extractorVersion: extractor, ...(from ? {from: new Date(from + 'T00:00:00Z').toISOString()} : {}), ...(to ? {to: new Date(to + 'T00:00:00Z').toISOString()} : {})
+  };
+  const review = {reason, user};
+  const rows = (Array.isArray(list.data) ? list.data : []).filter(r => !filter || JSON.stringify(r).toLowerCase().includes(filter.toLowerCase()));
+  const current = detail.data;
+  return <div className="feedback-workspace">
+    <header className="feedback-heading">
+      <div><small>CONTROLLED LEARNING / HUMAN REVIEW</small><h2>Feedback & experiments</h2>
+        <p>Observe patterns. Test hypotheses. Preserve the evidence.</p></div>
+      <span className="feedback-pill">Approval required</span></header>
+    <nav className="feedback-tabs" aria-label="Feedback sections">{sections.map(s => <button key={s}
+                                                                                             className={s === section ? 'selected' : ''}
+                                                                                             onClick={() => navigate(s)}>{s}</button>)}</nav>
+    <div className="feedback-caution">Associations are observational. Small samples, missing
+      exposure and model labels carry uncertainty. Nothing here automatically changes production
+      prompts.
+    </div>
+    {(action.error || list.error || detail.error || overview.error || visual.error) &&
+        <p role="alert">{(action.error || list.error || detail.error || overview.error || visual.error)?.message}</p>}
+    {notice && <p role="status">{notice}</p>}
+    {section === 'Overview' && <>
+      <div className="feedback-cards">{Object.entries(overview.data ?? {}).map(([k, v]) => <article
+          key={k}><small>{k.replaceAll('_', ' ')}</small><strong>{feedbackNumber(v)}</strong>
+      </article>)}</div>
+      <section className="panel"><h3>The evidence loop</h3>
+        <div
+            className="feedback-loop">{['Historical assets', 'Visual features', 'Findings', 'Hypotheses', 'Human approval', 'Prompt experiments', 'Learnings'].map((v, i) =>
+            <span key={v}><b>{String(i + 1).padStart(2, '0')}</b>{v}</span>)}</div>
+        <p>Each analysis snapshots its population, feature versions, observation period and seed.
+          Compare distributions and review confounding before proposing a controlled test.</p>
+      </section>
+    </>}
+    {['Overview', 'Visual Attributes', 'Findings', 'Saturation'].includes(section) &&
+        <section className="panel"><h3>Analysis scope</h3>
+          <div className="feedback-form">
+            <label>Collection<select aria-label="Feedback collection" value={collection}
+                                     onChange={e => setCollection(e.target.value)}>
+              <option value="">Select a collection</option>
+              {collections.data?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select></label>
+            <label>Metric<select aria-label="Feedback metric" value={metric}
+                                 onChange={e => setMetric(e.target.value)}>{metrics.map(m => <option
+                key={m}>{m}</option>)}</select></label>
+            <label>Platform<input aria-label="Feedback platform" value={platform}
+                                  placeholder="All recorded platforms"
+                                  onChange={e => setPlatform(e.target.value)}/></label>
+            <label>Asset type<select aria-label="Feedback asset type" value={assetType}
+                                     onChange={e => setAssetType(e.target.value)}>
+              <option value="">All asset types</option>
+              {['IMAGE', 'WALLPAPER', 'STOCK', 'VIDEO'].map(t => <option key={t}>{t}</option>)}
+            </select></label>
+            <label>Provider<input aria-label="Feedback provider" value={provider}
+                                  onChange={e => setProvider(e.target.value)}
+                                  placeholder="All providers"/></label><label>Model<input
+              aria-label="Feedback model" value={model} onChange={e => setModel(e.target.value)}
+              placeholder="All models"/></label>
+            <label>Observation days<select aria-label="Observation days" value={observationDays}
+                                           onChange={e => setObservationDays(+e.target.value)}>{[7, 30, 90, 180].map(d =>
+                <option key={d}>{d}</option>)}</select></label>
+            <label>Feature role<select aria-label="Feature role" value={featureRole}
+                                       onChange={e => setFeatureRole(e.target.value)}>
+              <option value="OBSERVED">Observed visual properties</option>
+              <option value="REQUESTED">Requested prompt variables</option>
+            </select></label>
+            <label>Period<select aria-label="Feedback period" value={period}
+                                 onChange={e => setPeriod(e.target.value)}>{['7D', '30D', '90D', '180D', 'LIFETIME', 'CUSTOM'].map(p =>
+                <option key={p}>{p}</option>)}</select></label>
+            {period === 'CUSTOM' && <><label>From (UTC)<input type="date" value={from}
+                                                              onChange={e => setFrom(e.target.value)}/></label><label>Until,
+              exclusive (UTC)<input type="date" value={to}
+                                    onChange={e => setTo(e.target.value)}/></label></>}
+            <label>Attributes<input aria-label="Analysis attributes" value={attributes}
+                                    onChange={e => setAttributes(e.target.value)}
+                                    list="feedback-attribute-keys"/>
+              <datalist id="feedback-attribute-keys">{taxonomy.data?.map(a => <option key={a.id}
+                                                                                      value={a.key}/>)}</datalist>
+            </label>
+            <label>Extractor version<input aria-label="Extractor version" value={extractor}
+                                           onChange={e => setExtractor(e.target.value)}/></label>
+          </div>
+          <div className="feedback-actions">
+            <button disabled={!collection || action.isPending}
+                    onClick={() => submit('jobs/FEATURE_EXTRACTION', {
+                      collectionId: collection,
+                      extractorVersion: extractor
+                    })}>Extract collection features
+            </button>
+            <button disabled={!collection || action.isPending}
+                    onClick={() => submit('analyses', analysisInput)}>Analyze patterns
+            </button>
+            <button disabled={!collection || action.isPending}
+                    onClick={() => submit('jobs/SATURATION_ANALYSIS', analysisInput)}>Analyze
+              saturation
+            </button>
+          </div>
+          <p className="feedback-muted">Market analyses use the selected number of days after
+            publication and exclude assets without a complete observation window. The selected
+            period filters publication cohorts.</p></section>}
+    {section === 'Visual Attributes' &&
+        <section className="panel"><h3>Visual feature history</h3><label>Asset ID<input
+            aria-label="Feature asset ID" value={asset} onChange={e => setAsset(e.target.value)}
+            placeholder="Asset UUID"/></label>
+          <button disabled={!asset || action.isPending}
+                  onClick={() => submit(`assets/${asset}/visual-features/extract`, {extractorVersion: extractor})}>Extract
+            selected asset
+          </button>
+          {visual.data && <>
+            <div className="feedback-table">
+              <table>
+                <thead>
+                <tr>{['Attribute', 'Value', 'Source', 'Role', 'Confidence', 'Version'].map(k => <th
+                    key={k}>{k}</th>)}</tr>
+                </thead>
+                <tbody>{visual.data.history?.map((f: RecordData) => <tr key={f.id}
+                                                                        onClick={() => setFeature(f.id)}>
+                  <td>
+                    <button onClick={() => setFeature(f.id)}>{f.key}</button>
+                  </td>
+                  <td>{JSON.stringify(f.value)}</td>
+                  <td>{f.source}</td>
+                  <td>{f.role}</td>
+                  <td>{feedbackNumber(f.confidence)}</td>
+                  <td>{f.extractor_version}</td>
+                </tr>)}</tbody>
+              </table>
+            </div>
+            <Evidence value={visual.data.overrides}/></>}
+          <div className="feedback-form"><label>Original feature ID<input
+              aria-label="Override feature ID" value={feature}
+              onChange={e => setFeature(e.target.value)}/></label><label>Correction (JSON
+            value)<input aria-label="Override value" value={override}
+                         onChange={e => setOverride(e.target.value)}
+                         placeholder='true, 0.8 or "CLOSE_UP"'/></label></div>
+          <button disabled={!asset || !feature || !reason || !user || !override || action.isPending}
+                  onClick={() => {
+                    try {
+                      submit(`assets/${asset}/visual-features/override`, {
+                        featureId: feature,
+                        value: JSON.parse(override), ...review
+                      });
+                    } catch {
+                      setNotice('Enter a valid JSON value for the correction.');
+                    }
+                  }}>Save human correction
+          </button>
+        </section>}
+    {section !== 'Overview' && <section className="panel">
+      <div className="feedback-section-title"><h3>{section}</h3><input
+          aria-label="Filter feedback records"
+          placeholder="Filter this page by scope, metric or status…" value={filter}
+          onChange={e => setFilter(e.target.value)}/></div>
+      {list.isPending ? <p>Loading evidence…</p> : section === 'Data Quality' ?
+          <Evidence value={list.data}/> : rows.length === 0 ?
+              <p className="feedback-empty">No records yet. Run an analysis or adjust your
+                filter.</p> : <div className="feedback-records">{rows.map(r => <article key={r.id}
+                                                                                        className={selected === r.id ? 'selected' : ''}>
+                <div><span
+                    className="feedback-pill">{r.evidence_status ?? r.feedback_stage ?? r.status ?? r.value_type ?? 'Recorded'}</span>
+                  <h4>{r.title ?? r.name ?? r.attribute_key ?? r.summary ?? r.key ?? 'Saturation analysis'}</h4>
+                  <small>{r.target_metric ?? r.primary_metric ?? r.category ?? r.analysis_run_id}</small>
+                </div>
+                {r.statistics && <p>Observed
+                  difference <b>{feedbackNumber(r.statistics.absoluteDifference)}</b> · {r.confidence} confidence
+                  · {feedbackNumber(r.statistics.treatment?.count)} / {feedbackNumber(r.statistics.control?.count)} assets
+                </p>}
+                {r.max_budget !== undefined &&
+                    <p>Budget {r.currency} {feedbackNumber(r.max_budget)} ·
+                      Estimate {feedbackNumber(r.estimated_cost)} · {r.target_sample} per variant
+                      · {r.observation_days} days</p>}
+                {['findings', 'hypotheses', 'experiments', 'learnings'].includes(resource) ?
+                    <button onClick={() => setSelected(r.id)}>Review details</button> :
+                    <Evidence value={r.result ?? r}/>}
+              </article>)}</div>}
+      <div className="feedback-pagination">
+        <button disabled={page === 0} onClick={() => setPage(p => p - 1)}>Previous</button>
+        <span>Page {page + 1}</span>
+        <button disabled={!Array.isArray(list.data) || list.data.length < 50}
+                onClick={() => setPage(p => p + 1)}>Next
+        </button>
+      </div>
+    </section>}
+    {current && selected && <section className="panel feedback-detail">
+      <div className="feedback-section-title">
+        <h3>{current.title ?? current.name ?? current.attribute_key ?? 'Learning detail'}</h3>
+        <button onClick={() => setSelected('')}>Close detail</button>
+      </div>
+      {resource === 'findings' && <>
+        <p>{current.target_metric} · {JSON.stringify(current.attribute_value)} · {current.confidence} confidence</p>
+        <div className="feedback-columns"><Distribution title="Comparison group"
+                                                        data={current.statistics?.control}/><Distribution
+            title="Attribute group" data={current.statistics?.treatment}/></div>
+        <p>Observed difference: <b>{feedbackNumber(current.statistics?.absoluteDifference)}</b> ·
+          95% bootstrap
+          interval: {current.statistics?.confidenceInterval?.map(feedbackNumber).join(' to ') ?? 'Unavailable'}
+        </p>
+        <ul>{current.warnings?.map((w: string) => <li key={w}>{w}</li>)}</ul>
+        <div className="feedback-examples">{current.evidence?.map((e: RecordData) => <button
+            key={e.asset_id + e.role} onClick={() => {
+          setAsset(e.asset_id);
+          navigate('Visual Attributes');
+        }}>{e.thumbnail_variant_id ?
+            <img loading="lazy" src={`/api/v1/variants/${e.thumbnail_variant_id}/content`}
+                 alt={`${e.role} asset`}/> : <span className="feedback-no-preview">Preview unavailable</span>}<small>{e.role.replaceAll('_', ' ')}</small><b>{feedbackNumber(e.value)}</b>
+        </button>)}</div>
+        <label>Experiment intent<select aria-label="Hypothesis intent" value={intent}
+                                        onChange={e => setIntent(e.target.value)}>{['EXPLOITATION', 'EXPLORATION', 'SATURATION'].map(i =>
+            <option key={i}>{i}</option>)}</select></label>
+        <button disabled={action.isPending} onClick={() => submit('jobs/HYPOTHESIS_GENERATION', {
+          findingId: selected,
+          intent
+        })}>Generate hypothesis
+        </button>
+      </>}
+      {resource === 'hypotheses' && <><p>{current.description}</p><p
+          className="feedback-muted">{current.rationale}</p>
+        <button onClick={() => navigate('Findings', current.finding_id)}>Open source finding
+        </button>
+        <div className="feedback-actions">{['approve', 'reject', 'archive'].map(a => <button key={a}
+                                                                                             disabled={!reason || !user || action.isPending}
+                                                                                             onClick={() => submit(`hypotheses/${selected}/${a}`, review)}>{a[0].toUpperCase() + a.slice(1)} hypothesis</button>)}</div>
+        {current.status === 'APPROVED' && <><h4>Register a controlled prompt-variable
+          experiment</h4>
+          <div className="feedback-form"><label>Control prompt version<select
+              aria-label="Control prompt version" value={control}
+              onChange={e => setControl(e.target.value)}>
+            <option value="">Select published version</option>
+            {versions.data?.map(v => <option key={v.id}
+                                             value={v.id}>{v.template_name} v{v.version}</option>)}
+          </select></label><label>Concept<select aria-label="Experiment concept" value={concept}
+                                                 onChange={e => setConcept(e.target.value)}>
+            <option value="">Select concept</option>
+            {concepts.data?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></label><label>Changed variable<input value={variable}
+                                                         onChange={e => setVariable(e.target.value)}/></label><label>Treatment
+            value<input value={treatment}
+                        onChange={e => setTreatment(e.target.value)}/></label><label>Target per
+            variant<input type="number" value={sample} min="20" max="1000"
+                          onChange={e => setSample(+e.target.value)}/></label><label>Maximum budget
+            (USD)<input value={budget} onChange={e => setBudget(e.target.value)}/></label></div>
+          <p className="feedback-muted">Mock provider, zero generation charge. A new immutable
+            treatment prompt version will be created. Proposal registration does not start
+            generation.</p>
+          <button disabled={!control || !concept || action.isPending}
+                  onClick={() => submit(`hypotheses/${selected}/experiment`, {
+                    controlVersionId: control,
+                    conceptId: concept,
+                    variable,
+                    treatmentValue: treatment,
+                    targetSample: sample,
+                    maxBudget: budget,
+                    provider: 'mock',
+                    model: 'studio-mock-v1'
+                  })}>Create experiment proposal
+          </button>
+        </>}
+      </>}
+      {resource === 'experiments' && <>
+        <button onClick={() => navigate('Hypotheses', current.source_hypothesis_id)}>Open source
+          hypothesis
+        </button>
+        <div className="feedback-columns">
+          <article><h4>Control</h4><p>{current.plan?.definition.controlVersionId}</p></article>
+          <article><h4>Treatment</h4><p>{current.plan?.definition.treatmentVersionId}</p>
+            <p>{JSON.stringify(current.plan?.definition.change)}</p></article>
+        </div>
+        <p>Primary metric: <b>{current.plan?.primary_metric}</b> ·
+          Sample: {current.plan?.target_sample} each ·
+          Observation: {current.plan?.observation_days} days</p>
+        <p>Estimated: {current.plan?.currency} {feedbackNumber(current.plan?.estimated_cost)} ·
+          Maximum budget: {feedbackNumber(current.plan?.max_budget)}</p>
+        <div className="feedback-actions">{['approve', 'start', 'pause', 'cancel'].map(a => <button
+            key={a}
+            disabled={!reason || !user || action.isPending || (a === 'approve' && !!current.plan?.approved_at)}
+            onClick={() => submit(`experiments/${selected}/${a}`, review)}>{a[0].toUpperCase() + a.slice(1)} experiment</button>)}
+          <button
+              disabled={!current.plan?.approved_at || current.status !== 'RUNNING' || action.isPending}
+              onClick={() => submit('jobs/EXPERIMENT_GENERATION', {experimentId: selected})}>Queue
+            next 25 generations
+          </button>
+          <button disabled={!current.plan?.approved_at || action.isPending}
+                  onClick={() => submit('jobs/EXPERIMENT_ANALYSIS', {experimentId: selected})}>Analyze
+            experiment results
+          </button>
+        </div>
+        <h4>Variant production funnel</h4>
+        <div className="feedback-table">
+          <table>
+            <thead>
+            <tr>{['Variant', 'Assigned', 'Generated', 'QA approved', 'QA rejected', 'Duplicate rejected', 'Failed', 'Processed', 'Published'].map(k =>
+                <th key={k}>{k}</th>)}</tr>
+            </thead>
+            <tbody>{current.funnel?.map((v: RecordData) => <tr
+                key={v.id}>{['key', 'assigned', 'generated', 'qa_approved', 'qa_rejected', 'duplicate_rejected', 'failed', 'processed', 'published'].map(k =>
+                <td key={k}>{feedbackNumber(v[k])}</td>)}</tr>)}</tbody>
+          </table>
+        </div>
+        <h4>Experiment comparisons</h4>{current.results?.map((r: RecordData) => <article key={r.id}>
+        <p>{r.analysis_status} · {r.result.primaryMetric} · {r.result.observationDays} day
+          window</p>
+        <div className="feedback-columns">{r.result.variants?.map((v: RecordData) => <article
+            key={v.variantId}><h4>{v.key === 'A' ? 'Control' : 'Treatment'}</h4>
+          <p>Observed: {feedbackNumber(v.observed)} · Primary
+            metric: {feedbackNumber(v.primary_metric)}</p><p>Revenue: {feedbackNumber(v.revenue)} ·
+            Cost per asset: {feedbackNumber(v.cost_per_asset)} ·
+            Profit: {feedbackNumber(v.profit)}</p></article>)}</div>
+        <p>Effect: {feedbackNumber(r.result.comparison?.absoluteDifference)} ·
+          Interval: {r.result.comparison?.confidenceInterval?.map(feedbackNumber).join(' to ') ?? 'Unavailable'}</p>
+      </article>)}<h4>Prompt comparison</h4>
+        <div className="feedback-columns">
+          <article>
+            <pre>{current.controlPrompt?.positive_template}</pre>
+            <Evidence value={current.controlPrompt?.variables}/></article>
+          <article>
+            <pre>{current.treatmentPrompt?.positive_template}</pre>
+            <Evidence value={current.treatmentPrompt?.variables}/></article>
+        </div>
+        <p>Remaining budget: {feedbackNumber(current.budget?.remaining)} · Unknown
+          charges: {feedbackNumber(current.budget?.unknown_charges)}</p><h4>Recorded costs and
+        timeline</h4><Evidence value={{costs: current.costs, timeline: current.timeline}}/></>}
+      {resource === 'learnings' && <><p>{current.summary}</p>
+        <p>{current.evidence_status} · {current.status}</p>
+        <button onClick={() => navigate('Experiments', current.experiment_id)}>Open experiment
+        </button>
+        <button onClick={() => navigate('Hypotheses', current.hypothesis_id)}>Open hypothesis
+        </button>
+        <label>Related learning ID<input value={related}
+                                         onChange={e => setRelated(e.target.value)}/></label>
+        <div className="feedback-actions">{['CONTRADICTED', 'SUPERSEDED', 'STALE'].map(s => <button
+            key={s} disabled={!reason || !user || (s !== 'STALE' && !related) || action.isPending}
+            onClick={() => submit(`learnings/${selected}/relate`, {status: s, ...(related ? {relatedLearningId: related} : {}), ...review})}>Mark {s.toLowerCase()}</button>)}</div>
+      </>}
+      <Evidence value={current}/>
+    </section>}
+    <section className="panel feedback-review"><h3>Review attribution</h3>
+      <div className="feedback-form"><label>Reviewer<input aria-label="Feedback reviewer"
+                                                           value={user}
+                                                           onChange={e => setUser(e.target.value)}/></label><label>Reason<input
+          aria-label="Feedback review reason"
+          placeholder="Required for approval, correction and status changes" value={reason}
+          onChange={e => setReason(e.target.value)}/></label></div>
+    </section>
+    <section className="panel"><h3>Durable job queue</h3>
+      <div className="feedback-table">
+        <table>
+          <thead>
+          <tr>
+            <th>Operation</th>
+            <th>Status</th>
+            <th>Attempts</th>
+            <th>Details</th>
+          </tr>
+          </thead>
+          <tbody>{jobs.data?.slice(0, 10).map(j => <tr key={j.id}>
+            <td>{j.type}</td>
+            <td>{j.status}</td>
+            <td>{j.attempts}</td>
+            <td>{j.failure_reason ?? (j.result ? <Evidence value={j.result}/> : 'Waiting')}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+      {jobs.data?.length === 0 && <p className="feedback-muted">No feedback jobs queued.</p>}
+    </section>
+  </div>
 }
 
 

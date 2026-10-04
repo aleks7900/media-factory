@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ExperimentAnalysisService {
+
   private final FeedbackStore store;
   private final FeedbackDatasetBuilder datasets;
   private final ExperimentProposalService proposals;
@@ -70,8 +71,8 @@ public class ExperimentAnalysisService {
               .sql(
                   "select count(*) observed,"
                       + (costRatio
-                          ? "sum(value)/nullif(sum((metrics->>'approved')::numeric),0)"
-                          : "avg(value)")
+                      ? "sum(value)/nullif(sum((metrics->>'approved')::numeric),0)"
+                      : "avg(value)")
                       + " primary_metric,avg((metrics->>'downloads')::numeric)"
                       + " downloads,avg((metrics->>'likes')::numeric)"
                       + " likes,avg((metrics->>'revenue')::numeric)"
@@ -101,7 +102,7 @@ public class ExperimentAnalysisService {
               .stream()
               .mapToDouble(Double::doubleValue)
               .toArray());
-      if (costRatio)
+      if (costRatio) {
         paired.add(
             store
                 .db
@@ -116,11 +117,12 @@ public class ExperimentAnalysisService {
                 .stream()
                 .map(
                     r ->
-                        new double[] {
-                          ((Number) r.get("cost")).doubleValue(),
-                          ((Number) r.get("approved")).doubleValue()
+                        new double[]{
+                            ((Number) r.get("cost")).doubleValue(),
+                            ((Number) r.get("approved")).doubleValue()
                         })
                 .toArray(double[][]::new));
+      }
     }
     long pending =
         store
@@ -135,10 +137,10 @@ public class ExperimentAnalysisService {
     var comparison =
         costRatio
             ? FeedbackStatistics.compareCostPerApproved(
-                paired.get(0),
-                paired.get(1),
-                ((Number) parameters.get("randomSeed")).longValue(),
-                min)
+            paired.get(0),
+            paired.get(1),
+            ((Number) parameters.get("randomSeed")).longValue(),
+            min)
             : FeedbackStatistics.compare(
                 samples.get(0),
                 samples.get(1),
@@ -211,7 +213,7 @@ public class ExperimentAnalysisService {
             summary,
             status)
         .update();
-    if (complete)
+    if (complete) {
       store
           .db
           .sql(
@@ -220,6 +222,7 @@ public class ExperimentAnalysisService {
                   + " where id=? and (status='RUNNING' or (status='DRAFT' and ?))")
           .params(experiment, offline)
           .update();
+    }
     return Map.of(
         "result",
         store.one("feedback_experiment_results", id),
@@ -254,7 +257,7 @@ public class ExperimentAnalysisService {
                 + " id=?")
         .params(state, other, state, id)
         .update();
-    if (state.equals("CONTRADICTED"))
+    if (state.equals("CONTRADICTED")) {
       store
           .db
           .sql(
@@ -263,6 +266,7 @@ public class ExperimentAnalysisService {
                   + " where id=?")
           .params(id, other)
           .update();
+    }
     return store.one("feedback_learnings", id);
   }
 }

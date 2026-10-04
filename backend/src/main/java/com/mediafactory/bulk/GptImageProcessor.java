@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class GptImageProcessor implements BulkProcessor {
+
   final ImageProviderRouter router;
 
   public GptImageProcessor(ImageProviderRouter router) {
@@ -44,15 +45,18 @@ public class GptImageProcessor implements BulkProcessor {
   }
 
   public void validate(Input i) {
-    if (!Set.of("openai", "mock").contains(i.provider()))
+    if (!Set.of("openai", "mock").contains(i.provider())) {
       throw new IllegalArgumentException("Select OpenAI or explicit mock test mode");
-    if (!i.references().isEmpty())
+    }
+    if (!i.references().isEmpty()) {
       throw new IllegalArgumentException(
           "REFERENCE_IMAGES_UNSUPPORTED: configured image generation endpoint does not accept"
               + " reference images");
+    }
     if (!Set.of("width", "height", "quality", "format", "transparentBackground", "numberOfOutputs")
-        .containsAll(i.options().keySet()))
+        .containsAll(i.options().keySet())) {
       throw new IllegalArgumentException("Unsupported image option");
+    }
     request(i);
   }
 

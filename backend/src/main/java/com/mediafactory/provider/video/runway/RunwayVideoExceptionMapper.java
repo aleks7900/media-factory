@@ -5,7 +5,9 @@ import com.mediafactory.provider.resilience.ImageGenerationException.Type;
 import java.time.Duration;
 
 public final class RunwayVideoExceptionMapper {
-  private RunwayVideoExceptionMapper() {}
+
+  private RunwayVideoExceptionMapper() {
+  }
 
   public static ImageGenerationException http(int code, boolean submission, String retry) {
     Type type =

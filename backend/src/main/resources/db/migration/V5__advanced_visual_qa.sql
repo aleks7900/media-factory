@@ -172,7 +172,9 @@ CREATE FUNCTION immutable_review_action() RETURNS trigger
     LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Human review audit is immutable';
 END $$;
 CREATE TRIGGER human_actions_immutable
-    BEFORE UPDATE OR DELETE ON human_review_actions FOR EACH ROW
+    BEFORE UPDATE OR
+DELETE
+ON human_review_actions FOR EACH ROW
 EXECUTE FUNCTION immutable_review_action();
 CREATE TABLE regeneration_requests
 (
@@ -213,8 +215,9 @@ END IF;
 RETURN NEW;
 END $$;
 CREATE TRIGGER publication_approval
-    BEFORE INSERT OR UPDATE ON publications FOR EACH ROW
-EXECUTE FUNCTION require_publication_approval();
+    BEFORE INSERT OR
+UPDATE ON publications FOR EACH ROW
+    EXECUTE FUNCTION require_publication_approval();
 CREATE TRIGGER generation_publication_approval
     BEFORE UPDATE OF status
     ON generations
@@ -255,8 +258,12 @@ END IF;
 RETURN OLD;
 END $$;
 CREATE TRIGGER protect_qa_findings
-    BEFORE UPDATE OR DELETE ON quality_findings FOR EACH ROW
+    BEFORE UPDATE OR
+DELETE
+ON quality_findings FOR EACH ROW
 EXECUTE FUNCTION protect_qa_evidence();
 CREATE TRIGGER protect_qa_dimensions
-    BEFORE UPDATE OR DELETE ON quality_dimension_results FOR EACH ROW
+    BEFORE UPDATE OR
+DELETE
+ON quality_dimension_results FOR EACH ROW
 EXECUTE FUNCTION protect_qa_evidence();

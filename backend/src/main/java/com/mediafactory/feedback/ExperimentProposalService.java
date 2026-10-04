@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ExperimentProposalService {
+
   private final FeedbackStore store;
   private final PromptCatalog prompts;
   private final FactoryService factory;
@@ -42,15 +43,17 @@ public class ExperimentProposalService {
             .param(hypothesis)
             .query(UUID.class)
             .list();
-    if (!previous.isEmpty()) return detail(previous.getFirst());
+    if (!previous.isEmpty()) {
+      return detail(previous.getFirst());
+    }
     var h = store.one("experiment_hypotheses", hypothesis);
     check(h.get("status").equals("APPROVED"), "Approve the hypothesis before creating a proposal");
     var f = store.one("feedback_findings", (UUID) h.get("finding_id"));
     check(
         !f.get("status").equals("STALE")
             && ((java.sql.Timestamp) f.get("stale_at"))
-                .toInstant()
-                .isAfter(java.time.Instant.now()),
+            .toInstant()
+            .isAfter(java.time.Instant.now()),
         "Finding is stale");
     var analysis = store.one("feedback_analysis_runs", (UUID) f.get("analysis_run_id"));
     var params = map(analysis.get("parameters"));
@@ -76,18 +79,18 @@ public class ExperimentProposalService {
                   d ->
                       d.name().equals(variable)
                           ? new PromptVariableDefinition(
-                              d.name(),
-                              d.label(),
-                              d.description(),
-                              d.type(),
-                              d.required(),
-                              input.get("treatmentValue"),
-                              d.allowedValues(),
-                              d.min(),
-                              d.max(),
-                              d.minLength(),
-                              d.maxLength(),
-                              d.displayOrder())
+                          d.name(),
+                          d.label(),
+                          d.description(),
+                          d.type(),
+                          d.required(),
+                          input.get("treatmentValue"),
+                          d.allowedValues(),
+                          d.min(),
+                          d.max(),
+                          d.minLength(),
+                          d.maxLength(),
+                          d.displayOrder())
                           : d)
               .toList();
       var created =
@@ -123,9 +126,9 @@ public class ExperimentProposalService {
     check(
         scope.get("collectionId") == null
             || scope
-                .get("collectionId")
-                .toString()
-                .equals(collection.get("collection_id").toString()),
+            .get("collectionId")
+            .toString()
+            .equals(collection.get("collection_id").toString()),
         "Proposal collection differs from evidence scope");
     check(
         scope.get("projectId") == null
@@ -337,8 +340,9 @@ public class ExperimentProposalService {
     int target = ((Number) plan.get("target_sample")).intValue();
     var variants = prompts.variants(id);
     var assigned = new HashMap<String, Integer>();
-    for (var v : variants)
+    for (var v : variants) {
       assigned.put(v.get("key").toString(), ((Number) v.get("generations")).intValue());
+    }
     int created = 0;
     // The same TASK-03 assignment algorithm is used; idempotency keys are deterministic and
     // retained.
@@ -350,14 +354,18 @@ public class ExperimentProposalService {
       String key = "feedback:" + id + ":" + i;
       var selected = ExperimentAssignment.assign(id, key, variants);
       String variant = selected.get("key").toString();
-      if (assigned.get(variant) >= target) continue;
+      if (assigned.get(variant) >= target) {
+        continue;
+      }
       if (store
-              .db
-              .sql("select count(*) from jobs where idempotency_key=?")
-              .param(key)
-              .query(Long.class)
-              .single()
-          > 0) continue;
+          .db
+          .sql("select count(*) from jobs where idempotency_key=?")
+          .param(key)
+          .query(Long.class)
+          .single()
+          > 0) {
+        continue;
+      }
       var request =
           new PromptRenderRequest(
               uuid(d, "controlVersionId"),
@@ -413,12 +421,12 @@ public class ExperimentProposalService {
             .db
             .sql(
                 """
-                select v.id,v.key,count(g.id) assigned,count(a.id) generated,count(*) filter(where g.status in ('APPROVED','PUBLISHED')) qa_approved,
-                count(*) filter(where l.rejection_reason='DUPLICATE') duplicate_rejected,count(*) filter(where g.status='REJECTED') qa_rejected,count(*) filter(where g.status='FAILED') failed,
-                count(*) filter(where l.processing_profiles is not null) processed,count(*) filter(where exists(select 1 from publications p where p.asset_id=a.id)) published
-                from prompt_experiment_variants v left join generations g on g.experiment_variant_id=v.id left join assets a on a.generation_id=g.id left join analytics_lineage l on l.generation_id=g.id
-                where v.experiment_id=? group by v.id,v.key order by v.key
-                """)
+                    select v.id,v.key,count(g.id) assigned,count(a.id) generated,count(*) filter(where g.status in ('APPROVED','PUBLISHED')) qa_approved,
+                    count(*) filter(where l.rejection_reason='DUPLICATE') duplicate_rejected,count(*) filter(where g.status='REJECTED') qa_rejected,count(*) filter(where g.status='FAILED') failed,
+                    count(*) filter(where l.processing_profiles is not null) processed,count(*) filter(where exists(select 1 from publications p where p.asset_id=a.id)) published
+                    from prompt_experiment_variants v left join generations g on g.experiment_variant_id=v.id left join assets a on a.generation_id=g.id left join analytics_lineage l on l.generation_id=g.id
+                    where v.experiment_id=? group by v.id,v.key order by v.key
+                    """)
             .param(id)
             .query()
             .listOfRows());

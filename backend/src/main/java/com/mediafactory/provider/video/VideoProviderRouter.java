@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class VideoProviderRouter {
+
   final Map<String, VideoGenerationProvider> providers;
   final String defaultProvider;
   final List<String> fallback;
@@ -27,16 +28,21 @@ public class VideoProviderRouter {
 
   public VideoGenerationProvider provider(String id) {
     var p = providers.get(id);
-    if (p == null || !p.configured())
+    if (p == null || !p.configured()) {
       throw new IllegalArgumentException("Video provider unavailable: " + id);
+    }
     return p;
   }
 
   public List<Map<String, Object>> route(String explicit, boolean allowFallback) {
     var ids = new LinkedHashSet<String>();
     ids.add(explicit == null || explicit.isBlank() ? defaultProvider : explicit);
-    if (allowFallback) ids.addAll(fallback);
-    if (ids.size() > 4) throw new IllegalArgumentException("Too many video fallback providers");
+    if (allowFallback) {
+      ids.addAll(fallback);
+    }
+    if (ids.size() > 4) {
+      throw new IllegalArgumentException("Too many video fallback providers");
+    }
     return ids.stream()
         .map(
             id -> {
@@ -47,8 +53,12 @@ public class VideoProviderRouter {
   }
 
   String modelFor(String id) {
-    if (id.equals("mock-video")) return "deterministic-motion-v1";
-    if (id.equals("gemini")) return providers.get(id).capabilities().models().iterator().next();
+    if (id.equals("mock-video")) {
+      return "deterministic-motion-v1";
+    }
+    if (id.equals("gemini")) {
+      return providers.get(id).capabilities().models().iterator().next();
+    }
     return model;
   }
 

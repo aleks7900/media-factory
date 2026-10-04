@@ -19,7 +19,8 @@ CREATE TABLE processing_profile_versions
 CREATE FUNCTION protect_processing_profile() RETURNS trigger
     LANGUAGE plpgsql AS $$
 BEGIN
- IF OLD.status <> 'DRAFT' AND (TG_OP='DELETE' OR NEW.definition IS DISTINCT FROM OLD.definition OR NEW.version<>OLD.version OR NEW.profile_id<>OLD.profile_id OR NEW.status NOT IN ('PUBLISHED','DEPRECATED')) THEN
+ IF
+OLD.status <> 'DRAFT' AND (TG_OP='DELETE' OR NEW.definition IS DISTINCT FROM OLD.definition OR NEW.version<>OLD.version OR NEW.profile_id<>OLD.profile_id OR NEW.status NOT IN ('PUBLISHED','DEPRECATED')) THEN
   RAISE EXCEPTION 'Published processing profiles are immutable';
 END IF;
  IF
@@ -28,7 +29,9 @@ END IF;
 RETURN NEW;
 END $$;
 CREATE TRIGGER processing_profile_immutable
-    BEFORE UPDATE OR DELETE ON processing_profile_versions FOR EACH ROW
+    BEFORE UPDATE OR
+DELETE
+ON processing_profile_versions FOR EACH ROW
 EXECUTE FUNCTION protect_processing_profile();
 CREATE TABLE wallpaper_targets
 (
@@ -192,7 +195,8 @@ ALTER TABLE asset_variants
 CREATE FUNCTION check_processing_lineage() RETURNS trigger
     LANGUAGE plpgsql AS $$
 BEGIN
- IF NEW.parent_artifact_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM processing_artifacts p WHERE p.id=NEW.parent_artifact_id AND p.source_asset_id=NEW.source_asset_id) THEN RAISE EXCEPTION 'Processing parent must share the same original master';
+ IF
+NEW.parent_artifact_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM processing_artifacts p WHERE p.id=NEW.parent_artifact_id AND p.source_asset_id=NEW.source_asset_id) THEN RAISE EXCEPTION 'Processing parent must share the same original master';
 END IF;
  IF
 NOT EXISTS(SELECT 1 FROM processing_runs r WHERE r.id=NEW.run_id AND r.source_asset_id=NEW.source_asset_id) THEN RAISE EXCEPTION 'Artifact run must share the same original master';
@@ -208,18 +212,25 @@ CREATE FUNCTION protect_processing_history() RETURNS trigger
     LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Processing history is immutable';
 END $$;
 CREATE TRIGGER processing_artifacts_immutable
-    BEFORE UPDATE OR DELETE ON processing_artifacts FOR EACH ROW
+    BEFORE UPDATE OR
+DELETE
+ON processing_artifacts FOR EACH ROW
 EXECUTE FUNCTION protect_processing_history();
 CREATE TRIGGER processing_manifests_immutable
-    BEFORE UPDATE OR DELETE ON processing_manifests FOR EACH ROW
+    BEFORE UPDATE OR
+DELETE
+ON processing_manifests FOR EACH ROW
 EXECUTE FUNCTION protect_processing_history();
 CREATE TRIGGER processing_validation_immutable
-    BEFORE UPDATE OR DELETE ON processing_validation_results FOR EACH ROW
+    BEFORE UPDATE OR
+DELETE
+ON processing_validation_results FOR EACH ROW
 EXECUTE FUNCTION protect_processing_history();
 CREATE FUNCTION protect_processing_plan() RETURNS trigger
     LANGUAGE plpgsql AS $$
 BEGIN
- IF NEW.plan IS DISTINCT FROM OLD.plan OR NEW.source_asset_id<>OLD.source_asset_id OR NEW.request_hash<>OLD.request_hash OR NEW.idempotency_key<>OLD.idempotency_key THEN RAISE EXCEPTION 'Resolved processing plan is immutable';
+ IF
+NEW.plan IS DISTINCT FROM OLD.plan OR NEW.source_asset_id<>OLD.source_asset_id OR NEW.request_hash<>OLD.request_hash OR NEW.idempotency_key<>OLD.idempotency_key THEN RAISE EXCEPTION 'Resolved processing plan is immutable';
 END IF;
 RETURN NEW;
 END $$;

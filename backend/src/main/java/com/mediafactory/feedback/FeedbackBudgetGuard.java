@@ -9,6 +9,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class FeedbackBudgetGuard {
+
   private final JdbcClient db;
   private final TransactionTemplate tx;
   private final PricingService pricing;
@@ -38,14 +39,17 @@ public class FeedbackBudgetGuard {
                       .param(generation)
                       .query()
                       .listOfRows();
-              if (rows.isEmpty()) return true;
+              if (rows.isEmpty()) {
+                return true;
+              }
               var plan = rows.getFirst();
-              if (plan.get("approved_at") == null || !plan.get("status").equals("RUNNING"))
+              if (plan.get("approved_at") == null || !plan.get("status").equals("RUNNING")) {
                 return false;
+              }
               if (db.sql("select count(*) from feedback_budget_reservations where job_id=?")
-                      .param(job)
-                      .query(Long.class)
-                      .single()
+                  .param(job)
+                  .query(Long.class)
+                  .single()
                   > 0) {
                 pause(plan, "Unreconciled reservation after interrupted attempt");
                 return false;

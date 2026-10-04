@@ -14,6 +14,7 @@ import org.apache.commons.csv.*;
 import org.junit.jupiter.api.Test;
 
 class StockComponentsTest {
+
   static Map<String, Object> profile() {
     var p = new HashMap<String, Object>();
     p.put("minimumMegapixels", 4);
@@ -44,6 +45,25 @@ class StockComponentsTest {
     var out = new ByteArrayOutputStream();
     ImageIO.write(image, format, out);
     return out.toByteArray();
+  }
+
+  static Map<String, Object> metadata() {
+    return new LinkedHashMap<>(
+        Map.of(
+            "title",
+            "Abstract blue texture",
+            "description",
+            "Blue abstract texture with soft visual patterns.",
+            "keywords",
+            List.of(Map.of("value", "blue"), Map.of("value", "texture")),
+            "categories",
+            List.of("ABSTRACT"),
+            "contentType",
+            "UNDETERMINED",
+            "aiGenerated",
+            true,
+            "riskFlags",
+            List.of()));
   }
 
   StockTechnicalValidator.Result validate(byte[] b, Map<String, Object> p) {
@@ -111,7 +131,7 @@ class StockComponentsTest {
   void corruptAndChecksumFail() {
     var r =
         new StockTechnicalValidator()
-            .validate(new byte[] {1, 2, 3}, "0".repeat(64), profile(), Map.of());
+            .validate(new byte[]{1, 2, 3}, "0".repeat(64), profile(), Map.of());
     assertThat(r.valid()).isFalse();
     assertThat(r.checks()).anyMatch(c -> c.type().equals("CHECKSUM") && c.status().equals("FAIL"));
   }
@@ -153,25 +173,6 @@ class StockComponentsTest {
                 "Éléphant / .. " + "long".repeat(100), UUID.randomUUID(), m));
   }
 
-  static Map<String, Object> metadata() {
-    return new LinkedHashMap<>(
-        Map.of(
-            "title",
-            "Abstract blue texture",
-            "description",
-            "Blue abstract texture with soft visual patterns.",
-            "keywords",
-            List.of(Map.of("value", "blue"), Map.of("value", "texture")),
-            "categories",
-            List.of("ABSTRACT"),
-            "contentType",
-            "UNDETERMINED",
-            "aiGenerated",
-            true,
-            "riskFlags",
-            List.of()));
-  }
-
   @Test
   void metadataConstraintsAreIndividualIssues() {
     var d = metadata();
@@ -197,9 +198,9 @@ class StockComponentsTest {
   void validMetadataAndUnsupportedClaims() {
     var d = metadata();
     assertThat(
-            new StockMetadataValidator()
-                .validate(d, profile(), Map.of("description", "blue texture"))
-                .valid())
+        new StockMetadataValidator()
+            .validate(d, profile(), Map.of("description", "blue texture"))
+            .valid())
         .isTrue();
     d.put("description", "An image shot on an invented camera in Paris.");
     assertThat(new StockMetadataValidator().validate(d, profile(), Map.of()).valid()).isFalse();
@@ -212,7 +213,9 @@ class StockComponentsTest {
     d.put("description", "First line\r\nSecond line – 雪");
     d.put("keywords", List.of(Map.of("value", "blue sky"), Map.of("value", "quiet, calm")));
     var items = new ArrayList<Map<String, Object>>();
-    for (int i = 0; i < 50; i++) items.add(Map.of("filename", i + ".jpg", "metadata", d));
+    for (int i = 0; i < 50; i++) {
+      items.add(Map.of("filename", i + ".jpg", "metadata", d));
+    }
     var p =
         Map.<String, Object>of(
             "columns",

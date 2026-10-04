@@ -323,7 +323,9 @@ public class WallpaperProductionService {
         });
   }
 
-  /** Reuse an approved original without issuing another image generation request. */
+  /**
+   * Reuse an approved original without issuing another image generation request.
+   */
   public Map<String, Object> startFromAsset(UUID asset, String profile,
       Map<String, Object> metadata, String key) {
     return tx.execute(t -> {
@@ -335,21 +337,27 @@ public class WallpaperProductionService {
       var sourceMetadata = new LinkedHashMap<>(metadata);
       sourceMetadata.put("sourceAssetId", asset.toString());
       var production = start((UUID) g.get("concept_id"), profile, sourceMetadata, key, null);
-      if (!"CONCEPT_READY".equals(production.get("status"))) return production;
+      if (!"CONCEPT_READY".equals(production.get("status"))) {
+        return production;
+      }
       var snapshot = map(production.get("profile_snapshot"));
       var review = db.sql("select policy_id,policy_version from quality_reviews where id=?")
           .param(a.get("current_review_id")).query().singleRow();
       if (!Objects.equals(review.get("policy_id"), snapshot.get("qaPolicy"))
-          || !Objects.equals(review.get("policy_version"), map(snapshot.get("qaPolicySnapshot")).get("version"))) {
+          || !Objects.equals(review.get("policy_version"),
+          map(snapshot.get("qaPolicySnapshot")).get("version"))) {
         throw conflict("Source needs the wallpaper profile's current QA policy before reuse");
       }
       if (db.sql("select count(*) from wallpaper_productions where generation_id=? and id<>?")
           .params(g.get("id"), production.get("id")).query(Long.class).single() > 0) {
-        throw conflict("Source already belongs to a wallpaper production; resume that production instead");
+        throw conflict(
+            "Source already belongs to a wallpaper production; resume that production instead");
       }
-      db.sql("update wallpaper_productions set generation_id=?,master_asset_id=?,status='QA_PENDING',revision=revision+1 where id=?")
+      db.sql(
+              "update wallpaper_productions set generation_id=?,master_asset_id=?,status='QA_PENDING',revision=revision+1 where id=?")
           .params(g.get("id"), asset, production.get("id")).update();
-      event((UUID) production.get("id"), "CONCEPT_READY", "QA_PENDING", "local-workspace", "Reused approved original; no generation");
+      event((UUID) production.get("id"), "CONCEPT_READY", "QA_PENDING", "local-workspace",
+          "Reused approved original; no generation");
       return one((UUID) production.get("id"));
     });
   }

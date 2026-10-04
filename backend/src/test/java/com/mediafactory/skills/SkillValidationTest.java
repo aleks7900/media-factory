@@ -6,6 +6,7 @@ import java.util.*;
 import org.junit.jupiter.api.Test;
 
 class SkillValidationTest {
+
   @Test
   void rejectsUnsafeSourceAndPath() {
     var evidence =
@@ -21,18 +22,18 @@ class SkillValidationTest {
             "observation",
             "text");
     assertThatThrownBy(
-            () ->
-                SkillPlanService.validateResearch(
-                    Map.of(
-                        "directions",
-                        List.of(
-                            Map.of(
-                                "name",
-                                "test",
-                                "description",
-                                "test",
-                                "evidence",
-                                List.of(evidence))))))
+        () ->
+            SkillPlanService.validateResearch(
+                Map.of(
+                    "directions",
+                    List.of(
+                        Map.of(
+                            "name",
+                            "test",
+                            "description",
+                            "test",
+                            "evidence",
+                            List.of(evidence))))))
         .hasMessageContaining("HTTP");
     assertThatThrownBy(() -> SkillPlanService.slug("../outside"))
         .isInstanceOf(IllegalArgumentException.class);
@@ -47,7 +48,7 @@ class SkillValidationTest {
   @Test
   void providerErrorsAreNotEchoed() {
     assertThat(
-            SkillExecutionService.classify(new RuntimeException("token=secret from remote host")))
+        SkillExecutionService.classify(new RuntimeException("token=secret from remote host")))
         .isEqualTo("UNKNOWN");
   }
 }

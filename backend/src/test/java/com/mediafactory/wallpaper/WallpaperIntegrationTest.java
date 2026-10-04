@@ -29,10 +29,60 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers
 @SpringBootTest(properties = {"media.worker.enabled=false", "media.qa.requests-per-minute=1000"})
 class WallpaperIntegrationTest {
+
   @Container
   static PostgreSQLContainer<?> postgres =
       new PostgreSQLContainer<>(
           DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"));
+  @Autowired
+  WallpaperProductionService productions;
+  @Autowired
+  WallpaperCollectionService collections;
+  @Autowired
+  WallpaperPublicationService publication;
+  @Autowired
+  WallpaperExportService exports;
+  @Autowired
+  JdbcClient db;
+  @Autowired
+  TransactionTemplate tx;
+  @Autowired
+  FactoryService factory;
+  @Autowired
+  QualityReviewService reviews;
+  @Autowired
+  QaConfiguration qaConfig;
+  @Autowired
+  TechnicalQa technical;
+  @Autowired
+  QualityPolicyEngine policy;
+  @Autowired
+  MediaStorage storage;
+  @Autowired
+  ProviderRateLimiter limiter;
+  @Autowired
+  RetryDecisionService retry;
+  @Autowired
+  MeterRegistry metrics;
+  @Autowired
+  ImageGenerationProperties images;
+  @Autowired
+  GenerationAttemptRepository attempts;
+  @Autowired
+  ProviderObservability telemetry;
+  @Autowired
+  SimilarityService similarity;
+  @Autowired
+  EmbeddingModelService models;
+  @Autowired
+  CollectionClusteringService clustering;
+  @Autowired
+  ProcessingService processing;
+  @Autowired
+  PostProcessingQa postQa;
+  @Autowired
+  MockWallpaperPublicationTarget mock;
+  UUID collection, concept;
 
   @DynamicPropertySource
   static void properties(DynamicPropertyRegistry r) {
@@ -41,32 +91,6 @@ class WallpaperIntegrationTest {
     r.add("spring.datasource.password", postgres::getPassword);
     r.add("media.storage.root", () -> "build/wallpaper-test/" + UUID.randomUUID());
   }
-
-  @Autowired WallpaperProductionService productions;
-  @Autowired WallpaperCollectionService collections;
-  @Autowired WallpaperPublicationService publication;
-  @Autowired WallpaperExportService exports;
-  @Autowired JdbcClient db;
-  @Autowired TransactionTemplate tx;
-  @Autowired FactoryService factory;
-  @Autowired QualityReviewService reviews;
-  @Autowired QaConfiguration qaConfig;
-  @Autowired TechnicalQa technical;
-  @Autowired QualityPolicyEngine policy;
-  @Autowired MediaStorage storage;
-  @Autowired ProviderRateLimiter limiter;
-  @Autowired RetryDecisionService retry;
-  @Autowired MeterRegistry metrics;
-  @Autowired ImageGenerationProperties images;
-  @Autowired GenerationAttemptRepository attempts;
-  @Autowired ProviderObservability telemetry;
-  @Autowired SimilarityService similarity;
-  @Autowired EmbeddingModelService models;
-  @Autowired CollectionClusteringService clustering;
-  @Autowired ProcessingService processing;
-  @Autowired PostProcessingQa postQa;
-  @Autowired MockWallpaperPublicationTarget mock;
-  UUID collection, concept;
 
   @BeforeEach
   void setup() {
@@ -82,14 +106,14 @@ class WallpaperIntegrationTest {
     collection =
         (UUID)
             ((Map<?, ?>)
-                    collections.create(
-                        project,
-                        "Nocturne",
-                        "nocturne",
-                        "",
-                        "Nocturnal landscapes",
-                        "Cinematic",
-                        false))
+                collections.create(
+                    project,
+                    "Nocturne",
+                    "nocturne",
+                    "",
+                    "Nocturnal landscapes",
+                    "Cinematic",
+                    false))
                 .get("id");
     concept =
         (UUID)
@@ -189,15 +213,15 @@ class WallpaperIntegrationTest {
         .isEqualTo(1);
     assertThat(storage.read(original.get("storage_key").toString())).isEqualTo(before);
     assertThat(
-            db.sql(
-                    "select count(*) from asset_variants v join processing_artifacts p on"
-                        + " p.id=v.parent_artifact_id join asset_variants master on"
-                        + " master.artifact_id=p.id where master.kind='WALLPAPER_MASTER'")
-                .query(Integer.class)
-                .single())
+        db.sql(
+                "select count(*) from asset_variants v join processing_artifacts p on"
+                    + " p.id=v.parent_artifact_id join asset_variants master on"
+                    + " master.artifact_id=p.id where master.kind='WALLPAPER_MASTER'")
+            .query(Integer.class)
+            .single())
         .isEqualTo(5);
     assertThatThrownBy(
-            () -> db.sql("update wallpaper_publication_packages set manifest='{}'").update())
+        () -> db.sql("update wallpaper_publication_packages set manifest='{}'").update())
         .hasMessageContaining("immutable");
   }
 
@@ -229,7 +253,9 @@ class WallpaperIntegrationTest {
 
           public Result publish(Request r) {
             var result = mock.publish(r);
-            if (first.getAndSet(false)) throw new Failure("TIMEOUT", true);
+            if (first.getAndSet(false)) {
+              throw new Failure("TIMEOUT", true);
+            }
             return result;
           }
 
@@ -244,10 +270,10 @@ class WallpaperIntegrationTest {
     var publisher = new WallpaperPublicationService(productions, List.of(flaky));
     publisher.deliver(delivery);
     assertThat(
-            db.sql("select status from wallpaper_deliveries where id=?")
-                .param(delivery)
-                .query(String.class)
-                .single())
+        db.sql("select status from wallpaper_deliveries where id=?")
+            .param(delivery)
+            .query(String.class)
+            .single())
         .isEqualTo("READY");
     db.sql("update wallpaper_deliveries set available_at=now() where id=?")
         .param(delivery)
@@ -309,9 +335,9 @@ class WallpaperIntegrationTest {
     publication.deliver(queue(id));
     assertThat(productions.one(id).get("status")).isEqualTo("PUBLISHED");
     assertThat(
-            db.sql("select count(*) from wallpaper_publication_packages")
-                .query(Integer.class)
-                .single())
+        db.sql("select count(*) from wallpaper_publication_packages")
+            .query(Integer.class)
+            .single())
         .isEqualTo(2);
   }
 
@@ -323,7 +349,9 @@ class WallpaperIntegrationTest {
     byte[] bytes = exports.download(export);
     var names = new ArrayList<String>();
     try (var zip = new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(bytes))) {
-      for (var e = zip.getNextEntry(); e != null; e = zip.getNextEntry()) names.add(e.getName());
+      for (var e = zip.getNextEntry(); e != null; e = zip.getNextEntry()) {
+        names.add(e.getName());
+      }
     }
     assertThat(names).hasSize(8).contains("manifest.json");
     assertThat(names.stream().anyMatch(n -> n.contains("/master/"))).isTrue();
@@ -360,9 +388,9 @@ class WallpaperIntegrationTest {
         "ANDROID_STANDARD");
     collections.advance(collection);
     assertThat(
-            db.sql("select failure_reason from wallpaper_collection_plans")
-                .query(String.class)
-                .single())
+        db.sql("select failure_reason from wallpaper_collection_plans")
+            .query(String.class)
+            .single())
         .isEqualTo("MAX_ATTEMPTS");
   }
 
@@ -400,9 +428,9 @@ class WallpaperIntegrationTest {
         "ANDROID_STANDARD");
     collections.advance(collection);
     assertThat(
-            db.sql("select failure_reason from wallpaper_collection_plans")
-                .query(String.class)
-                .single())
+        db.sql("select failure_reason from wallpaper_collection_plans")
+            .query(String.class)
+            .single())
         .isEqualTo("MAX_COST");
     assertThat(db.sql("select count(*) from wallpaper_productions").query(Integer.class).single())
         .isZero();
@@ -461,10 +489,10 @@ class WallpaperIntegrationTest {
         };
     new WallpaperPublicationService(productions, List.of(denied)).deliver(delivery);
     assertThat(
-            db.sql("select status from wallpaper_deliveries where id=?")
-                .param(delivery)
-                .query(String.class)
-                .single())
+        db.sql("select status from wallpaper_deliveries where id=?")
+            .param(delivery)
+            .query(String.class)
+            .single())
         .isEqualTo("FAILED");
     assertThatThrownBy(() -> publication.retry(delivery)).hasMessageContaining("correction");
   }
@@ -574,11 +602,13 @@ class WallpaperIntegrationTest {
   }
 
   static class FakeProcessing implements ProcessingProvider {
+
     public Map<String, Object> capabilities() {
       return Map.of();
     }
 
-    public void cancel(UUID id) {}
+    public void cancel(UUID id) {
+    }
 
     public Map<String, Object> cropPreview(
         byte[] b, Map<String, Object> p, List<Map<String, Object>> r) {

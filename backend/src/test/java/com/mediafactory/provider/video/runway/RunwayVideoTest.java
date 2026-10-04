@@ -10,6 +10,7 @@ import okhttp3.mockwebserver.*;
 import org.junit.jupiter.api.*;
 
 class RunwayVideoTest {
+
   MockWebServer server;
   RunwayVideoGenerationProvider provider;
   RunwayVideoClient client;
@@ -17,10 +18,11 @@ class RunwayVideoTest {
   @BeforeEach
   void setup() throws Exception {
     server = new MockWebServer();
-    server.start(java.net.InetAddress.getByName("127.0.0.1"),0);
+    server.start(java.net.InetAddress.getByName("127.0.0.1"), 0);
     var p =
         new RunwayVideoProperties(
-            "test-token", "http://127.0.0.1:" + server.getPort() + "/", true, "0.1", "cdn.example.test");
+            "test-token", "http://127.0.0.1:" + server.getPort() + "/", true, "0.1",
+            "cdn.example.test");
     client = new RunwayVideoClient(p);
     provider = new RunwayVideoGenerationProvider(client, p);
   }
@@ -53,7 +55,7 @@ class RunwayVideoTest {
     UUID id = UUID.randomUUID();
     server.enqueue(new MockResponse().setBody("{\"id\":\"" + id + "\"}"));
     assertThat(
-            provider.submit(request("", null), new byte[] {1, 2, 3}, "image/png").providerJobId())
+        provider.submit(request("", null), new byte[]{1, 2, 3}, "image/png").providerJobId())
         .isEqualTo(id.toString());
     var captured = server.takeRequest();
     assertThat(captured.getPath()).isEqualTo("/v1/image_to_video");
@@ -133,22 +135,26 @@ class RunwayVideoTest {
             "http://cdn.example.test/a.mp4",
             "https://127.0.0.1/a.mp4",
             "https://evil.test/a.mp4",
-            "https://user@cdn.example.test/a.mp4"))
+            "https://user@cdn.example.test/a.mp4")) {
       assertThatThrownBy(() -> client.download(url)).isInstanceOf(VideoFailure.class);
+    }
   }
 
   @Test
   void readinessRequiresExplicitDownloadPolicy() {
     assertThat(
-            new RunwayVideoProperties("test", "http://127.0.0.1:" + server.getPort() + "/", true, "0.1", "")
-                .configured())
+        new RunwayVideoProperties("test", "http://127.0.0.1:" + server.getPort() + "/", true, "0.1",
+            "")
+            .configured())
         .isFalse();
   }
 
-  @Test void connectionLostAfterSubmissionIsUncertain(){
+  @Test
+  void connectionLostAfterSubmissionIsUncertain() {
     server.enqueue(new MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST));
-    assertThatThrownBy(()->provider.submit(request("",null),new byte[1],"image/png"))
-      .isInstanceOfSatisfying(ImageGenerationException.class,e->assertThat(e.outcomeUnknown()).isTrue());
+    assertThatThrownBy(() -> provider.submit(request("", null), new byte[1], "image/png"))
+        .isInstanceOfSatisfying(ImageGenerationException.class,
+            e -> assertThat(e.outcomeUnknown()).isTrue());
     assertThat(server.getRequestCount()).isEqualTo(1);
   }
 }

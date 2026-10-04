@@ -10,10 +10,13 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-/** Leased local processing. No database transaction spans an FFmpeg or Vision call. */
+/**
+ * Leased local processing. No database transaction spans an FFmpeg or Vision call.
+ */
 @Component
 @ConditionalOnProperty(name = "media.worker.enabled", havingValue = "true", matchIfMissing = true)
 public class VideoPipelineWorker implements AutoCloseable {
+
   final VideoProductionService s;
   final VideoWorkerClient worker;
   final VideoGenerationWorker generation;
@@ -42,16 +45,20 @@ public class VideoPipelineWorker implements AutoCloseable {
                     + " lease_until<now()) order by created_at limit 2")
             .query(UUID.class)
             .list()) {
-      if (active.size() >= 2) break;
+      if (active.size() >= 2) {
+        break;
+      }
       UUID token = UUID.randomUUID();
       if (s.db
-              .sql(
-                  "update video_productions set lease_token=?,lease_until=now()+interval '3"
-                      + " minutes' where id=? and (lease_until is null or lease_until<now()) and"
-                      + " not paused and status in ('RAW_READY','PROCESSING')")
-              .params(token, id)
-              .update()
-          != 1) continue;
+          .sql(
+              "update video_productions set lease_token=?,lease_until=now()+interval '3"
+                  + " minutes' where id=? and (lease_until is null or lease_until<now()) and"
+                  + " not paused and status in ('RAW_READY','PROCESSING')")
+          .params(token, id)
+          .update()
+          != 1) {
+        continue;
+      }
       active.put(id, token);
       pool.submit(
           () -> {
@@ -64,8 +71,10 @@ public class VideoPipelineWorker implements AutoCloseable {
                   t -> {
                     s.lock(id);
                     var v = s.one(id);
-                    if (!token.equals(v.get("lease_token")) || "CANCELLED".equals(v.get("status")))
+                    if (!token.equals(v.get("lease_token")) || "CANCELLED".equals(
+                        v.get("status"))) {
                       return;
+                    }
                     if (Set.of("BUSY", "ALREADY_RUNNING", "WORKER_UNAVAILABLE").contains(code)) {
                       s.db
                           .sql(
@@ -75,7 +84,7 @@ public class VideoPipelineWorker implements AutoCloseable {
                           .update();
                       return;
                     }
-                    if (v.get("current_run_id") != null)
+                    if (v.get("current_run_id") != null) {
                       s.db
                           .sql(
                               "update video_processing_runs set"
@@ -83,6 +92,7 @@ public class VideoPipelineWorker implements AutoCloseable {
                                   + " and status<>'COMPLETED'")
                           .params(code, v.get("current_run_id"))
                           .update();
+                    }
                     s.move(v, "PROCESSING_FAILED", code);
                   });
             } finally {
@@ -112,11 +122,14 @@ public class VideoPipelineWorker implements AutoCloseable {
 
   public void step(UUID id, UUID token) {
     var v = s.one(id);
-    if (Boolean.TRUE.equals(v.get("paused")) || v.get("status").equals("CANCELLED")) return;
+    if (Boolean.TRUE.equals(v.get("paused")) || v.get("status").equals("CANCELLED")) {
+      return;
+    }
     var raw = s.source((UUID) v.get("raw_asset_id"));
     byte[] bytes = s.storage.read(raw.get("storage_key").toString());
-    if (!PerceptualHash.sha(bytes).equals(raw.get("sha256")))
+    if (!PerceptualHash.sha(bytes).equals(raw.get("sha256"))) {
       throw new VideoFailure("RAW_CHECKSUM_CHANGED");
+    }
     if (v.get("status").equals("RAW_READY")) {
       var result =
           worker.execute(id, bytes, "ANALYZE", map(v.get("profile_snapshot")), Map.of(), Map.of());
@@ -134,13 +147,15 @@ public class VideoPipelineWorker implements AutoCloseable {
           vision.provider().equals("mock")
               ? "Mock evidence is synthetic; human temporal review is mandatory"
               : "Sampled Vision evidence cannot prove temporal identity or absence of defects;"
-                    + " human review is mandatory");
+                + " human review is mandatory");
       s.tx.executeWithoutResult(
           t -> {
             s.lock(id);
             var fresh = s.one(id);
-            if (!token.equals(fresh.get("lease_token")) || !fresh.get("status").equals("RAW_READY"))
+            if (!token.equals(fresh.get("lease_token")) || !fresh.get("status")
+                .equals("RAW_READY")) {
               return;
+            }
             s.db
                 .sql(
                     "insert into video_quality_results(production_id,asset_id,evidence,type)"
@@ -191,7 +206,9 @@ public class VideoPipelineWorker implements AutoCloseable {
                 .query()
                 .singleRow());
     UUID runId = (UUID) run.get("id");
-    if (!Set.of("QUEUED", "RUNNING").contains(run.get("status"))) return;
+    if (!Set.of("QUEUED", "RUNNING").contains(run.get("status"))) {
+      return;
+    }
     s.db
         .sql(
             "update video_processing_runs set"
@@ -217,7 +234,9 @@ public class VideoPipelineWorker implements AutoCloseable {
       String kind = output.get("kind").toString();
       byte[] content = Base64.getDecoder().decode(output.remove("data").toString());
       String sha = PerceptualHash.sha(content);
-      if (!sha.equals(output.get("sha256"))) throw new VideoFailure("OUTPUT_CHECKSUM_MISMATCH");
+      if (!sha.equals(output.get("sha256"))) {
+        throw new VideoFailure("OUTPUT_CHECKSUM_MISMATCH");
+      }
       UUID artifact =
           UUID.nameUUIDFromBytes(
               (runId + ":" + kind).getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -238,14 +257,18 @@ public class VideoPipelineWorker implements AutoCloseable {
       ids.put(kind, artifact);
       outputs.add(output);
     }
-    if (!ids.containsKey("MASTER_VIDEO")) throw new VideoFailure("MASTER_MISSING");
+    if (!ids.containsKey("MASTER_VIDEO")) {
+      throw new VideoFailure("MASTER_MISSING");
+    }
     s.tx.executeWithoutResult(
         t -> {
           s.lock(id);
           var fresh = s.one(id);
           if (!token.equals(fresh.get("lease_token"))
               || !fresh.get("status").equals("PROCESSING")
-              || !runId.equals(fresh.get("current_run_id"))) return;
+              || !runId.equals(fresh.get("current_run_id"))) {
+            return;
+          }
           for (var output : outputs) {
             var metadata = map(output.get("metadata"));
             String kind = output.get("kind").toString();
@@ -293,11 +316,12 @@ public class VideoPipelineWorker implements AutoCloseable {
                     op.get("durationMs"))
                 .update();
           }
-          for (String phase : List.of("raw", "processed", "master"))
+          for (String phase : List.of("raw", "processed", "master")) {
             s.db
                 .sql("insert into video_loop_analysis(run_id,phase,evidence) values(?,?,?::jsonb)")
                 .params(runId, phase, write(map(evidence.get(phase)).get("loop")))
                 .update();
+          }
           s.db
               .sql(
                   "insert into video_quality_results(production_id,run_id,asset_id,evidence,type)"

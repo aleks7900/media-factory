@@ -53,12 +53,12 @@ public class GenerationWorker implements AutoCloseable {
   private final ProviderObservability telemetry;
   private final MediaStorage storage;
   private final TechnicalQa qa;
+  private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+  private final AtomicInteger running = new AtomicInteger();
   @org.springframework.beans.factory.annotation.Autowired
   private com.mediafactory.feedback.FeedbackBudgetGuard feedbackBudget;
   @org.springframework.beans.factory.annotation.Autowired
   private com.mediafactory.skills.SkillBudgetGuard skillBudget;
-  private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-  private final AtomicInteger running = new AtomicInteger();
 
   public GenerationWorker(JdbcClient db, TransactionTemplate tx, FactoryService service,
       ImageProviderRouter router, ImageGenerationProperties properties, ProviderRateLimiter limiter,
@@ -165,12 +165,17 @@ public class GenerationWorker implements AutoCloseable {
         return;
       }
       permit = admission.permit();
-      if (feedbackBudget != null && !feedbackBudget.reserve(generationId, (UUID) job.get("id"), hop.provider(), hop.model())) {
-        schedule(job, Duration.ofMinutes(1), false, "Feedback experiment paused by approval, budget or safety guard");
+      if (feedbackBudget != null && !feedbackBudget.reserve(generationId, (UUID) job.get("id"),
+          hop.provider(), hop.model())) {
+        schedule(job, Duration.ofMinutes(1), false,
+            "Feedback experiment paused by approval, budget or safety guard");
         return;
       }
-      if (skillBudget != null && !skillBudget.reserve(generationId, (UUID) job.get("id"), hop.provider(), hop.model())) {
-        if (feedbackBudget != null) feedbackBudget.release((UUID) job.get("id"));
+      if (skillBudget != null && !skillBudget.reserve(generationId, (UUID) job.get("id"),
+          hop.provider(), hop.model())) {
+        if (feedbackBudget != null) {
+          feedbackBudget.release((UUID) job.get("id"));
+        }
         schedule(job, Duration.ofMinutes(1), false, "Skill execution paused by admission guard");
         return;
       }
@@ -235,8 +240,12 @@ public class GenerationWorker implements AutoCloseable {
         telemetry.count("image_generation_failure", hop.provider(), hop.model());
       }
     } finally {
-      if (feedbackBudget != null && attempt != null) feedbackBudget.release((UUID) job.get("id"));
-      if (skillBudget != null && attempt != null) skillBudget.release((UUID) job.get("id"));
+      if (feedbackBudget != null && attempt != null) {
+        feedbackBudget.release((UUID) job.get("id"));
+      }
+      if (skillBudget != null && attempt != null) {
+        skillBudget.release((UUID) job.get("id"));
+      }
       limiter.release(permit);
     }
   }

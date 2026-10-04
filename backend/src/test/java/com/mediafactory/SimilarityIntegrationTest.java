@@ -26,15 +26,47 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers
 @SpringBootTest(properties = {"media.worker.enabled=false", "media.similarity.enabled=true"})
 class SimilarityIntegrationTest {
-  @Autowired QualityReviewService quality;
-  @Autowired QaConfiguration qaConfig;
-  @Autowired TechnicalQa technical;
-  @Autowired QualityPolicyEngine qaEngine;
 
   @Container
   static PostgreSQLContainer<?> postgres =
       new PostgreSQLContainer<>(
           DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"));
+  @Autowired
+  QualityReviewService quality;
+  @Autowired
+  QaConfiguration qaConfig;
+  @Autowired
+  TechnicalQa technical;
+  @Autowired
+  QualityPolicyEngine qaEngine;
+  @Autowired
+  JdbcClient db;
+  @Autowired
+  SimilarityService similarity;
+  @Autowired
+  FactoryService factory;
+  @Autowired
+  MediaStorage storage;
+  @Autowired
+  EmbeddingModelService models;
+  @Autowired
+  SimilarityReviewService reviews;
+  @Autowired
+  CollectionClusteringService clustering;
+  @Autowired
+  ProviderRateLimiter limiter;
+  @Autowired
+  RetryDecisionService retry;
+  @Autowired
+  DiversityGuard guard;
+  @Autowired
+  GenerationBatchService batches;
+  @Autowired
+  org.springframework.transaction.support.TransactionTemplate tx;
+  @Autowired
+  io.micrometer.core.instrument.MeterRegistry metrics;
+  UUID collection, concept;
+  ImageEmbeddingProvider.Model model;
 
   @DynamicPropertySource
   static void properties(DynamicPropertyRegistry r) {
@@ -43,22 +75,6 @@ class SimilarityIntegrationTest {
     r.add("spring.datasource.password", postgres::getPassword);
     r.add("media.storage.root", () -> "build/similarity-media/" + UUID.randomUUID());
   }
-
-  @Autowired JdbcClient db;
-  @Autowired SimilarityService similarity;
-  @Autowired FactoryService factory;
-  @Autowired MediaStorage storage;
-  @Autowired EmbeddingModelService models;
-  @Autowired SimilarityReviewService reviews;
-  @Autowired CollectionClusteringService clustering;
-  @Autowired ProviderRateLimiter limiter;
-  @Autowired RetryDecisionService retry;
-  @Autowired DiversityGuard guard;
-  @Autowired GenerationBatchService batches;
-  @Autowired org.springframework.transaction.support.TransactionTemplate tx;
-  @Autowired io.micrometer.core.instrument.MeterRegistry metrics;
-  UUID collection, concept;
-  ImageEmbeddingProvider.Model model;
 
   @BeforeEach
   void setup() {
@@ -78,8 +94,11 @@ class SimilarityIntegrationTest {
   byte[] pixels(int seed) throws Exception {
     var image = new BufferedImage(128, 128, BufferedImage.TYPE_INT_RGB);
     var r = new Random(seed);
-    for (int y = 0; y < 128; y++)
-      for (int x = 0; x < 128; x++) image.setRGB(x, y, r.nextInt(0xffffff));
+    for (int y = 0; y < 128; y++) {
+      for (int x = 0; x < 128; x++) {
+        image.setRGB(x, y, r.nextInt(0xffffff));
+      }
+    }
     var out = new ByteArrayOutputStream();
     ImageIO.write(image, "png", out);
     return out.toByteArray();
@@ -123,14 +142,14 @@ class SimilarityIntegrationTest {
   @Test
   void extensionIndexesVectorDistanceAndIsolationAreRealPostgres() throws Exception {
     assertThat(
-            db.sql("select extname from pg_extension where extname='vector'")
-                .query(String.class)
-                .single())
+        db.sql("select extname from pg_extension where extname='vector'")
+            .query(String.class)
+            .single())
         .isEqualTo("vector");
     assertThat(
-            db.sql("select count(*) from pg_indexes where indexdef like '%hnsw%' ")
-                .query(Integer.class)
-                .single())
+        db.sql("select count(*) from pg_indexes where indexdef like '%hnsw%' ")
+            .query(Integer.class)
+            .single())
         .isGreaterThanOrEqualTo(3);
     UUID a = asset(pixels(1)), b = asset(pixels(2));
     ready(a, vector(0));
@@ -151,10 +170,10 @@ class SimilarityIntegrationTest {
         .hasMessageContaining("immutable");
     assertThatThrownBy(() -> models.activate(other)).hasMessageContaining("Backfill");
     assertThat(
-            db.sql("select count(*) from asset_embeddings where asset_id=?")
-                .param(b)
-                .query(Integer.class)
-                .single())
+        db.sql("select count(*) from asset_embeddings where asset_id=?")
+            .param(b)
+            .query(Integer.class)
+            .single())
         .isEqualTo(2);
   }
 
@@ -170,24 +189,24 @@ class SimilarityIntegrationTest {
         db.sql("select id from duplicate_groups where status='OPEN'").query(UUID.class).single();
     reviews.canonical(group, a, 0, "Preferred original", "tester");
     assertThat(
-            db.sql("select canonical_asset_id from duplicate_groups where id=?")
-                .param(group)
-                .query(UUID.class)
-                .single())
+        db.sql("select canonical_asset_id from duplicate_groups where id=?")
+            .param(group)
+            .query(UUID.class)
+            .single())
         .isEqualTo(a);
     reviews.decide(id, 0, "DISTINCT", "Intentional independent usage", "tester");
     assertThat(
-            db.sql("select * from similarity_comparisons where id=?").param(id).query().singleRow())
+        db.sql("select * from similarity_comparisons where id=?").param(id).query().singleRow())
         .containsEntry("automatic_classification", "EXACT_DUPLICATE")
         .containsEntry("final_classification", "DISTINCT");
     assertThatThrownBy(() -> reviews.decide(id, 0, "NEAR_DUPLICATE", "Stale", "tester"))
         .hasMessageContaining("changed");
     reviews.decide(id, 1, "NEAR_DUPLICATE", "Second assessment", "tester");
     assertThat(
-            db.sql("select count(*) from similarity_review_actions where comparison_id=?")
-                .param(id)
-                .query(Integer.class)
-                .single())
+        db.sql("select count(*) from similarity_review_actions where comparison_id=?")
+            .param(id)
+            .query(Integer.class)
+            .single())
         .isEqualTo(2);
     assertThatThrownBy(() -> db.sql("delete from similarity_review_actions").update())
         .hasMessageContaining("immutable");
@@ -207,17 +226,17 @@ class SimilarityIntegrationTest {
     assertThat(db.sql("select count(*) from asset_embeddings").query(Integer.class).single())
         .isEqualTo(2);
     assertThat(
-            db.sql(
-                    "select count(*) from embedding_compute_usage where outcome='SUCCEEDED' and"
-                        + " device='cpu' and external_api_cost=0 and estimated_compute_cost is"
-                        + " null")
-                .query(Integer.class)
-                .single())
+        db.sql(
+                "select count(*) from embedding_compute_usage where outcome='SUCCEEDED' and"
+                    + " device='cpu' and external_api_cost=0 and estimated_compute_cost is"
+                    + " null")
+            .query(Integer.class)
+            .single())
         .isEqualTo(2);
     assertThat(
-            db.sql("select count(*) from asset_fingerprints where type='PHASH'")
-                .query(Integer.class)
-                .single())
+        db.sql("select count(*) from asset_fingerprints where type='PHASH'")
+            .query(Integer.class)
+            .single())
         .isEqualTo(2);
   }
 
@@ -265,12 +284,12 @@ class SimilarityIntegrationTest {
     assertThat(stats.path("clusterCount").asInt()).isEqualTo(2);
     assertThat(stats.path("outlierCount").asInt()).isEqualTo(1);
     assertThat(
-            db.sql(
-                    "select count(*) from collection_clusters where run_id=? and centroid is not"
-                        + " null and representative_asset_id is not null")
-                .param(run)
-                .query(Integer.class)
-                .single())
+        db.sql(
+                "select count(*) from collection_clusters where run_id=? and centroid is not"
+                    + " null and representative_asset_id is not null")
+            .param(run)
+            .query(Integer.class)
+            .single())
         .isEqualTo(2);
     assertThat(clustering.diversity(collection)).doesNotContainKey("embedding");
   }
@@ -296,12 +315,13 @@ class SimilarityIntegrationTest {
 
           public Result embed(List<Input> input, Model expected) {
             assertThat(
-                    org.springframework.transaction.support.TransactionSynchronizationManager
-                        .isActualTransactionActive())
+                org.springframework.transaction.support.TransactionSynchronizationManager
+                    .isActualTransactionActive())
                 .isFalse();
-            if (calls.incrementAndGet() == 1)
+            if (calls.incrementAndGet() == 1) {
               throw new ImageGenerationException(
                   ImageGenerationException.Type.UNAVAILABLE, "Simulated local worker outage");
+            }
             return delegate.embed(input, expected);
           }
         };
@@ -312,18 +332,18 @@ class SimilarityIntegrationTest {
     worker.execute(worker.claim());
     assertThat(similarity.state(a, model.id())).isEqualTo("PENDING");
     assertThat(
-            db.sql("select attempts from similarity_jobs where asset_id=?")
-                .param(a)
-                .query(Integer.class)
-                .single())
+        db.sql("select attempts from similarity_jobs where asset_id=?")
+            .param(a)
+            .query(Integer.class)
+            .single())
         .isEqualTo(1);
     db.sql("update similarity_jobs set available_at=now() where asset_id=?").param(a).update();
     worker.execute(worker.claim());
     assertThat(similarity.state(a, model.id())).isEqualTo("READY");
     assertThat(
-            db.sql("select outcome from embedding_compute_usage order by attempt")
-                .query(String.class)
-                .list())
+        db.sql("select outcome from embedding_compute_usage order by attempt")
+            .query(String.class)
+            .list())
         .containsExactly("FAILED", "SUCCEEDED");
   }
 
@@ -343,10 +363,10 @@ class SimilarityIntegrationTest {
         .param(collection)
         .update();
     assertThatThrownBy(
-            () ->
-                db.sql("insert into publications(id,asset_id,channel) values(?,?,'test')")
-                    .params(UUID.randomUUID(), a)
-                    .update())
+        () ->
+            db.sql("insert into publications(id,asset_id,channel) values(?,?,'test')")
+                .params(UUID.randomUUID(), a)
+                .update())
         .hasMessageContaining("Similarity analysis incomplete");
     ready(a, vector(0));
     db.sql("insert into publications(id,asset_id,channel) values(?,?,'test')")
@@ -366,21 +386,21 @@ class SimilarityIntegrationTest {
         .update();
     similarity.compare(a, b, model, null);
     assertThat(
-            db.sql("select final_classification from similarity_comparisons order by profile_id")
-                .query(String.class)
-                .list())
+        db.sql("select final_classification from similarity_comparisons order by profile_id")
+            .query(String.class)
+            .list())
         .containsOnly("DISTINCT");
     assertThat(
-            db.sql(
-                    "select count(*) from similarity_review_actions where"
-                        + " action='PROPAGATE_PAIR_REVIEW'")
-                .query(Integer.class)
-                .single())
+        db.sql(
+                "select count(*) from similarity_review_actions where"
+                    + " action='PROPAGATE_PAIR_REVIEW'")
+            .query(Integer.class)
+            .single())
         .isEqualTo(1);
     assertThat(
-            db.sql("select automatic_classification from similarity_comparisons")
-                .query(String.class)
-                .list())
+        db.sql("select automatic_classification from similarity_comparisons")
+            .query(String.class)
+            .list())
         .containsOnly("EXACT_DUPLICATE");
   }
 
@@ -404,9 +424,9 @@ class SimilarityIntegrationTest {
         .update();
     similarity.compare(a, b, model, 1.0);
     assertThat(
-            db.sql("select final_classification from similarity_comparisons")
-                .query(String.class)
-                .single())
+        db.sql("select final_classification from similarity_comparisons")
+            .query(String.class)
+            .single())
         .isEqualTo("SEMANTICALLY_SIMILAR");
     assertThat(db.sql("select count(*) from duplicate_groups").query(Integer.class).single())
         .isZero();
@@ -469,10 +489,10 @@ class SimilarityIntegrationTest {
             "Content quality approved"),
         "tester");
     assertThatThrownBy(
-            () ->
-                db.sql("insert into publications(id,asset_id,channel) values(?,?,'test')")
-                    .params(UUID.randomUUID(), b)
-                    .update())
+        () ->
+            db.sql("insert into publications(id,asset_id,channel) values(?,?,'test')")
+                .params(UUID.randomUUID(), b)
+                .update())
         .hasMessageContaining("Similarity policy blocks");
     var pair =
         db.sql("select * from similarity_comparisons where final_classification='NEAR_DUPLICATE'")
@@ -493,8 +513,9 @@ class SimilarityIntegrationTest {
 
   @Test
   void recentPromptGuardWarnsAndStrictModeBlocksOnlyStrongRepetition() {
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < 3; i++) {
       factory.generate(concept, "A forest", 128, 128, UUID.randomUUID().toString(), null);
+    }
     assertThat(guard.evaluate(concept, "A forest", false))
         .containsEntry("decision", "HIGH_REPETITION_RISK")
         .containsEntry("blocked", false);
@@ -552,18 +573,18 @@ class SimilarityIntegrationTest {
     try {
       batches.advance(batch);
       assertThat(
-              db.sql("select * from generation_batches where id=?")
-                  .param(batch)
-                  .query()
-                  .singleRow())
+          db.sql("select * from generation_batches where id=?")
+              .param(batch)
+              .query()
+              .singleRow())
           .containsEntry("status", "PAUSED_DIVERSITY")
           .containsEntry("dispatched", 40);
       batches.advance(batch);
       assertThat(
-              db.sql("select count(*) from generation_batch_members where batch_id=?")
-                  .param(batch)
-                  .query(Integer.class)
-                  .single())
+          db.sql("select count(*) from generation_batch_members where batch_id=?")
+              .param(batch)
+              .query(Integer.class)
+              .single())
           .isEqualTo(40);
     } finally {
       db.sql("update similarity_profiles set saturation_threshold=.8 where id='WALLPAPER'")
@@ -573,41 +594,48 @@ class SimilarityIntegrationTest {
 
   @Test
   void oneHundredOriginalBackfillUsesBoundedBatchesAndPreservesVersions() throws Exception {
-    for (int i = 0; i < 100; i++) asset(pixels(500 + i));
+    for (int i = 0; i < 100; i++) {
+      asset(pixels(500 + i));
+    }
     var control = (Map<?, ?>) models.enqueue("BACKFILL", model.id(), collection, "backfill100");
     var worker = worker();
     long start = System.nanoTime();
     for (int i = 0; i < 25; i++) {
       var jobs = worker.claim();
-      if (jobs.isEmpty()) break;
-      if ("GENERATE_ASSET_EMBEDDING".equals(jobs.getFirst().get("type"))) worker.execute(jobs);
-      else worker.executeControl(jobs.getFirst());
+      if (jobs.isEmpty()) {
+        break;
+      }
+      if ("GENERATE_ASSET_EMBEDDING".equals(jobs.getFirst().get("type"))) {
+        worker.execute(jobs);
+      } else {
+        worker.executeControl(jobs.getFirst());
+      }
       db.sql("update similarity_jobs set available_at=now() where status='QUEUED'").update();
     }
     assertThat(
-            db.sql("select count(*) from asset_embeddings where model_id=?")
-                .param(model.id())
-                .query(Integer.class)
-                .single())
+        db.sql("select count(*) from asset_embeddings where model_id=?")
+            .param(model.id())
+            .query(Integer.class)
+            .single())
         .isEqualTo(100);
     assertThat(
-            db.sql("select status from similarity_jobs where id=?")
-                .param(control.get("id"))
-                .query(String.class)
-                .single())
+        db.sql("select status from similarity_jobs where id=?")
+            .param(control.get("id"))
+            .query(String.class)
+            .single())
         .isEqualTo("SUCCEEDED");
     assertThat(db.sql("select count(*) from asset_variants").query(Integer.class).single())
         .isZero();
     UUID hundredRun = clustering.cluster(collection, model, .16, 3);
     assertThat(
-            SimilarityService.JSON
-                .readTree(
-                    db.sql("select statistics::text from collection_clustering_runs where id=?")
-                        .param(hundredRun)
-                        .query(String.class)
-                        .single())
-                .path("assetCount")
-                .asInt())
+        SimilarityService.JSON
+            .readTree(
+                db.sql("select statistics::text from collection_clustering_runs where id=?")
+                    .param(hundredRun)
+                    .query(String.class)
+                    .single())
+            .path("assetCount")
+            .asInt())
         .isEqualTo(100);
     System.out.println(
         "Similarity fixture backfill 100 originals milliseconds="
@@ -626,9 +654,14 @@ class SimilarityIntegrationTest {
     models.enqueue("REINDEX", next, collection, "reindex100");
     for (int i = 0; i < 30; i++) {
       var jobs = worker.claim();
-      if (jobs.isEmpty()) break;
-      if ("GENERATE_ASSET_EMBEDDING".equals(jobs.getFirst().get("type"))) worker.execute(jobs);
-      else worker.executeControl(jobs.getFirst());
+      if (jobs.isEmpty()) {
+        break;
+      }
+      if ("GENERATE_ASSET_EMBEDDING".equals(jobs.getFirst().get("type"))) {
+        worker.execute(jobs);
+      } else {
+        worker.executeControl(jobs.getFirst());
+      }
       db.sql("update similarity_jobs set available_at=now() where status='QUEUED'").update();
     }
     models.activate(next);

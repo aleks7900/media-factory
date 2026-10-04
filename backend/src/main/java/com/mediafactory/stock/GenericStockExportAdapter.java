@@ -10,26 +10,30 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class GenericStockExportAdapter implements StockExportAdapter {
+
   public String platformId() {
     return "GENERIC_CSV";
   }
 
   public byte[] csv(List<Map<String, Object>> items, Map<String, Object> profile) {
     String delimiter = profile.getOrDefault("delimiter", ",").toString();
-    if (delimiter.length() != 1 || !Set.of(",", ";", "\t").contains(delimiter))
+    if (delimiter.length() != 1 || !Set.of(",", ";", "\t").contains(delimiter)) {
       throw new IllegalArgumentException("Unsupported CSV delimiter");
+    }
     var columns = ((List<?>) profile.get("columns")).stream().map(Object::toString).toList();
     if (!columns.contains("filename")
         || new HashSet<>(columns).size() != columns.size()
         || !Set.of(
-                "filename",
-                "title",
-                "description",
-                "keywords",
-                "category",
-                "ai_generated",
-                "content_type")
-            .containsAll(columns)) throw new IllegalArgumentException("Invalid CSV columns");
+            "filename",
+            "title",
+            "description",
+            "keywords",
+            "category",
+            "ai_generated",
+            "content_type")
+        .containsAll(columns)) {
+      throw new IllegalArgumentException("Invalid CSV columns");
+    }
     try (var writer = new StringWriter();
         var csv =
             new CSVPrinter(
@@ -57,12 +61,12 @@ public class GenericStockExportAdapter implements StockExportAdapter {
                 "|",
                 ((List<?>) data.get("categories"))
                     .stream()
-                        .map(
-                            c ->
-                                StockCategoryMapper.map(
-                                    c.toString(),
-                                    map(profile.getOrDefault("categoryMapping", Map.of()))))
-                        .toList()));
+                    .map(
+                        c ->
+                            StockCategoryMapper.map(
+                                c.toString(),
+                                map(profile.getOrDefault("categoryMapping", Map.of()))))
+                    .toList()));
         row.put("ai_generated", data.get("aiGenerated"));
         row.put("content_type", data.get("contentType"));
         csv.printRecord(columns.stream().map(c -> safe(Objects.toString(row.get(c), ""))).toList());

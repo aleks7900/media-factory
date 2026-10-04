@@ -2,25 +2,154 @@ import {useState} from 'react';
 import {useQuery} from '@tanstack/react-query';
 import {api} from './api';
 
-export function VideoMotionEditor({id,revision,onSave}:{id:string;revision:number;onSave:(task:()=>Promise<unknown>)=>void}){
- const motion=useQuery({queryKey:['video','motion',id,revision],queryFn:()=>api<{id:string;definition:Record<string,unknown>}>(`/v1/video/productions/${id}/motion`)});
- return <details><summary>Edit motion plan for regeneration</summary>{motion.data?.definition&&<MotionForm key={motion.data.id} initial={motion.data.definition} save={data=>onSave(()=>api(`/v1/video/productions/${id}/motion`,{revision,motion:data},undefined,'PUT'))}/>}</details>;
+export function VideoMotionEditor({id, revision, onSave}: {
+  id: string;
+  revision: number;
+  onSave: (task: () => Promise<unknown>) => void
+}) {
+  const motion = useQuery({
+    queryKey: ['video', 'motion', id, revision],
+    queryFn: () => api<{
+      id: string;
+      definition: Record<string, unknown>
+    }>(`/v1/video/productions/${id}/motion`)
+  });
+  return <details>
+    <summary>Edit motion plan for regeneration</summary>
+    {motion.data?.definition && <MotionForm key={motion.data.id} initial={motion.data.definition}
+                                            save={data => onSave(() => api(`/v1/video/productions/${id}/motion`, {
+                                              revision,
+                                              motion: data
+                                            }, undefined, 'PUT'))}/>}</details>;
 }
-function MotionForm({initial,save}:{initial:Record<string,unknown>;save:(data:Record<string,unknown>)=>void}){
- const [value,setValue]=useState(initial);
- return <div className="video-controls">{['mainSubject','subjectMotion','environmentMotion','depthMotion','particleMotion','lightingMotion','style'].map(key=><label key={key}>{key.replace(/([A-Z])/g,' $1')}<input maxLength={240} value={String(value[key]??'')} onChange={e=>setValue({...value,[key]:e.target.value})}/></label>)}{Object.entries({cameraMotion:['STATIC','PAN_LEFT','PAN_RIGHT','PUSH_IN','PULL_OUT','ORBIT'],motionStrength:['LOW','MEDIUM','HIGH'],motionSpeed:['SLOW','MEDIUM','FAST']}).map(([key,choices])=><label key={key}>{key}<select value={String(value[key])} onChange={e=>setValue({...value,[key]:e.target.value})}>{choices.map(c=><option key={c}>{c}</option>)}</select></label>)}<label><input type="checkbox" checked={Boolean(value.reversible)} onChange={e=>setValue({...value,reversible:e.target.checked})}/>Motion can look physically plausible in reverse</label><label><input type="checkbox" checked={Boolean(value.acknowledgeRiskyMotion)} onChange={e=>setValue({...value,acknowledgeRiskyMotion:e.target.checked})}/>I acknowledge stronger motion may deform the subject</label><button onClick={()=>save(value)}>Save new motion version</button></div>;
-}
-export function VideoCollectionControls({onSave}:{onSave:(task:()=>Promise<unknown>)=>void}){
- const collections=useQuery({queryKey:['video','collections'],queryFn:()=>api<{id:string;name:string}[]>('/collections')});
- const [collection,setCollection]=useState('');const [target,setTarget]=useState(5);const [batch,setBatch]=useState(2);const [attempts,setAttempts]=useState(10);
- const progress=useQuery({queryKey:['video','collection-progress',collection],queryFn:()=>api(`/v1/video/collections/${collection}/progress`),enabled:!!collection,refetchInterval:5000});
- return <details className="panel"><summary>Collection production · free mock plan</summary><div className="video-actions"><label>Collection<select value={collection} onChange={e=>setCollection(e.target.value)}><option value="">Select collection</option>{collections.data?.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>{[{label:'Target approved videos',value:target,set:setTarget,max:1000},{label:'Batch size',value:batch,set:setBatch,max:20},{label:'Maximum attempts',value:attempts,set:setAttempts,max:2000}].map(f=><label key={f.label}>{f.label}<input type="number" min="1" max={f.max} value={f.value} onChange={e=>f.set(Number(e.target.value))}/></label>)}<button disabled={!collection} onClick={()=>onSave(()=>api(`/v1/video/collections/${collection}/plan`,{profile:'WALLPAPER_LOOP',provider:'mock-video',targetApproved:target,batchSize:batch,maxAttempts:attempts,budget:0,reservedCostPerVideo:0},undefined,'PUT'))}>Start bounded collection</button>{['pause','resume'].map(a=><button disabled={!collection} key={a} onClick={()=>onSave(()=>api(`/v1/video/collections/${collection}/${a}`,{}))}>{a} collection</button>)}</div>{collection&&<pre>{JSON.stringify(progress.data,null,2)}</pre>}</details>;
-}
-export function VideoProviderStatistics(){const stats=useQuery({queryKey:['video','provider-statistics'],queryFn:()=>api<Record<string,unknown>[]>('/v1/video/providers/statistics'),refetchInterval:5000});return <details className="panel"><summary>Provider performance and generation costs</summary><table><thead><tr>{['Provider','Model','Active jobs','Success','Failures','Average ms','Cost'].map(x=><th key={x}>{x}</th>)}</tr></thead><tbody>{stats.data?.map((r,i)=><tr key={i}><td>{String(r.provider)}</td><td>{String(r.model)}</td><td>{String(r.active_jobs)}</td><td>{(Number(r.success_rate)*100).toFixed(1)}%</td><td>{(Number(r.failure_rate)*100).toFixed(1)}%</td><td>{r.average_duration_ms?Number(r.average_duration_ms).toFixed(0):'—'}</td><td>{String(r.generation_cost)} {String(r.currency)}</td></tr>)}</tbody></table></details>;}
 
-export function VideoTimeline({qa}:{qa:unknown[]}){
- type Item={code:string;startSeconds:number;endSeconds:number;severity:string};
- const latest=qa[0] as {evidence?:{qa?:{issues?:Item[]}}}|undefined;
- const issues=latest?.evidence?.qa?.issues??[];
- return <section className="panel video-actions" aria-label="Temporal issue timeline"><strong>Temporal findings</strong>{issues.length?issues.map((issue,i)=><button key={i} onClick={event=>{event.currentTarget.closest('[role="dialog"]')?.querySelectorAll('video').forEach(video=>{if(Number.isFinite(video.duration))video.currentTime=Math.min(issue.startSeconds,video.duration);});}}>{issue.startSeconds.toFixed(2)}–{issue.endSeconds.toFixed(2)} s · {issue.code.replaceAll('_',' ')}</button>):<span>No deterministic temporal findings in the latest analysis.</span>}</section>;
+function MotionForm({initial, save}: {
+  initial: Record<string, unknown>;
+  save: (data: Record<string, unknown>) => void
+}) {
+  const [value, setValue] = useState(initial);
+  return <div
+      className="video-controls">{['mainSubject', 'subjectMotion', 'environmentMotion', 'depthMotion', 'particleMotion', 'lightingMotion', 'style'].map(key =>
+      <label key={key}>{key.replace(/([A-Z])/g, ' $1')}<input maxLength={240}
+                                                              value={String(value[key] ?? '')}
+                                                              onChange={e => setValue({
+                                                                ...value,
+                                                                [key]: e.target.value
+                                                              })}/></label>)}{Object.entries({
+    cameraMotion: ['STATIC', 'PAN_LEFT', 'PAN_RIGHT', 'PUSH_IN', 'PULL_OUT', 'ORBIT'],
+    motionStrength: ['LOW', 'MEDIUM', 'HIGH'],
+    motionSpeed: ['SLOW', 'MEDIUM', 'FAST']
+  }).map(([key, choices]) => <label key={key}>{key}<select value={String(value[key])}
+                                                           onChange={e => setValue({
+                                                             ...value,
+                                                             [key]: e.target.value
+                                                           })}>{choices.map(c => <option
+      key={c}>{c}</option>)}</select></label>)}<label><input type="checkbox"
+                                                             checked={Boolean(value.reversible)}
+                                                             onChange={e => setValue({
+                                                               ...value,
+                                                               reversible: e.target.checked
+                                                             })}/>Motion can look physically
+    plausible in reverse</label><label><input type="checkbox"
+                                              checked={Boolean(value.acknowledgeRiskyMotion)}
+                                              onChange={e => setValue({
+                                                ...value,
+                                                acknowledgeRiskyMotion: e.target.checked
+                                              })}/>I acknowledge stronger motion may deform the
+    subject</label>
+    <button onClick={() => save(value)}>Save new motion version</button>
+  </div>;
+}
+
+export function VideoCollectionControls({onSave}: {
+  onSave: (task: () => Promise<unknown>) => void
+}) {
+  const collections = useQuery({
+    queryKey: ['video', 'collections'],
+    queryFn: () => api<{ id: string; name: string }[]>('/collections')
+  });
+  const [collection, setCollection] = useState('');
+  const [target, setTarget] = useState(5);
+  const [batch, setBatch] = useState(2);
+  const [attempts, setAttempts] = useState(10);
+  const progress = useQuery({
+    queryKey: ['video', 'collection-progress', collection],
+    queryFn: () => api(`/v1/video/collections/${collection}/progress`),
+    enabled: !!collection,
+    refetchInterval: 5000
+  });
+  return <details className="panel">
+    <summary>Collection production · free mock plan</summary>
+    <div className="video-actions"><label>Collection<select value={collection}
+                                                            onChange={e => setCollection(e.target.value)}>
+      <option value="">Select collection</option>
+      {collections.data?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+    </select></label>{[{
+      label: 'Target approved videos',
+      value: target,
+      set: setTarget,
+      max: 1000
+    }, {label: 'Batch size', value: batch, set: setBatch, max: 20}, {
+      label: 'Maximum attempts',
+      value: attempts,
+      set: setAttempts,
+      max: 2000
+    }].map(f => <label key={f.label}>{f.label}<input type="number" min="1" max={f.max}
+                                                     value={f.value}
+                                                     onChange={e => f.set(Number(e.target.value))}/></label>)}
+      <button disabled={!collection}
+              onClick={() => onSave(() => api(`/v1/video/collections/${collection}/plan`, {
+                profile: 'WALLPAPER_LOOP',
+                provider: 'mock-video',
+                targetApproved: target,
+                batchSize: batch,
+                maxAttempts: attempts,
+                budget: 0,
+                reservedCostPerVideo: 0
+              }, undefined, 'PUT'))}>Start bounded collection
+      </button>
+      {['pause', 'resume'].map(a => <button disabled={!collection} key={a}
+                                            onClick={() => onSave(() => api(`/v1/video/collections/${collection}/${a}`, {}))}>{a} collection</button>)}
+    </div>
+    {collection && <pre>{JSON.stringify(progress.data, null, 2)}</pre>}</details>;
+}
+
+export function VideoProviderStatistics() {
+  const stats = useQuery({
+    queryKey: ['video', 'provider-statistics'],
+    queryFn: () => api<Record<string, unknown>[]>('/v1/video/providers/statistics'),
+    refetchInterval: 5000
+  });
+  return <details className="panel">
+    <summary>Provider performance and generation costs</summary>
+    <table>
+      <thead>
+      <tr>{['Provider', 'Model', 'Active jobs', 'Success', 'Failures', 'Average ms', 'Cost'].map(x =>
+          <th key={x}>{x}</th>)}</tr>
+      </thead>
+      <tbody>{stats.data?.map((r, i) => <tr key={i}>
+        <td>{String(r.provider)}</td>
+        <td>{String(r.model)}</td>
+        <td>{String(r.active_jobs)}</td>
+        <td>{(Number(r.success_rate) * 100).toFixed(1)}%</td>
+        <td>{(Number(r.failure_rate) * 100).toFixed(1)}%</td>
+        <td>{r.average_duration_ms ? Number(r.average_duration_ms).toFixed(0) : '—'}</td>
+        <td>{String(r.generation_cost)} {String(r.currency)}</td>
+      </tr>)}</tbody>
+    </table>
+  </details>;
+}
+
+export function VideoTimeline({qa}: { qa: unknown[] }) {
+  type Item = { code: string; startSeconds: number; endSeconds: number; severity: string };
+  const latest = qa[0] as { evidence?: { qa?: { issues?: Item[] } } } | undefined;
+  const issues = latest?.evidence?.qa?.issues ?? [];
+  return <section className="panel video-actions" aria-label="Temporal issue timeline"><strong>Temporal
+    findings</strong>{issues.length ? issues.map((issue, i) => <button key={i} onClick={event => {
+        event.currentTarget.closest('[role="dialog"]')?.querySelectorAll('video').forEach(video => {
+          if (Number.isFinite(video.duration)) video.currentTime = Math.min(issue.startSeconds, video.duration);
+        });
+      }}>{issue.startSeconds.toFixed(2)}–{issue.endSeconds.toFixed(2)} s
+        · {issue.code.replaceAll('_', ' ')}</button>) :
+      <span>No deterministic temporal findings in the latest analysis.</span>}</section>;
 }

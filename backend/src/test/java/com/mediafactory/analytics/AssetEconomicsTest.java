@@ -7,6 +7,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class AssetEconomicsTest {
+
   private static BigDecimal n(String s) {
     return new BigDecimal(s);
   }

@@ -37,10 +37,41 @@ import org.testcontainers.utility.DockerImageName;
     properties = {"media.worker.enabled=false", "feedback.minimum-sample-size=2"},
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class FeedbackIntegrationTest {
+
   @Container
   static PostgreSQLContainer<?> postgres =
       new PostgreSQLContainer<>(
           DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"));
+  final Map<String, byte[]> media = new HashMap<>();
+  @Autowired
+  JdbcClient db;
+  @Autowired
+  VisualFeatureService features;
+  @Autowired
+  FeedbackDatasetBuilder datasets;
+  @Autowired
+  VisualPatternAnalysisService patterns;
+  @Autowired
+  HypothesisGenerationService hypotheses;
+  @Autowired
+  ExperimentProposalService proposals;
+  @Autowired
+  ExperimentAnalysisService analysis;
+  @Autowired
+  FeedbackJobs jobs;
+  @Autowired
+  FeedbackStore store;
+  @Autowired
+  PromptCatalog prompts;
+  @Autowired
+  FeedbackBudgetGuard budget;
+  @Autowired
+  SaturationAnalysisService saturation;
+  @MockitoBean
+  MediaStorage storage;
+  @Autowired
+  org.springframework.context.ApplicationContext context;
+  UUID project, collection, concept;
 
   @DynamicPropertySource
   static void props(DynamicPropertyRegistry r) {
@@ -49,27 +80,9 @@ class FeedbackIntegrationTest {
     r.add("spring.datasource.password", postgres::getPassword);
   }
 
-  @Autowired JdbcClient db;
-  @Autowired VisualFeatureService features;
-  @Autowired FeedbackDatasetBuilder datasets;
-  @Autowired VisualPatternAnalysisService patterns;
-  @Autowired HypothesisGenerationService hypotheses;
-  @Autowired ExperimentProposalService proposals;
-  @Autowired ExperimentAnalysisService analysis;
-  @Autowired FeedbackJobs jobs;
-  @Autowired FeedbackStore store;
-  @Autowired PromptCatalog prompts;
-  @Autowired FeedbackBudgetGuard budget;
-  @Autowired SaturationAnalysisService saturation;
-  @MockitoBean MediaStorage storage;
-  @Autowired org.springframework.context.ApplicationContext context;
-  final Map<String, byte[]> media = new HashMap<>();
-
   <T> T bean(Class<T> type) {
     return context.getBean(type);
   }
-
-  UUID project, collection, concept;
 
   @BeforeEach
   void setup() throws Exception {
@@ -126,17 +139,20 @@ class FeedbackIntegrationTest {
     when(storage.read(anyString()))
         .thenAnswer(call -> media.getOrDefault(call.getArgument(0), out.toByteArray()));
     doAnswer(
-            call -> {
-              media.put(call.getArgument(0), call.getArgument(1));
-              return null;
-            })
+        call -> {
+          media.put(call.getArgument(0), call.getArgument(1));
+          return null;
+        })
         .when(storage)
         .putOriginal(anyString(), any(byte[].class), anyString());
     for (var a : db.sql("select id,storage_key from assets").query().listOfRows()) {
       var image = new BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB);
       var random = new Random(a.get("id").hashCode());
-      for (int y = 0; y < 64; y++)
-        for (int x = 0; x < 64; x++) image.setRGB(x, y, random.nextInt(0xffffff));
+      for (int y = 0; y < 64; y++) {
+        for (int x = 0; x < 64; x++) {
+          image.setRGB(x, y, random.nextInt(0xffffff));
+        }
+      }
       var imageBytes = new ByteArrayOutputStream();
       ImageIO.write(image, "png", imageBytes);
       byte[] bytes = imageBytes.toByteArray();
@@ -216,19 +232,19 @@ class FeedbackIntegrationTest {
     p.put("extractorVersion", "visual-v1-r2");
     UUID run = datasets.build(p);
     assertThat(
-            db.sql(
-                    "select features->>'brightness' from feedback_dataset_rows where run_id=? and"
-                        + " asset_id=?")
-                .params(run, asset)
-                .query(String.class)
-                .single())
+        db.sql(
+                "select features->>'brightness' from feedback_dataset_rows where run_id=? and"
+                    + " asset_id=?")
+            .params(run, asset)
+            .query(String.class)
+            .single())
         .isEqualTo("0.8");
     assertThat(
-            db.sql(
-                    "select count(*) from generation_costs where"
-                        + " operation='VISUAL_FEATURE_EXTRACTION'")
-                .query(Long.class)
-                .single())
+        db.sql(
+                "select count(*) from generation_costs where"
+                    + " operation='VISUAL_FEATURE_EXTRACTION'")
+            .query(Long.class)
+            .single())
         .isEqualTo(2);
     assertThatThrownBy(() -> db.sql("update asset_visual_features set confidence=0").update())
         .hasMessageContaining("immutable");
@@ -326,10 +342,10 @@ class FeedbackIntegrationTest {
                     1024)));
     UUID experiment = (UUID) proposal.get("id");
     assertThatThrownBy(
-            () ->
-                db.sql("update prompt_experiment_variants set weight=4000 where experiment_id=?")
-                    .param(experiment)
-                    .update())
+        () ->
+            db.sql("update prompt_experiment_variants set weight=4000 where experiment_id=?")
+                .param(experiment)
+                .update())
         .hasMessageContaining("immutable");
     assertThatThrownBy(() -> proposals.generate(experiment)).hasMessageContaining("approval");
     assertThatThrownBy(() -> prompts.changeExperiment(experiment, "RUNNING", 0))
@@ -340,10 +356,10 @@ class FeedbackIntegrationTest {
     assertThat(((Number) generated.get("created")).intValue()).isEqualTo(25);
     proposals.generate(experiment);
     assertThat(
-            db.sql("select count(*) from generations where experiment_id=?")
-                .param(experiment)
-                .query(Long.class)
-                .single())
+        db.sql("select count(*) from generations where experiment_id=?")
+            .param(experiment)
+            .query(Long.class)
+            .single())
         .isEqualTo(40);
     assertThat(prompts.variables(control).getFirst().defaultValue()).isEqualTo("blue");
     var attribution =
@@ -358,11 +374,11 @@ class FeedbackIntegrationTest {
     assertThat(map(result.get("result")).get("analysis_status")).isEqualTo("INSUFFICIENT_EVIDENCE");
     assertThat(result).containsKey("learning");
     assertThatThrownBy(
-            () ->
-                prompts.changeExperiment(
-                    experiment,
-                    "COMPLETED",
-                    ((Number) prompts.experiment(experiment).get("revision")).intValue()))
+        () ->
+            prompts.changeExperiment(
+                experiment,
+                "COMPLETED",
+                ((Number) prompts.experiment(experiment).get("revision")).intValue()))
         .hasMessageContaining("completion");
     var firstJob =
         db.sql(
@@ -404,10 +420,10 @@ class FeedbackIntegrationTest {
     assertThat(store.one("feedback_learnings", newLearning).get("evidence_status"))
         .isEqualTo("CONFLICTING_EVIDENCE");
     assertThatThrownBy(
-            () ->
-                db.sql("update feedback_findings set statistics='{}' where id=?")
-                    .param(finding)
-                    .update())
+        () ->
+            db.sql("update feedback_findings set statistics='{}' where id=?")
+                .param(finding)
+                .update())
         .hasMessageContaining("immutable");
   }
 
@@ -445,17 +461,21 @@ class FeedbackIntegrationTest {
             bean(CollectionClusteringService.class));
     for (int i = 0; i < 50; i++) {
       var batch = similarity.claim();
-      if (batch.isEmpty()) break;
-      if (batch.getFirst().get("type").equals("GENERATE_ASSET_EMBEDDING"))
+      if (batch.isEmpty()) {
+        break;
+      }
+      if (batch.getFirst().get("type").equals("GENERATE_ASSET_EMBEDDING")) {
         similarity.execute(batch);
-      else similarity.executeControl(batch.getFirst());
+      } else {
+        similarity.executeControl(batch.getFirst());
+      }
     }
     for (var comparison :
         db.sql(
                 "select id,revision from similarity_comparisons where"
                     + " final_classification<>'DISTINCT'")
             .query()
-            .listOfRows())
+            .listOfRows()) {
       bean(SimilarityReviewService.class)
           .decide(
               (UUID) comparison.get("id"),
@@ -463,6 +483,7 @@ class FeedbackIntegrationTest {
               "DISTINCT",
               "Intentional independent mock experiment fixture",
               "test");
+    }
     try (var qa =
         new QualityWorker(
             db,
@@ -488,7 +509,8 @@ class FeedbackIntegrationTest {
             return Map.of();
           }
 
-          public void cancel(UUID id) {}
+          public void cancel(UUID id) {
+          }
 
           public Map<String, Object> cropPreview(
               byte[] b, Map<String, Object> p, List<Map<String, Object>> r) {
@@ -540,7 +562,7 @@ class FeedbackIntegrationTest {
     assertThat(newAssets).hasSize(40);
     for (var asset : newAssets) {
       var review = bean(QualityReviewService.class).review((UUID) asset.get("current_review_id"));
-      if (!review.get("final_decision").equals("APPROVED"))
+      if (!review.get("final_decision").equals("APPROVED")) {
         bean(QualityReviewService.class)
             .decide(
                 (UUID) review.get("id"),
@@ -550,6 +572,7 @@ class FeedbackIntegrationTest {
                     "MANUAL_QUALITY_JUDGMENT",
                     "Approved deterministic mock fixture"),
                 "test");
+      }
       var request =
           processing.request((UUID) asset.get("id"), List.of("THUMBNAIL"), Map.of(), null, 10);
       executor.execute(executor.claim().orElseThrow());
@@ -575,13 +598,13 @@ class FeedbackIntegrationTest {
           .update();
     }
     assertThat(
-            db.sql(
-                    "select count(*) from asset_embeddings where asset_id in(select a.id from"
-                        + " assets a join generations g on g.id=a.generation_id where"
-                        + " g.experiment_id=?)")
-                .param(experiment)
-                .query(Long.class)
-                .single())
+        db.sql(
+                "select count(*) from asset_embeddings where asset_id in(select a.id from"
+                    + " assets a join generations g on g.id=a.generation_id where"
+                    + " g.experiment_id=?)")
+            .param(experiment)
+            .query(Long.class)
+            .single())
         .isEqualTo(40);
   }
 
@@ -593,11 +616,11 @@ class FeedbackIntegrationTest {
     assertThat(map(jobs.enqueue("FEATURE_EXTRACTION", payload, "fixture")).get("id"))
         .isEqualTo(first.get("id"));
     assertThatThrownBy(
-            () ->
-                jobs.enqueue(
-                    "FEATURE_EXTRACTION",
-                    Map.of("assetId", UUID.randomUUID().toString()),
-                    "fixture"))
+        () ->
+            jobs.enqueue(
+                "FEATURE_EXTRACTION",
+                Map.of("assetId", UUID.randomUUID().toString()),
+                "fixture"))
         .hasMessageContaining("conflict");
     jobs.runOne();
     assertThat(store.one("feedback_jobs", (UUID) first.get("id")).get("status"))

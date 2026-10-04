@@ -22,12 +22,13 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class VideoProductionService {
+
   public final JdbcClient db;
   public final TransactionTemplate tx;
-  final MotionPlanner motion;
-  final PromptEngine prompts;
   public final VideoProviderRouter router;
   public final MediaStorage storage;
+  final MotionPlanner motion;
+  final PromptEngine prompts;
   final QualityReviewService reviews;
   final MeterRegistry metrics;
 
@@ -112,7 +113,9 @@ public class VideoProductionService {
               .query()
               .singleRow();
           var prior = profile(key);
-          if (integer(prior, "version", 0) != previousVersion) throw conflict("Profile changed");
+          if (integer(prior, "version", 0) != previousVersion) {
+            throw conflict("Profile changed");
+          }
           var definition = VideoProfiles.settings(map(prior.get("definition")), changes);
           UUID id = UUID.randomUUID();
           db.sql(
@@ -220,10 +223,12 @@ public class VideoProductionService {
       int maxAttempts,
       String key,
       UUID parent) {
-    if (key == null || key.isBlank() || key.length() > 200)
+    if (key == null || key.isBlank() || key.length() > 200) {
       throw new IllegalArgumentException("Idempotency-Key is required");
-    if (budget == null || budget.signum() < 0 || maxAttempts < 1 || maxAttempts > 10)
+    }
+    if (budget == null || budget.signum() < 0 || maxAttempts < 1 || maxAttempts > 10) {
       throw new IllegalArgumentException("Invalid video budget or attempt limit");
+    }
     String hash =
         ProcessingPlanner.hash(
             Arrays.asList(
@@ -247,14 +252,16 @@ public class VideoProductionService {
                   .query()
                   .listOfRows();
           if (!old.isEmpty()) {
-            if (!old.getFirst().get("request_hash").equals(hash))
+            if (!old.getFirst().get("request_hash").equals(hash)) {
               throw conflict("Idempotency key input changed");
+            }
             return one((UUID) old.getFirst().get("id"));
           }
           var a = source(sourceId);
           if (!a.get("media_type").toString().startsWith("image/")
-              || !"APPROVED".equals(a.get("final_decision")))
+              || !"APPROVED".equals(a.get("final_decision"))) {
             throw conflict("Video requires an approved source image");
+          }
           var version = profile(profileKey);
           var p = VideoProfiles.settings(map(version.get("definition")), Map.of());
           var plan = motion.plan(a, motionInput);
@@ -375,7 +382,9 @@ public class VideoProductionService {
                           + " id=? and revision=? and status<>'CANCELLED'")
                   .params(status, reason, v.get("id"), v.get("revision"))
                   .update();
-          if (changed == 1) event((UUID) v.get("id"), status, Map.of("reason", reason));
+          if (changed == 1) {
+            event((UUID) v.get("id"), status, Map.of("reason", reason));
+          }
           return changed == 1;
         });
   }
@@ -394,7 +403,9 @@ public class VideoProductionService {
         t -> {
           lock(id);
           var v = one(id);
-          if (integer(v, "revision", 0) != revision) throw conflict("Video changed");
+          if (integer(v, "revision", 0) != revision) {
+            throw conflict("Video changed");
+          }
           var plan = motion.plan(source((UUID) v.get("source_asset_id")), input);
           UUID next = UUID.randomUUID();
           int version =
@@ -434,8 +445,9 @@ public class VideoProductionService {
       Map<String, Object> changes,
       Map<String, Object> variants,
       String key) {
-    if (key == null || key.isBlank() || key.length() > 200)
+    if (key == null || key.isBlank() || key.length() > 200) {
       throw new IllegalArgumentException("Idempotency-Key required");
+    }
     return tx.execute(
         t -> {
           lock(id);
@@ -447,27 +459,33 @@ public class VideoProductionService {
                   .query()
                   .listOfRows();
           if (!old.isEmpty()) {
-            if (!old.getFirst().get("request_hash").equals(hash))
+            if (!old.getFirst().get("request_hash").equals(hash)) {
               throw conflict("Reprocess idempotency input changed");
+            }
             return row(old.getFirst());
           }
           if (integer(v, "revision", 0) != revision
               || v.get("raw_asset_id") == null
               || !Set.of(
-                      "RAW_READY",
-                      "REVIEW",
-                      "READY",
-                      "QA_REJECTED",
-                      "PROCESSING_FAILED",
-                      "LOOP_FAILED")
-                  .contains(v.get("status"))) throw conflict("Video is not ready for reprocessing");
+                  "RAW_READY",
+                  "REVIEW",
+                  "READY",
+                  "QA_REJECTED",
+                  "PROCESSING_FAILED",
+                  "LOOP_FAILED")
+              .contains(v.get("status"))) {
+            throw conflict("Video is not ready for reprocessing");
+          }
           var p = VideoProfiles.settings(map(v.get("profile_snapshot")), changes);
           var plan = map(motion(id).get("definition"));
           if (p.get("loopStrategy").equals("PING_PONG")
-              && !Boolean.TRUE.equals(plan.get("reversible")))
+              && !Boolean.TRUE.equals(plan.get("reversible"))) {
             throw conflict("Motion plan does not permit reversal");
+          }
           var selected = variants.isEmpty() ? map(p.get("variants")) : variants;
-          if (selected.size() > 7) throw new IllegalArgumentException("Too many variants");
+          if (selected.size() > 7) {
+            throw new IllegalArgumentException("Too many variants");
+          }
           for (var e : selected.entrySet()) {
             if (!Set.of(
                     "ANDROID_VIDEO_FHD",
@@ -477,7 +495,9 @@ public class VideoProductionService {
                     "SOCIAL_HORIZONTAL",
                     "SOCIAL_SQUARE",
                     "VIDEO_PREVIEW")
-                .contains(e.getKey())) throw new IllegalArgumentException("Unknown video variant");
+                .contains(e.getKey())) {
+              throw new IllegalArgumentException("Unknown video variant");
+            }
             VideoProfiles.settings(p, map(e.getValue()));
           }
           UUID run = UUID.randomUUID();
@@ -520,7 +540,9 @@ public class VideoProductionService {
 
   public Object regenerate(UUID id, int revision, BigDecimal budget, String key) {
     var v = one(id);
-    if (integer(v, "revision", 0) != revision) throw conflict("Video changed");
+    if (integer(v, "revision", 0) != revision) {
+      throw conflict("Video changed");
+    }
     var profile = profileKey(v);
     var route = (List<Map<String, Object>>) v.get("route");
     return start(
@@ -551,7 +573,9 @@ public class VideoProductionService {
         t -> {
           lock(id);
           var v = one(id);
-          if (integer(v, "revision", 0) != revision) throw conflict("Video changed");
+          if (integer(v, "revision", 0) != revision) {
+            throw conflict("Video changed");
+          }
           switch (action) {
             case "pause", "resume" -> {
               db.sql("update video_productions set paused=?,revision=revision+1 where id=?")
@@ -567,17 +591,21 @@ public class VideoProductionService {
             }
             case "approve", "reject" -> {
               if (!Set.of("REVIEW", "READY", "QA_REJECTED", "LOOP_FAILED").contains(v.get("status"))
-                  || v.get("master_variant_id") == null)
+                  || v.get("master_variant_id") == null) {
                 throw conflict("A completed master is required for review");
+              }
               var run =
                   row(
                       db.sql("select * from video_processing_runs where id=?")
                           .param(v.get("current_run_id"))
                           .query()
                           .singleRow());
-              if (!run.get("status").equals("COMPLETED")) throw conflict("Processing not complete");
-              if (action.equals("approve") && !acknowledge)
+              if (!run.get("status").equals("COMPLETED")) {
+                throw conflict("Processing not complete");
+              }
+              if (action.equals("approve") && !acknowledge) {
                 throw conflict("Review the video, loop boundary and QA warnings before approving");
+              }
               var raw = source((UUID) v.get("raw_asset_id"));
               if (raw.get("current_review_id") != null) {
                 var qr = reviews.review((UUID) raw.get("current_review_id"));

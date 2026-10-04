@@ -4,7 +4,9 @@ import java.math.BigDecimal;
 import java.util.*;
 
 public final class VideoTypes {
-  private VideoTypes() {}
+
+  private VideoTypes() {
+  }
 
   public record Request(
       UUID generationId,
@@ -20,7 +22,9 @@ public final class VideoTypes {
       Long seed,
       Map<String, Object> motion,
       Map<String, Object> options,
-      String model) {}
+      String model) {
+
+  }
 
   public record Capabilities(
       Set<String> models,
@@ -39,31 +43,45 @@ public final class VideoTypes {
       boolean statusPolling,
       boolean idempotentSubmission,
       boolean configurableFps) {
+
     public void validate(Request r) {
       if (!models.contains(r.model())
           || !resolutions.contains(r.width() + ":" + r.height())
-          || !durations.contains(r.durationSeconds()))
+          || !durations.contains(r.durationSeconds())) {
         throw new IllegalArgumentException("Unsupported model, resolution or duration");
-      if (!negativePrompt && r.negativePrompt() != null && !r.negativePrompt().isBlank())
+      }
+      if (!negativePrompt && r.negativePrompt() != null && !r.negativePrompt().isBlank()) {
         throw new IllegalArgumentException("Negative prompts are not supported by this provider");
-      if (!seed && r.seed() != null) throw new IllegalArgumentException("Seed is not supported");
-      if (!configurableFps && r.fps() != null)
+      }
+      if (!seed && r.seed() != null) {
+        throw new IllegalArgumentException("Seed is not supported");
+      }
+      if (!configurableFps && r.fps() != null) {
         throw new IllegalArgumentException(
             "Generation FPS is provider-controlled; configure output FPS in the processing"
                 + " profile");
+      }
     }
   }
 
-  public record Submission(String providerJobId, String requestId, Map<String, Object> metadata) {}
+  public record Submission(String providerJobId, String requestId, Map<String, Object> metadata) {
+
+  }
 
   public record Status(
       String state,
       BigDecimal actualCost,
       String currency,
       String errorCode,
-      Map<String, Object> metadata) {}
+      Map<String, Object> metadata) {
 
-  public record Result(byte[] bytes, String mediaType, Map<String, Object> metadata) {}
+  }
 
-  public record Estimate(BigDecimal cost, String currency, String pricingVersion) {}
+  public record Result(byte[] bytes, String mediaType, Map<String, Object> metadata) {
+
+  }
+
+  public record Estimate(BigDecimal cost, String currency, String pricingVersion) {
+
+  }
 }

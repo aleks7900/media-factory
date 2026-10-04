@@ -10,9 +10,12 @@ import java.util.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-/** Sampled TASK-04 evidence with durable per-frame charging and no ambiguous paid replay. */
+/**
+ * Sampled TASK-04 evidence with durable per-frame charging and no ambiguous paid replay.
+ */
 @Service
 public class VideoSemanticQa {
+
   final VideoProductionService s;
   final Map<String, VisionQualityProvider> providers = new HashMap<>();
   final QaConfiguration config;
@@ -33,7 +36,9 @@ public class VideoSemanticQa {
     this.limiter = limiter;
     this.selected = selected;
     this.reserve = reserve;
-    if (reserve.signum() < 0) throw new IllegalArgumentException("Negative frame reserve");
+    if (reserve.signum() < 0) {
+      throw new IllegalArgumentException("Negative frame reserve");
+    }
   }
 
   public String provider() {
@@ -41,7 +46,9 @@ public class VideoSemanticQa {
   }
 
   public List<Map<String, Object>> analyze(Map<String, Object> v, List<?> samples) {
-    if (samples.size() > 5) throw new VideoFailure("FRAME_SAMPLE_LIMIT");
+    if (samples.size() > 5) {
+      throw new VideoFailure("FRAME_SAMPLE_LIMIT");
+    }
     var results = new ArrayList<Map<String, Object>>();
     int index = 0;
     for (Object value : samples) {
@@ -68,15 +75,18 @@ public class VideoSemanticQa {
       }
       var provider = providers.get(selected);
       if (provider == null
-          || !selected.equals("mock") && (!config.realEnabled() || reserve.signum() <= 0))
+          || !selected.equals("mock") && (!config.realEnabled() || reserve.signum() <= 0)) {
         throw new VideoFailure("VIDEO_VISION_NOT_CONFIGURED");
+      }
       var permit =
           limiter.acquireVideo(
               "video-vision:" + selected,
               (UUID) v.get("current_attempt_id"),
               config.rate(),
               Duration.ofMinutes(2));
-      if (!permit.acquired()) throw new VideoFailure("BUSY");
+      if (!permit.acquired()) {
+        throw new VideoFailure("BUSY");
+      }
       UUID cost = UUID.randomUUID(), review = UUID.randomUUID();
       String model = config.model(selected);
       try {
@@ -84,14 +94,17 @@ public class VideoSemanticQa {
             t -> {
               s.lock(id);
               var fresh = s.one(id);
-              if ("CANCELLED".equals(fresh.get("status"))) throw new VideoFailure("CANCELLED");
+              if ("CANCELLED".equals(fresh.get("status"))) {
+                throw new VideoFailure("CANCELLED");
+              }
               if (!selected.equals("mock")) {
                 BigDecimal spent =
                     s.costs(id).stream()
                         .map(c -> new BigDecimal(Objects.toString(c.get("total"), "0")))
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
-                if (spent.add(reserve).compareTo(new BigDecimal(v.get("budget").toString())) > 0)
+                if (spent.add(reserve).compareTo(new BigDecimal(v.get("budget").toString())) > 0) {
                   throw new VideoFailure("VISION_BUDGET_EXCEEDED");
+                }
               }
               s.db
                   .sql(
@@ -170,7 +183,9 @@ public class VideoSemanticQa {
                 write(Map.of("reason", "SEMANTIC_QA_INCOMPLETE_NO_AUTOMATIC_PAID_RETRY")), review)
             .update();
         s.db.sql("update generation_costs set outcome='FAILED' where id=?").param(cost).update();
-        if (failure instanceof VideoFailure) throw failure;
+        if (failure instanceof VideoFailure) {
+          throw failure;
+        }
         results.add(
             Map.of(
                 "timeSeconds",

@@ -20,10 +20,24 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers
 @SpringBootTest(properties = {"media.worker.enabled=false"})
 class SkillIntegrationTest {
+
   @Container
   static PostgreSQLContainer<?> postgres =
       new PostgreSQLContainer<>(
           DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"));
+  @Autowired
+  JdbcClient db;
+  @Autowired
+  SkillExecutionService skills;
+  @Autowired
+  FactoryService factory;
+  @Autowired
+  SkillBudgetGuard budget;
+  @Autowired
+  QualityReviewService qa;
+  UUID project;
+  @Autowired
+  org.springframework.core.env.ConfigurableEnvironment environment;
 
   @DynamicPropertySource
   static void props(DynamicPropertyRegistry r) {
@@ -31,13 +45,6 @@ class SkillIntegrationTest {
     r.add("spring.datasource.username", postgres::getUsername);
     r.add("spring.datasource.password", postgres::getPassword);
   }
-
-  @Autowired JdbcClient db;
-  @Autowired SkillExecutionService skills;
-  @Autowired FactoryService factory;
-  @Autowired SkillBudgetGuard budget;
-  @Autowired QualityReviewService qa;
-  UUID project;
 
   @BeforeEach
   void setup() {
@@ -86,7 +93,7 @@ class SkillIntegrationTest {
     assertThat(db.sql("select count(*) from concepts").query(Long.class).single()).isEqualTo(2);
     assertThat(db.sql("select count(*) from generations").query(Long.class).single()).isZero();
     assertThatThrownBy(
-            () -> db.sql("update skill_executions set plan='{}' where id=?").param(id).update())
+        () -> db.sql("update skill_executions set plan='{}' where id=?").param(id).update())
         .hasMessageContaining("immutable");
   }
 
@@ -225,16 +232,14 @@ class SkillIntegrationTest {
     tick(id);
     assertThat(skills.one(id).get("status")).isEqualTo("COMPLETED");
     assertThat(
-            db.sql("select count(*) from generations where skill_execution_id=?")
-                .param(id)
-                .query(Long.class)
-                .single())
+        db.sql("select count(*) from generations where skill_execution_id=?")
+            .param(id)
+            .query(Long.class)
+            .single())
         .isEqualTo(2);
     assertThat(((Number) map(skills.one(id).get("result_summary")).get("planned")).intValue())
         .isEqualTo(2);
   }
-
-  @Autowired org.springframework.core.env.ConfigurableEnvironment environment;
 
   @Test
   void unpricedPaidQaCannotStartEvenWithPlanApproval() {
@@ -301,10 +306,10 @@ class SkillIntegrationTest {
     tick(id);
     assertThat(skills.one(id).get("status")).isEqualTo("COMPLETED");
     assertThat(
-            db.sql("select id from generations where skill_execution_id=? order by id")
-                .param(id)
-                .query(UUID.class)
-                .list())
+        db.sql("select id from generations where skill_execution_id=? order by id")
+            .param(id)
+            .query(UUID.class)
+            .list())
         .isEqualTo(generated);
   }
 }

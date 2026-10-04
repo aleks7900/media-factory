@@ -18,6 +18,8 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(name = "media.worker.enabled", havingValue = "true", matchIfMissing = true)
 public class BulkGenerationWorker implements AutoCloseable {
+
+  static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(BulkGenerationWorker.class);
   final BulkGenerationService s;
   final ProviderRateLimiter limiter;
   final RetryDecisionService retries;
@@ -25,23 +27,9 @@ public class BulkGenerationWorker implements AutoCloseable {
   final int concurrency, rpm, maxAttempts;
   final Set<UUID> active = ConcurrentHashMap.newKeySet();
   final Map<UUID, UUID> leases = new ConcurrentHashMap<>();
-
-  static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(BulkGenerationWorker.class);
   final long retryInitialDelayMs, retryMaxDelayMs;
   final double retryMultiplier;
   final boolean retryJitter;
-
-  @Scheduled(fixedDelay = 30000)
-  public void heartbeat() {
-    leases.forEach(
-        (id, token) ->
-            s.database()
-                .sql(
-                    "update bulk_tasks set lease_until=now()+interval '5 minutes' where id=? and"
-                        + " lease_token=? and status='GENERATING'")
-                .params(id, token)
-                .update());
-  }
 
   @org.springframework.beans.factory.annotation.Autowired
   public BulkGenerationWorker(
@@ -78,12 +66,42 @@ public class BulkGenerationWorker implements AutoCloseable {
     this(s, limiter, retries, concurrency, rpm, maxAttempts, 2000L, 120000L, 2.0, true);
   }
 
+  static String mediaType(byte[] bytes) {
+    if (bytes.length > 12
+        && bytes[4] == 'f'
+        && bytes[5] == 't'
+        && bytes[6] == 'y'
+        && bytes[7] == 'p') {
+      return "video/mp4";
+    }
+    if (bytes.length > 8 && (bytes[0] & 255) == 137 && bytes[1] == 'P') {
+      return "image/png";
+    }
+    if (bytes.length > 3 && (bytes[0] & 255) == 255 && (bytes[1] & 255) == 216) {
+      return "image/jpeg";
+    }
+    throw new IllegalArgumentException("Invalid generated media signature");
+  }
+
+  @Scheduled(fixedDelay = 30000)
+  public void heartbeat() {
+    leases.forEach(
+        (id, token) ->
+            s.database()
+                .sql(
+                    "update bulk_tasks set lease_until=now()+interval '5 minutes' where id=? and"
+                        + " lease_token=? and status='GENERATING'")
+                .params(id, token)
+                .update());
+  }
 
   @Scheduled(fixedDelayString = "${bulk.worker.poll-ms:1000}")
   public void tick() {
     while (active.size() < concurrency) {
       var t = claim();
-      if (t == null) return;
+      if (t == null) {
+        return;
+      }
       UUID id = (UUID) t.get("id");
       active.add(id);
       leases.put(id, (UUID) t.get("lease_token"));
@@ -136,7 +154,9 @@ public class BulkGenerationWorker implements AutoCloseable {
                           .param(concurrency)
                           .query(UUID.class)
                           .list();
-                  if (rows.isEmpty()) return null;
+                  if (rows.isEmpty()) {
+                    return null;
+                  }
                   UUID id = rows.getFirst(), token = UUID.randomUUID();
                   s.database()
                       .sql(
@@ -149,13 +169,14 @@ public class BulkGenerationWorker implements AutoCloseable {
                 });
     // Never acquire the parent batch lock while holding a child lock: batch controls
     // acquire the parent first and then update children.
-    if (claimed != null)
+    if (claimed != null) {
       s.database()
           .sql(
               "update bulk_batches set started_at=coalesce(started_at,now()),completed_at=null"
                   + " where id=?")
           .param(claimed.get("batch_id"))
           .update();
+    }
     return claimed;
   }
 
@@ -165,7 +186,9 @@ public class BulkGenerationWorker implements AutoCloseable {
     boolean externalStarted = false;
     boolean polling = false;
     var t = s.task(id);
-    if (t.get("deleted_at") != null || t.get("batch_deleted") != null) return;
+    if (t.get("deleted_at") != null || t.get("batch_deleted") != null) {
+      return;
+    }
     BulkProcessor processor = s.processor(t.get("kind").toString());
     log.info(
         "bulk_task_started batchId={} taskId={} provider={} model={} attempt={}",
@@ -178,11 +201,11 @@ public class BulkGenerationWorker implements AutoCloseable {
       boolean unsent =
           t.get("current_attempt_id") == null
               || s.database()
-                  .sql("select status from bulk_attempts where id=?")
-                  .param(t.get("current_attempt_id"))
-                  .query(String.class)
-                  .single()
-                  .matches("PREPARED|WAITING_CAPACITY");
+              .sql("select status from bulk_attempts where id=?")
+              .param(t.get("current_attempt_id"))
+              .query(String.class)
+              .single()
+              .matches("PREPARED|WAITING_CAPACITY");
       if (Boolean.TRUE.equals(t.get("cancel_requested"))
           && t.get("remote_job_id") == null
           && unsent) {
@@ -208,11 +231,11 @@ public class BulkGenerationWorker implements AutoCloseable {
       if (continuing
           && remote == null
           && !s.database()
-              .sql("select status from bulk_attempts where id=?")
-              .param(t.get("current_attempt_id"))
-              .query(String.class)
-              .single()
-              .matches("WAITING_CAPACITY|PREPARED")) {
+          .sql("select status from bulk_attempts where id=?")
+          .param(t.get("current_attempt_id"))
+          .query(String.class)
+          .single()
+          .matches("WAITING_CAPACITY|PREPARED")) {
         byte[] recovered = null;
         try {
           recovered = s.mediaStorage().read(outputKey(t));
@@ -330,7 +353,7 @@ public class BulkGenerationWorker implements AutoCloseable {
               ? known
               : new ImageGenerationException(
                   error instanceof IllegalArgumentException
-                      ? ImageGenerationException.Type.INVALID_REQUEST
+                  ? ImageGenerationException.Type.INVALID_REQUEST
                       : ImageGenerationException.Type.UNEXPECTED,
                   "Bulk operation failed",
                   Duration.ofSeconds(10),
@@ -384,9 +407,9 @@ public class BulkGenerationWorker implements AutoCloseable {
           s.database()
               .sql(
                   "update bulk_tasks set"
-                  + " status='RETRYING',retry_count=retry_count+1,current_attempt_id=null,remote_job_id=null,error_code=?,error_message=?,available_at=now()+(?"
-                  + " * interval '1 millisecond') where id=? and status='GENERATING' and not"
-                  + " cancel_requested")
+                      + " status='RETRYING',retry_count=retry_count+1,current_attempt_id=null,remote_job_id=null,error_code=?,error_message=?,available_at=now()+(?"
+                      + " * interval '1 millisecond') where id=? and status='GENERATING' and not"
+                      + " cancel_requested")
               .params(
                   classified.type().name(),
                   "Retryable provider failure",
@@ -474,17 +497,6 @@ public class BulkGenerationWorker implements AutoCloseable {
         + ".bin";
   }
 
-  static String mediaType(byte[] bytes) {
-    if (bytes.length > 12
-        && bytes[4] == 'f'
-        && bytes[5] == 't'
-        && bytes[6] == 'y'
-        && bytes[7] == 'p') return "video/mp4";
-    if (bytes.length > 8 && (bytes[0] & 255) == 137 && bytes[1] == 'P') return "image/png";
-    if (bytes.length > 3 && (bytes[0] & 255) == 255 && (bytes[1] & 255) == 216) return "image/jpeg";
-    throw new IllegalArgumentException("Invalid generated media signature");
-  }
-
   void complete(Map<String, Object> t, BulkProcessor.Output result) throws IOException {
     String type = mediaType(result.bytes());
     check(type.equals(result.mediaType()), "Provider media type mismatch");
@@ -513,7 +525,9 @@ public class BulkGenerationWorker implements AutoCloseable {
                   .query()
                   .singleRow();
               var current = s.task((UUID) t.get("id"));
-              if (current.get("asset_id") != null) return;
+              if (current.get("asset_id") != null) {
+                return;
+              }
               UUID asset = UUID.randomUUID();
               s.database()
                   .sql(
@@ -601,13 +615,14 @@ public class BulkGenerationWorker implements AutoCloseable {
                       unknown,
                       t.get("id"))
                   .update();
-              if (t.get("current_attempt_id") != null)
+              if (t.get("current_attempt_id") != null) {
                 s.database()
                     .sql(
                         "update bulk_attempts set status=?,error_code=?,completed_at=now() where"
                             + " id=?")
                     .params(unknown ? "OUTCOME_UNKNOWN" : status, code, t.get("current_attempt_id"))
                     .update();
+              }
               s.event((UUID) t.get("batch_id"), (UUID) t.get("id"), status, Map.of("code", code));
               s.database()
                   .sql(

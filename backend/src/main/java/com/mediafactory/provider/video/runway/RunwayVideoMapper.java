@@ -5,13 +5,20 @@ import com.mediafactory.video.VideoFailure;
 import java.util.*;
 
 public final class RunwayVideoMapper {
-  private RunwayVideoMapper() {}
+
+  private RunwayVideoMapper() {
+  }
 
   public static Map<String, Object> request(Request r, byte[] bytes, String mediaType) {
-    if (bytes.length > 3_700_000) throw new VideoFailure("RUNWAY_IMAGE_DATA_URI_LIMIT");
-    if (!Set.of("image/png", "image/jpeg", "image/webp").contains(mediaType))
+    if (bytes.length > 3_700_000) {
+      throw new VideoFailure("RUNWAY_IMAGE_DATA_URI_LIMIT");
+    }
+    if (!Set.of("image/png", "image/jpeg", "image/webp").contains(mediaType)) {
       throw new VideoFailure("RUNWAY_UNSUPPORTED_IMAGE");
-    if (r.prompt().length() > 1000) throw new VideoFailure("RUNWAY_PROMPT_TOO_LONG");
+    }
+    if (r.prompt().length() > 1000) {
+      throw new VideoFailure("RUNWAY_PROMPT_TOO_LONG");
+    }
     var body = new LinkedHashMap<String, Object>();
     body.put("model", r.model());
     body.put(
@@ -21,7 +28,9 @@ public final class RunwayVideoMapper {
     body.put("ratio", r.width() + ":" + r.height());
     body.put("duration", r.durationSeconds());
     if (r.seed() != null) {
-      if (r.seed() < 0 || r.seed() > 4294967295L) throw new VideoFailure("RUNWAY_SEED_RANGE");
+      if (r.seed() < 0 || r.seed() > 4294967295L) {
+        throw new VideoFailure("RUNWAY_SEED_RANGE");
+      }
       body.put("seed", r.seed());
     }
     return body;

@@ -38,10 +38,58 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers
 @SpringBootTest(properties = {"media.worker.enabled=false", "media.qa.requests-per-minute=10000"})
 class StockIntegrationTest {
+
   @Container
   static PostgreSQLContainer<?> postgres =
       new PostgreSQLContainer<>(
           DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"));
+  @Autowired
+  StockProductionService stock;
+  @Autowired
+  StockMetadataService metadata;
+  @Autowired
+  StockExportService exports;
+  @Autowired
+  StockCollectionService collections;
+  @Autowired
+  JdbcClient db;
+  @Autowired
+  TransactionTemplate tx;
+  @Autowired
+  FactoryService factory;
+  @Autowired
+  QualityReviewService reviews;
+  @Autowired
+  QaConfiguration qaConfig;
+  @Autowired
+  TechnicalQa technical;
+  @Autowired
+  QualityPolicyEngine policy;
+  @Autowired
+  MediaStorage storage;
+  @Autowired
+  ProviderRateLimiter limiter;
+  @Autowired
+  RetryDecisionService retry;
+  @Autowired
+  MeterRegistry metrics;
+  @Autowired
+  ImageGenerationProperties images;
+  @Autowired
+  GenerationAttemptRepository attempts;
+  @Autowired
+  ProviderObservability telemetry;
+  @Autowired
+  SimilarityService similarity;
+  @Autowired
+  EmbeddingModelService models;
+  @Autowired
+  CollectionClusteringService clustering;
+  @Autowired
+  ProcessingService processing;
+  @Autowired
+  PostProcessingQa postQa;
+  UUID collection, concept;
 
   @DynamicPropertySource
   static void props(DynamicPropertyRegistry r) {
@@ -50,31 +98,6 @@ class StockIntegrationTest {
     r.add("spring.datasource.password", postgres::getPassword);
     r.add("media.storage.root", () -> "build/stock-test/" + UUID.randomUUID());
   }
-
-  @Autowired StockProductionService stock;
-  @Autowired StockMetadataService metadata;
-  @Autowired StockExportService exports;
-  @Autowired StockCollectionService collections;
-  @Autowired JdbcClient db;
-  @Autowired TransactionTemplate tx;
-  @Autowired FactoryService factory;
-  @Autowired QualityReviewService reviews;
-  @Autowired QaConfiguration qaConfig;
-  @Autowired TechnicalQa technical;
-  @Autowired QualityPolicyEngine policy;
-  @Autowired MediaStorage storage;
-  @Autowired ProviderRateLimiter limiter;
-  @Autowired RetryDecisionService retry;
-  @Autowired MeterRegistry metrics;
-  @Autowired ImageGenerationProperties images;
-  @Autowired GenerationAttemptRepository attempts;
-  @Autowired ProviderObservability telemetry;
-  @Autowired SimilarityService similarity;
-  @Autowired EmbeddingModelService models;
-  @Autowired CollectionClusteringService clustering;
-  @Autowired ProcessingService processing;
-  @Autowired PostProcessingQa postQa;
-  UUID collection, concept;
 
   @BeforeEach
   void setup() {
@@ -195,7 +218,9 @@ class StockIntegrationTest {
     var result = new LinkedHashMap<String, byte[]>();
     try (var zip = new ZipInputStream(new ByteArrayInputStream(bytes))) {
       ZipEntry e;
-      while ((e = zip.getNextEntry()) != null) result.put(e.getName(), zip.readAllBytes());
+      while ((e = zip.getNextEntry()) != null) {
+        result.put(e.getName(), zip.readAllBytes());
+      }
     }
     return result;
   }
@@ -214,12 +239,12 @@ class StockIntegrationTest {
         .hasSize(4)
         .containsKeys("metadata.csv", "manifest.json", "validation-report.json");
     assertThat(
-            db.sql(
-                    "select count(*) from generation_costs where generation_id=? and operation like"
-                        + " 'STOCK_%' and outcome='SUCCEEDED'")
-                .param(s.get("generation_id"))
-                .query(Integer.class)
-                .single())
+        db.sql(
+                "select count(*) from generation_costs where generation_id=? and operation like"
+                    + " 'STOCK_%' and outcome='SUCCEEDED'")
+            .param(s.get("generation_id"))
+            .query(Integer.class)
+            .single())
         .isEqualTo(2);
     assertThat(metadata.versions(id)).hasSize(2);
     assertThat(collections.costs(collection)).allMatch(c -> c.get("currency") != null);
@@ -281,10 +306,10 @@ class StockIntegrationTest {
     UUID id = approved();
     var m = metadata.versions(id).getFirst();
     assertThatThrownBy(
-            () ->
-                db.sql("update stock_metadata_versions set data='{}' where id=?")
-                    .param(m.get("id"))
-                    .update())
+        () ->
+            db.sql("update stock_metadata_versions set data='{}' where id=?")
+                .param(m.get("id"))
+                .update())
         .hasMessageContaining("immutable");
     assertThatThrownBy(() -> db.sql("update stock_profile_versions set definition='{}'").update())
         .hasMessageContaining("immutable");
@@ -359,7 +384,9 @@ class StockIntegrationTest {
   @Test
   void fiftyApprovedAssetsExportWithCsvMappingAndChecksums() throws Exception {
     var ids = new ArrayList<UUID>();
-    for (int n = 0; n < 50; n++) ids.add(approved());
+    for (int n = 0; n < 50; n++) {
+      ids.add(approved());
+    }
     UUID e = export(ids, "STRICT");
     assertThat(exports.detail(e).get("status")).isEqualTo("READY");
     var files = unzip(exports.download(e));
@@ -371,22 +398,25 @@ class StockIntegrationTest {
             CSVFormat.RFC4180.builder().setHeader().setSkipHeaderRecord(true).get())) {
       var rows = csv.getRecords();
       assertThat(rows).hasSize(50);
-      for (var row : rows) assertThat(files).containsKey("images/" + row.get("filename"));
+      for (var row : rows) {
+        assertThat(files).containsKey("images/" + row.get("filename"));
+      }
     }
     var manifest = map(new String(files.get("manifest.json"), StandardCharsets.UTF_8));
-    for (var item : (List<Map<String, Object>>) manifest.get("assets"))
+    for (var item : (List<Map<String, Object>>) manifest.get("assets")) {
       assertThat(PerceptualHash.sha(files.get("images/" + item.get("filename"))))
           .isEqualTo(item.get("checksum"));
+    }
     assertThatThrownBy(
-            () ->
-                exports.request(
-                    "GENERIC_CSV",
-                    null,
-                    collection,
-                    true,
-                    "STRICT",
-                    UUID.randomUUID().toString(),
-                    null))
+        () ->
+            exports.request(
+                "GENERIC_CSV",
+                null,
+                collection,
+                true,
+                "STRICT",
+                UUID.randomUUID().toString(),
+                null))
         .hasMessageContaining("empty");
   }
 
@@ -480,9 +510,9 @@ class StockIntegrationTest {
     try (var paths =
         java.nio.file.Files.list(java.nio.file.Path.of(System.getProperty("java.io.tmpdir")))) {
       assertThat(
-              paths
-                  .filter(p -> p.getFileName().toString().startsWith("stock-export-" + id + "-"))
-                  .toList())
+          paths
+              .filter(p -> p.getFileName().toString().startsWith("stock-export-" + id + "-"))
+              .toList())
           .isEmpty();
     }
     exports.retry(id);
@@ -491,6 +521,7 @@ class StockIntegrationTest {
   }
 
   static class FixtureImages extends MockProviders {
+
     @Override
     public Result<Media> generate(Request request) {
       try {
@@ -498,11 +529,12 @@ class StockIntegrationTest {
             new BufferedImage(request.width(), request.height(), BufferedImage.TYPE_INT_RGB);
         var g = image.createGraphics();
         var random = new Random(request.operationId().hashCode());
-        for (int y = 0; y < request.height(); y += 128)
+        for (int y = 0; y < request.height(); y += 128) {
           for (int x = 0; x < request.width(); x += 128) {
             g.setColor(new Color(random.nextInt(0xffffff)));
             g.fillRect(x, y, 128, 128);
           }
+        }
         g.dispose();
         var out = new ByteArrayOutputStream();
         ImageIO.write(image, "png", out);
@@ -517,11 +549,13 @@ class StockIntegrationTest {
   }
 
   static class FixtureProcessing implements ProcessingProvider {
+
     public Map<String, Object> capabilities() {
       return Map.of();
     }
 
-    public void cancel(UUID id) {}
+    public void cancel(UUID id) {
+    }
 
     public Map<String, Object> cropPreview(
         byte[] b, Map<String, Object> p, List<Map<String, Object>> r) {

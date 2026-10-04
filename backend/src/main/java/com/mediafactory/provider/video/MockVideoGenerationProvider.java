@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class MockVideoGenerationProvider implements VideoGenerationProvider {
+
   final VideoWorkerClient worker;
 
   public MockVideoGenerationProvider(VideoWorkerClient worker) {
@@ -52,7 +53,9 @@ public class MockVideoGenerationProvider implements VideoGenerationProvider {
   }
 
   public Status status(String id) {
-    if (!id.startsWith("mock-")) throw new IllegalArgumentException("Invalid mock task");
+    if (!id.startsWith("mock-")) {
+      throw new IllegalArgumentException("Invalid mock task");
+    }
     return new Status("SUCCEEDED", BigDecimal.ZERO, "USD", null, Map.of("mock", true));
   }
 

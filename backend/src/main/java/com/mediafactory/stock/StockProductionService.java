@@ -19,6 +19,17 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class StockProductionService {
+
+  static final Set<String> ACTIVE =
+      Set.of(
+          "DRAFT",
+          "SOURCE_READY",
+          "QA_PENDING",
+          "QA_APPROVED",
+          "SIMILARITY_CHECK",
+          "PROCESSING",
+          "TECHNICAL_VALIDATION",
+          "METADATA_GENERATION");
   final JdbcClient db;
   final TransactionTemplate tx;
   final FactoryService factory;
@@ -30,16 +41,6 @@ public class StockProductionService {
   final StockTechnicalValidator technical;
   final StockMetadataService metadata;
   final MeterRegistry metrics;
-  static final Set<String> ACTIVE =
-      Set.of(
-          "DRAFT",
-          "SOURCE_READY",
-          "QA_PENDING",
-          "QA_APPROVED",
-          "SIMILARITY_CHECK",
-          "PROCESSING",
-          "TECHNICAL_VALIDATION",
-          "METADATA_GENERATION");
 
   public StockProductionService(
       JdbcClient db,
@@ -82,7 +83,11 @@ public class StockProductionService {
             "provenance",
             "result",
             "snapshot",
-            "manifest")) if (out.get(k) != null) out.put(k, map(out.get(k)));
+            "manifest")) {
+      if (out.get(k) != null) {
+        out.put(k, map(out.get(k)));
+      }
+    }
     return out;
   }
 
@@ -119,7 +124,9 @@ public class StockProductionService {
         .map(
             r -> {
               var out = json(r);
-              if (out.get("metadata") != null) out.put("metadata", map(out.get("metadata")));
+              if (out.get("metadata") != null) {
+                out.put("metadata", map(out.get("metadata")));
+              }
               return out;
             })
         .toList();
@@ -144,15 +151,17 @@ public class StockProductionService {
                 .param(key)
                 .query()
                 .singleRow());
-    if (!Boolean.TRUE.equals(map(r.get("definition")).get("enabled")))
+    if (!Boolean.TRUE.equals(map(r.get("definition")).get("enabled"))) {
       throw conflict("Profile requires requirement review before enabling");
+    }
     return r;
   }
 
   public Object newProfile(String key, int previous, Map<String, Object> p) {
     StockPlatformRequirements.validate(p);
-    if (!key.matches("STOCK_[A-Z0-9_]{1,60}"))
+    if (!key.matches("STOCK_[A-Z0-9_]{1,60}")) {
       throw new IllegalArgumentException("Invalid profile key");
+    }
     for (String k :
         List.of(
             "minimumMegapixels",
@@ -168,10 +177,13 @@ public class StockProductionService {
             "minimumDescriptionLength",
             "maximumDescriptionLength",
             "minimumKeywords",
-            "maximumKeywords"))
+            "maximumKeywords")) {
       if (!(p.get(k) instanceof Number n)
           || !Double.isFinite(n.doubleValue())
-          || n.doubleValue() < 0) throw new IllegalArgumentException("Invalid " + k);
+          || n.doubleValue() < 0) {
+        throw new IllegalArgumentException("Invalid " + k);
+      }
+    }
     if (number(p, "minimumMegapixels", 0) > number(p, "maximumMegapixels", 64)
         || number(p, "maximumMegapixels", 0) > 64
         || integer(p, "maximumFileSize", 0) > 67108864
@@ -180,9 +192,10 @@ public class StockProductionService {
         || integer(p, "maximumTitleLength", 0) > 500
         || integer(p, "maximumDescriptionLength", 0) > 4000
         || !"sRGB".equals(p.get("colorSpace"))
-        || !List.of("JPEG").equals(p.get("acceptedFormats")))
+        || !List.of("JPEG").equals(p.get("acceptedFormats"))) {
       throw new IllegalArgumentException(
           "Invalid profile bounds; initial export supports JPEG/sRGB");
+    }
     processing.profile(p.get("processingProfile").toString());
     qa.policy(p.get("qaPolicy").toString());
     return tx.execute(
@@ -198,7 +211,9 @@ public class StockProductionService {
                   .param(key)
                   .query(Integer.class)
                   .single();
-          if (v != previous) throw conflict("Profile changed");
+          if (v != previous) {
+            throw conflict("Profile changed");
+          }
           return json(
               db.sql(
                       "insert into stock_profile_versions(profile_key,version,definition)"
@@ -210,16 +225,20 @@ public class StockProductionService {
   }
 
   public Map<String, Object> start(UUID concept, UUID asset, String key, String requestKey) {
-    if (requestKey == null || requestKey.isBlank() || requestKey.length() > 180)
+    if (requestKey == null || requestKey.isBlank() || requestKey.length() > 180) {
       throw new IllegalArgumentException("Idempotency-Key required (1..180 characters)");
+    }
     if (asset != null) {
       var a = processing.asset(asset);
       var g = factory.one("generations", (UUID) a.get("generation_id"));
-      if (concept != null && !concept.equals(g.get("concept_id")))
+      if (concept != null && !concept.equals(g.get("concept_id"))) {
         throw conflict("Asset belongs to another concept");
+      }
       concept = (UUID) g.get("concept_id");
     }
-    if (concept == null) throw new IllegalArgumentException("Concept or source asset required");
+    if (concept == null) {
+      throw new IllegalArgumentException("Concept or source asset required");
+    }
     UUID cId = concept;
     String hash = ProcessingPlanner.hash(Arrays.asList(concept, asset, key));
     return tx.execute(
@@ -234,14 +253,16 @@ public class StockProductionService {
                   .query()
                   .listOfRows();
           if (!old.isEmpty()) {
-            if (!hash.equals(old.getFirst().get("request_hash")))
+            if (!hash.equals(old.getFirst().get("request_hash"))) {
               throw conflict("Idempotency key reused for different input");
+            }
             return one((UUID) old.getFirst().get("id"));
           }
           var c = factory.one("concepts", cId);
           var col = factory.one("collections", (UUID) c.get("collection_id"));
-          if (!"STOCK_STRICT".equals(col.get("similarity_profile")))
+          if (!"STOCK_STRICT".equals(col.get("similarity_profile"))) {
             throw conflict("Stock collection must use STOCK_STRICT similarity");
+          }
           var profile = profile(key);
           var p = new LinkedHashMap<>(map(profile.get("definition")));
           p.put(
@@ -291,7 +312,9 @@ public class StockProductionService {
                           + " id=? and revision=?")
                   .params(next, reason, s.get("id"), s.get("revision"))
                   .update();
-          if (changed == 1) event((UUID) s.get("id"), next, Map.of("reason", reason));
+          if (changed == 1) {
+            event((UUID) s.get("id"), next, Map.of("reason", reason));
+          }
           return changed == 1;
         });
   }
@@ -337,8 +360,9 @@ public class StockProductionService {
               .query()
               .listOfRows());
     }
-    if (s.get("stock_variant_id") != null)
+    if (s.get("stock_variant_id") != null) {
       s.put("variant", variant((UUID) s.get("stock_variant_id")));
+    }
     return s;
   }
 
@@ -364,31 +388,39 @@ public class StockProductionService {
       return errors;
     }
     var a = processing.asset((UUID) s.get("source_asset_id"));
-    if (!"APPROVED".equals(a.get("final_decision"))) errors.add("QA_NOT_APPROVED");
+    if (!"APPROVED".equals(a.get("final_decision"))) {
+      errors.add("QA_NOT_APPROVED");
+    }
     if (a.get("current_review_id") != null) {
       var review = reviews.review((UUID) a.get("current_review_id"));
       var frozen = map(s.get("profile_snapshot"));
       if (!Objects.equals(review.get("policy_id"), frozen.get("qaPolicy"))
           || !Objects.equals(
-              review.get("policy_version"), map(frozen.get("qaPolicySnapshot")).get("version")))
+          review.get("policy_version"), map(frozen.get("qaPolicySnapshot")).get("version"))) {
         errors.add("QA_POLICY_CHANGED");
+      }
     }
     if (!"STOCK_STRICT"
         .equals(
-            factory.one("collections", (UUID) s.get("collection_id")).get("similarity_profile")))
+            factory.one("collections", (UUID) s.get("collection_id")).get("similarity_profile"))) {
       errors.add("STOCK_SIMILARITY_POLICY_CHANGED");
+    }
     if (!"READY"
-        .equals(similarity.state((UUID) s.get("source_asset_id"), similarity.activeModel().id())))
+        .equals(similarity.state((UUID) s.get("source_asset_id"), similarity.activeModel().id()))) {
       errors.add("SIMILARITY_INCOMPLETE");
+    }
     db.sql("select similarity_publication_block_reason(?)")
         .param(s.get("source_asset_id"))
         .query(String.class)
         .optional()
         .ifPresent(errors::add);
-    if (s.get("stock_variant_id") == null) errors.add("STOCK_VARIANT_MISSING");
-    else {
+    if (s.get("stock_variant_id") == null) {
+      errors.add("STOCK_VARIANT_MISSING");
+    } else {
       var v = variant((UUID) s.get("stock_variant_id"));
-      if (!"VALID".equals(v.get("validation_status"))) errors.add("VARIANT_INVALID");
+      if (!"VALID".equals(v.get("validation_status"))) {
+        errors.add("VARIANT_INVALID");
+      }
       var validation =
           db.sql(
                   "select result from stock_validation_results where production_id=? and"
@@ -396,18 +428,25 @@ public class StockProductionService {
               .params(s.get("id"), v.get("id"))
               .query(String.class)
               .optional();
-      if (validation.isEmpty() || !Boolean.TRUE.equals(map(validation.get()).get("valid")))
+      if (validation.isEmpty() || !Boolean.TRUE.equals(map(validation.get()).get("valid"))) {
         errors.add("TECHNICAL_VALIDATION_FAILED");
+      }
     }
     if (requireApproval) {
-      if (s.get("metadata_version_id") == null) errors.add("METADATA_MISSING");
-      else {
+      if (s.get("metadata_version_id") == null) {
+        errors.add("METADATA_MISSING");
+      } else {
         var m = metadata.version((UUID) s.get("metadata_version_id"));
-        if (!"APPROVED".equals(m.get("source"))) errors.add("METADATA_NOT_APPROVED");
-        if ("FAIL".equals(map(m.get("validation")).get("status"))) errors.add("METADATA_INVALID");
+        if (!"APPROVED".equals(m.get("source"))) {
+          errors.add("METADATA_NOT_APPROVED");
+        }
+        if ("FAIL".equals(map(m.get("validation")).get("status"))) {
+          errors.add("METADATA_INVALID");
+        }
       }
-      if (!Set.of("READY_FOR_EXPORT", "EXPORTED").contains(s.get("status")))
+      if (!Set.of("READY_FOR_EXPORT", "EXPORTED").contains(s.get("status"))) {
         errors.add("NOT_READY_FOR_EXPORT");
+      }
     }
     return errors;
   }
@@ -420,15 +459,21 @@ public class StockProductionService {
               .query()
               .singleRow();
           var s = one(id);
-          if (integer(s, "revision", -1) != revision || !"METADATA_REVIEW".equals(s.get("status")))
+          if (integer(s, "revision", -1) != revision || !"METADATA_REVIEW".equals(
+              s.get("status"))) {
             throw conflict("Stock review changed");
+          }
           var errors = gates(s, false);
-          if (!errors.isEmpty()) throw conflict(String.join(", ", errors));
+          if (!errors.isEmpty()) {
+            throw conflict(String.join(", ", errors));
+          }
           var m = metadata.version((UUID) s.get("metadata_version_id"));
-          if ("FAIL".equals(map(m.get("validation")).get("status")))
+          if ("FAIL".equals(map(m.get("validation")).get("status"))) {
             throw conflict("Metadata validation failed");
-          if ("WARNING".equals(map(m.get("validation")).get("status")) && !acknowledgeWarnings)
+          }
+          if ("WARNING".equals(map(m.get("validation")).get("status")) && !acknowledgeWarnings) {
             throw conflict("Explicitly acknowledge metadata warnings");
+          }
           var approved =
               metadata.save(
                   s,
@@ -467,7 +512,9 @@ public class StockProductionService {
               .query()
               .singleRow();
           var s = one(id);
-          if (integer(s, "revision", -1) != revision) throw conflict("Production changed");
+          if (integer(s, "revision", -1) != revision) {
+            throw conflict("Production changed");
+          }
           String next =
               switch (action) {
                 case "reject" -> "REVIEW_REJECTED";
@@ -477,8 +524,9 @@ public class StockProductionService {
                   if (s.get("status").toString().endsWith("FAILED")
                       && failure.startsWith("STAGE_EXECUTION_FAILED:")) {
                     String failedStage = failure.substring("STAGE_EXECUTION_FAILED:".length());
-                    if (!StockWorker.ACTIVE.contains(failedStage))
+                    if (!StockWorker.ACTIVE.contains(failedStage)) {
                       throw conflict("Unknown failed stage");
+                    }
                     yield failedStage;
                   }
                   yield switch (s.get("status").toString()) {
@@ -493,8 +541,10 @@ public class StockProductionService {
                 }
                 default -> throw new IllegalArgumentException("Unknown action");
               };
-          if (!action.equals("retry") && Set.of("EXPORTED", "CANCELLED").contains(s.get("status")))
+          if (!action.equals("retry") && Set.of("EXPORTED", "CANCELLED")
+              .contains(s.get("status"))) {
             throw conflict("Historical exported production cannot be cancelled or rejected");
+          }
           db.sql("update stock_productions set attempt=0 where id=?").param(id).update();
           move(s, next, "OPERATOR_" + action.toUpperCase());
           return one(id);
@@ -515,51 +565,55 @@ public class StockProductionService {
             .findFirst();
     if (plan.isPresent()
         && !Set.of("RUNNING", "COMPLETED").contains(plan.get().get("status"))
-        && Set.of("DRAFT", "SIMILARITY_CHECK", "METADATA_GENERATION").contains(status)) return;
+        && Set.of("DRAFT", "SIMILARITY_CHECK", "METADATA_GENERATION").contains(status)) {
+      return;
+    }
     switch (status) {
-      case "DRAFT" ->
-          tx.executeWithoutResult(
-              t -> {
-                db.sql("select id from stock_productions where id=? for update")
-                    .param(id)
-                    .query()
-                    .singleRow();
-                if (!one(id).get("status").equals(status)) return;
-                var c = factory.one("concepts", (UUID) s.get("concept_id"));
-                var g =
-                    factory.generatePrompt(
-                        (UUID) c.get("id"),
-                        integer(p, "generationWidth", 2048),
-                        integer(p, "generationHeight", 2048),
-                        "stock:" + id,
+      case "DRAFT" -> tx.executeWithoutResult(
+          t -> {
+            db.sql("select id from stock_productions where id=? for update")
+                .param(id)
+                .query()
+                .singleRow();
+            if (!one(id).get("status").equals(status)) {
+              return;
+            }
+            var c = factory.one("concepts", (UUID) s.get("concept_id"));
+            var g =
+                factory.generatePrompt(
+                    (UUID) c.get("id"),
+                    integer(p, "generationWidth", 2048),
+                    integer(p, "generationHeight", 2048),
+                    "stock:" + id,
+                    null,
+                    ImageOptions.defaults(),
+                    new PromptRenderRequest(
+                        UUID.fromString(p.get("imagePromptVersion").toString()),
+                        Map.of("subject", c.get("prompt")),
+                        List.of(),
                         null,
-                        ImageOptions.defaults(),
-                        new PromptRenderRequest(
-                            UUID.fromString(p.get("imagePromptVersion").toString()),
-                            Map.of("subject", c.get("prompt")),
-                            List.of(),
-                            null,
-                            null,
-                            null,
-                            (UUID) c.get("id"),
-                            "stock",
-                            null,
-                            null,
-                            null,
-                            null),
-                        false);
-                if (plan.isPresent()
-                    && (factory.route(g).stream().anyMatch(h -> !h.provider().equals("mock"))
-                        || !qa.provider().equals("mock"))
-                    && (((java.math.BigDecimal) plan.get().get("max_cost")).signum() == 0
-                        || ((java.math.BigDecimal) plan.get().get("reserve_per_attempt")).signum()
-                            == 0))
-                  throw conflict("Paid collection dispatch requires explicit budget and reserve");
-                db.sql("update stock_productions set generation_id=? where id=?")
-                    .params(g.get("id"), id)
-                    .update();
-                move(s, "SOURCE_READY", "");
-              });
+                        null,
+                        null,
+                        (UUID) c.get("id"),
+                        "stock",
+                        null,
+                        null,
+                        null,
+                        null),
+                    false);
+            if (plan.isPresent()
+                && (factory.route(g).stream().anyMatch(h -> !h.provider().equals("mock"))
+                || !qa.provider().equals("mock"))
+                && (((java.math.BigDecimal) plan.get().get("max_cost")).signum() == 0
+                || ((java.math.BigDecimal) plan.get().get("reserve_per_attempt")).signum()
+                == 0)) {
+              throw conflict("Paid collection dispatch requires explicit budget and reserve");
+            }
+            db.sql("update stock_productions set generation_id=? where id=?")
+                .params(g.get("id"), id)
+                .update();
+            move(s, "SOURCE_READY", "");
+          });
       case "SOURCE_READY" -> {
         if (s.get("source_asset_id") == null) {
           var assets =
@@ -569,8 +623,9 @@ public class StockProductionService {
                   .list();
           if (assets.isEmpty()) {
             if ("FAILED"
-                .equals(factory.one("generations", (UUID) s.get("generation_id")).get("status")))
+                .equals(factory.one("generations", (UUID) s.get("generation_id")).get("status"))) {
               move(s, "QA_REJECTED", "GENERATION_FAILED");
+            }
             return;
           }
           db.sql("update stock_productions set source_asset_id=? where id=? and revision=?")
@@ -589,9 +644,11 @@ public class StockProductionService {
       }
       case "QA_PENDING" -> {
         var a = processing.asset((UUID) s.get("source_asset_id"));
-        if ("APPROVED".equals(a.get("final_decision"))) move(s, "QA_APPROVED", "");
-        else if ("REJECTED".equals(a.get("final_decision")))
+        if ("APPROVED".equals(a.get("final_decision"))) {
+          move(s, "QA_APPROVED", "");
+        } else if ("REJECTED".equals(a.get("final_decision"))) {
           move(s, "QA_REJECTED", "VISUAL_QA_REJECTED");
+        }
       }
       case "QA_APPROVED" -> {
         var model = similarity.activeModel();
@@ -608,7 +665,9 @@ public class StockProductionService {
           move(s, "DUPLICATE_REJECTED", "SIMILARITY_FAILED");
           return;
         }
-        if (!state.equals("READY")) return;
+        if (!state.equals("READY")) {
+          return;
+        }
         var block =
             db.sql("select similarity_publication_block_reason(?)")
                 .param(s.get("source_asset_id"))
@@ -649,8 +708,9 @@ public class StockProductionService {
               .params(v, id, s.get("revision"))
               .update();
           move(s, "TECHNICAL_VALIDATION", "");
-        } else if (Set.of("FAILED", "PARTIALLY_COMPLETED", "CANCELLED").contains(r))
+        } else if (Set.of("FAILED", "PARTIALLY_COMPLETED", "CANCELLED").contains(r)) {
           move(s, "PROCESSING_FAILED", r);
+        }
       }
       case "TECHNICAL_VALIDATION" -> {
         var v = variant((UUID) s.get("stock_variant_id"));
@@ -670,11 +730,13 @@ public class StockProductionService {
             s,
             result.valid() ? "METADATA_GENERATION" : "VALIDATION_FAILED",
             result.valid() ? "" : "TECHNICAL_VALIDATION_FAILED");
-        if (!result.valid())
+        if (!result.valid()) {
           metrics.counter("media_factory_stock_validation_failed_total").increment();
+        }
       }
       case "METADATA_GENERATION" -> metadata.generate(s);
-      default -> {}
+      default -> {
+      }
     }
   }
 }

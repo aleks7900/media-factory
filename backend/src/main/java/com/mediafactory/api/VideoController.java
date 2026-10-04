@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/video")
 public class VideoController {
+
   final VideoProductionService videos;
   final VideoWorkerClient worker;
   final VideoCollectionService collections;
@@ -29,30 +30,6 @@ public class VideoController {
     this.collections = collections;
   }
 
-  public record Start(
-      @NotNull UUID sourceAssetId,
-      @NotBlank String profile,
-      String provider,
-      boolean allowFallback,
-      Map<String, Object> motion,
-      @NotNull @DecimalMin("0") BigDecimal budget,
-      @Min(1) @Max(10) int maxAttempts) {}
-
-  public record Action(@Min(0) int revision, boolean acknowledgeWarnings, String reason) {}
-
-  public record Edit(@Min(0) int revision, @NotNull Map<String, Object> motion) {}
-
-  public record Process(
-      @Min(0) int revision,
-      @NotNull Map<String, Object> settings,
-      @NotNull Map<String, Object> variants) {}
-
-  public record Regenerate(@Min(0) int revision, @NotNull @DecimalMin("0") BigDecimal budget) {}
-
-  public record Reconcile(@Min(0) int revision, @NotBlank String providerJobId) {}
-
-  public record ProfileEdit(@Min(1) int previousVersion, @NotNull Map<String, Object> settings) {}
-
   @PutMapping("/profiles/{key}")
   public Object profileEdit(@PathVariable String key, @Valid @RequestBody ProfileEdit edit) {
     return videos.profileVersion(key, edit.previousVersion(), edit.settings());
@@ -62,15 +39,6 @@ public class VideoController {
   public Object providerStats() {
     return videos.providerStats();
   }
-
-  public record Plan(
-      @NotBlank String profile,
-      String provider,
-      int targetApproved,
-      int batchSize,
-      int maxAttempts,
-      @NotNull BigDecimal budget,
-      @NotNull BigDecimal reservedCostPerVideo) {}
 
   @PutMapping("/collections/{id}/plan")
   public Object plan(@PathVariable UUID id, @Valid @RequestBody Plan p) {
@@ -195,5 +163,54 @@ public class VideoController {
             MediaType.parseMediaType(row.get("format").equals("MP4") ? "video/mp4" : "image/jpeg"))
         .contentLength(data.length)
         .body(new ByteArrayResource(data));
+  }
+
+  public record Start(
+      @NotNull UUID sourceAssetId,
+      @NotBlank String profile,
+      String provider,
+      boolean allowFallback,
+      Map<String, Object> motion,
+      @NotNull @DecimalMin("0") BigDecimal budget,
+      @Min(1) @Max(10) int maxAttempts) {
+
+  }
+
+  public record Action(@Min(0) int revision, boolean acknowledgeWarnings, String reason) {
+
+  }
+
+  public record Edit(@Min(0) int revision, @NotNull Map<String, Object> motion) {
+
+  }
+
+  public record Process(
+      @Min(0) int revision,
+      @NotNull Map<String, Object> settings,
+      @NotNull Map<String, Object> variants) {
+
+  }
+
+  public record Regenerate(@Min(0) int revision, @NotNull @DecimalMin("0") BigDecimal budget) {
+
+  }
+
+  public record Reconcile(@Min(0) int revision, @NotBlank String providerJobId) {
+
+  }
+
+  public record ProfileEdit(@Min(1) int previousVersion, @NotNull Map<String, Object> settings) {
+
+  }
+
+  public record Plan(
+      @NotBlank String profile,
+      String provider,
+      int targetApproved,
+      int batchSize,
+      int maxAttempts,
+      @NotNull BigDecimal budget,
+      @NotNull BigDecimal reservedCostPerVideo) {
+
   }
 }

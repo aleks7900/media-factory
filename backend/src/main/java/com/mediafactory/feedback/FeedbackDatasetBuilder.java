@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class FeedbackDatasetBuilder {
+
   private final FeedbackStore store;
   private final AnalyticsFeedbackDataset analytics;
 
@@ -51,7 +52,9 @@ public class FeedbackDatasetBuilder {
     scope.forEach(
         (key, value) -> {
           check(value != null && !value.toString().isBlank(), "Scope filters cannot be empty");
-          if (key.endsWith("Id")) UUID.fromString(value.toString());
+          if (key.endsWith("Id")) {
+            UUID.fromString(value.toString());
+          }
         });
     p.putIfAbsent("featureRole", "OBSERVED");
     check(Set.of("OBSERVED", "REQUESTED").contains(p.get("featureRole")), "Invalid feature role");
@@ -178,10 +181,12 @@ public class FeedbackDatasetBuilder {
     warnings.add(
         "ASSET_GRAIN: failed generations without assets remain in TASK-10 economics but cannot have"
             + " observed visual features");
-    if (((Number) coverage.get("unavailable")).longValue() > 0)
+    if (((Number) coverage.get("unavailable")).longValue() > 0) {
       warnings.add("METRIC_UNAVAILABLE:" + coverage.get("unavailable"));
-    if (((Number) coverage.get("missing_features")).longValue() > 0)
+    }
+    if (((Number) coverage.get("missing_features")).longValue() > 0) {
       warnings.add("MISSING_VISUAL_FEATURES:" + coverage.get("missing_features"));
+    }
     store
         .db
         .sql(

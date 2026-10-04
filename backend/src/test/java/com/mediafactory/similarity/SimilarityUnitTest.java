@@ -11,6 +11,18 @@ import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 
 class SimilarityUnitTest {
+
+  final Map<String, Object> profile =
+      Map.of(
+          "duplicate_distance",
+          4,
+          "near_distance",
+          10,
+          "near_similarity",
+          .94,
+          "similar_threshold",
+          .86);
+
   static byte[] fixture(int seed, int size, String format) throws Exception {
     var image = new BufferedImage(size, size, BufferedImage.TYPE_INT_RGB);
     var g = image.createGraphics();
@@ -52,28 +64,17 @@ class SimilarityUnitTest {
 
   @Test
   void normalizationRejectsInvalidDimensionNanZeroAndNonUnit() {
-    assertThatThrownBy(() -> ImageEmbeddingProvider.validate(new float[] {1}, 2))
+    assertThatThrownBy(() -> ImageEmbeddingProvider.validate(new float[]{1}, 2))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> ImageEmbeddingProvider.validate(new float[] {Float.NaN}, 1))
+    assertThatThrownBy(() -> ImageEmbeddingProvider.validate(new float[]{Float.NaN}, 1))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> ImageEmbeddingProvider.validate(new float[] {0, 0}, 2))
+    assertThatThrownBy(() -> ImageEmbeddingProvider.validate(new float[]{0, 0}, 2))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> ImageEmbeddingProvider.validate(new float[] {1, 1}, 2))
+    assertThatThrownBy(() -> ImageEmbeddingProvider.validate(new float[]{1, 1}, 2))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThat(ImageEmbeddingProvider.validate(new float[] {.6f, .8f}, 2))
+    assertThat(ImageEmbeddingProvider.validate(new float[]{.6f, .8f}, 2))
         .containsExactly(.6f, .8f);
   }
-
-  final Map<String, Object> profile =
-      Map.of(
-          "duplicate_distance",
-          4,
-          "near_distance",
-          10,
-          "near_similarity",
-          .94,
-          "similar_threshold",
-          .86);
 
   String classify(boolean sha, int phash, double cosine, boolean low, boolean family) {
     return new DefaultSimilarityPolicy()
@@ -132,13 +133,15 @@ class SimilarityUnitTest {
     var model = p.modelMetadata();
     var inputs =
         List.of(
-            new ImageEmbeddingProvider.Input(UUID.randomUUID(), new byte[] {1}),
-            new ImageEmbeddingProvider.Input(UUID.randomUUID(), new byte[] {2}));
+            new ImageEmbeddingProvider.Input(UUID.randomUUID(), new byte[]{1}),
+            new ImageEmbeddingProvider.Input(UUID.randomUUID(), new byte[]{2}));
     var a = p.embed(inputs, model);
     var b = p.embed(inputs, model);
     assertThat(a.vectors()).hasSize(2);
     assertThat(a.vectors().getFirst()).containsExactly(b.vectors().getFirst());
-    for (float[] v : a.vectors()) ImageEmbeddingProvider.validate(v, 512);
+    for (float[] v : a.vectors()) {
+      ImageEmbeddingProvider.validate(v, 512);
+    }
     assertThat(a.metadata()).containsEntry("device", "cpu");
   }
 }

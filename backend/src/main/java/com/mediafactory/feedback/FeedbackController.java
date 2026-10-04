@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/feedback")
 public class FeedbackController {
+
   private final FeedbackStore store;
   private final VisualFeatureService features;
   private final FeedbackJobs jobs;
@@ -39,15 +40,15 @@ public class FeedbackController {
         .db
         .sql(
             """
-            select (select count(*) from feedback_findings where status='DISCOVERED') new_findings,
-            (select count(*) from feedback_findings where confidence='HIGH') high_confidence_findings,
-            (select count(*) from feedback_findings where status='STALE') stale_findings,
-            (select count(*) from experiment_hypotheses where status='PROPOSED') hypotheses_awaiting_review,
-            (select count(*) from feedback_experiment_plans where approved_at is null) experiments_awaiting_approval,
-            (select count(*) from prompt_experiments where source_hypothesis_id is not null and status='RUNNING') running_experiments,
-            (select count(*) from prompt_experiments where feedback_stage='OBSERVING') observing_experiments,
-            (select count(*) from prompt_experiments where source_hypothesis_id is not null and status='COMPLETED') completed_experiments
-            """)
+                select (select count(*) from feedback_findings where status='DISCOVERED') new_findings,
+                (select count(*) from feedback_findings where confidence='HIGH') high_confidence_findings,
+                (select count(*) from feedback_findings where status='STALE') stale_findings,
+                (select count(*) from experiment_hypotheses where status='PROPOSED') hypotheses_awaiting_review,
+                (select count(*) from feedback_experiment_plans where approved_at is null) experiments_awaiting_approval,
+                (select count(*) from prompt_experiments where source_hypothesis_id is not null and status='RUNNING') running_experiments,
+                (select count(*) from prompt_experiments where feedback_stage='OBSERVING') observing_experiments,
+                (select count(*) from prompt_experiments where source_hypothesis_id is not null and status='COMPLETED') completed_experiments
+                """)
         .query()
         .singleRow();
   }

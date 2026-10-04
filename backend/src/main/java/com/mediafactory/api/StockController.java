@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1")
 public class StockController {
+
   final StockProductionService stock;
   final StockMetadataService metadata;
   final StockExportService exports;
@@ -26,33 +27,6 @@ public class StockController {
     this.exports = exports;
     this.collections = collections;
   }
-
-  public record Start(UUID conceptId, UUID sourceAssetId, @NotBlank String profile) {}
-
-  public record Action(@Min(0) int revision, boolean acknowledgeWarnings) {}
-
-  public record Edit(@Min(0) int revision, @NotNull Map<String, Object> data) {}
-
-  public record Regenerate(@Min(0) int revision, @NotBlank String scope) {}
-
-  public record Profile(@Min(0) int previousVersion, @NotNull Map<String, Object> definition) {}
-
-  public record Export(
-      @NotBlank String profile,
-      List<UUID> stockProductionIds,
-      UUID collectionId,
-      boolean incremental,
-      @NotBlank String policy) {}
-
-  public record Collection(@NotNull UUID projectId, @NotBlank @Size(max = 200) String title) {}
-
-  public record Plan(
-      @NotBlank String profile,
-      int targetApproved,
-      int batchSize,
-      int maxGenerationAttempts,
-      @NotNull BigDecimal maxGenerationCost,
-      @NotNull BigDecimal reservedCostPerAttempt) {}
 
   @GetMapping("/stock-productions")
   public Object list() {
@@ -196,5 +170,48 @@ public class StockController {
   @GetMapping("/stock-dashboard")
   public Object dashboard() {
     return collections.dashboard();
+  }
+
+  public record Start(UUID conceptId, UUID sourceAssetId, @NotBlank String profile) {
+
+  }
+
+  public record Action(@Min(0) int revision, boolean acknowledgeWarnings) {
+
+  }
+
+  public record Edit(@Min(0) int revision, @NotNull Map<String, Object> data) {
+
+  }
+
+  public record Regenerate(@Min(0) int revision, @NotBlank String scope) {
+
+  }
+
+  public record Profile(@Min(0) int previousVersion, @NotNull Map<String, Object> definition) {
+
+  }
+
+  public record Export(
+      @NotBlank String profile,
+      List<UUID> stockProductionIds,
+      UUID collectionId,
+      boolean incremental,
+      @NotBlank String policy) {
+
+  }
+
+  public record Collection(@NotNull UUID projectId, @NotBlank @Size(max = 200) String title) {
+
+  }
+
+  public record Plan(
+      @NotBlank String profile,
+      int targetApproved,
+      int batchSize,
+      int maxGenerationAttempts,
+      @NotNull BigDecimal maxGenerationCost,
+      @NotNull BigDecimal reservedCostPerAttempt) {
+
   }
 }

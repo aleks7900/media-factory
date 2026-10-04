@@ -171,18 +171,24 @@ WHERE s.generation_id=a.generation_id AND s.provider=a.provider;
 CREATE FUNCTION reject_prompt_mutation() RETURNS trigger
     LANGUAGE plpgsql AS $$
 BEGIN
- RAISE EXCEPTION 'Immutable prompt record' USING ERRCODE='23514';
+ RAISE
+EXCEPTION 'Immutable prompt record' USING ERRCODE='23514';
 END $$;
 CREATE TRIGGER immutable_snapshot
-    BEFORE UPDATE OR DELETE ON rendered_prompt_snapshots FOR EACH ROW
+    BEFORE UPDATE OR
+DELETE
+ON rendered_prompt_snapshots FOR EACH ROW
 EXECUTE FUNCTION reject_prompt_mutation();
 CREATE TRIGGER immutable_preset_version
-    BEFORE UPDATE OR DELETE ON prompt_preset_versions FOR EACH ROW
+    BEFORE UPDATE OR
+DELETE
+ON prompt_preset_versions FOR EACH ROW
 EXECUTE FUNCTION reject_prompt_mutation();
 CREATE FUNCTION protect_prompt_version() RETURNS trigger
     LANGUAGE plpgsql AS $$
 BEGIN
- IF OLD.status <> 'DRAFT' THEN
+ IF
+OLD.status <> 'DRAFT' THEN
   IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Published version is immutable' USING ERRCODE='23514';
 END IF;
   IF
@@ -197,12 +203,15 @@ END IF;
 RETURN NEW;
 END $$;
 CREATE TRIGGER protect_version
-    BEFORE UPDATE OR DELETE ON prompt_versions FOR EACH ROW
+    BEFORE UPDATE OR
+DELETE
+ON prompt_versions FOR EACH ROW
 EXECUTE FUNCTION protect_prompt_version();
 CREATE FUNCTION protect_prompt_variables() RETURNS trigger
     LANGUAGE plpgsql AS $$ DECLARE v uuid;
 BEGIN
- IF TG_OP='DELETE' THEN v=OLD.prompt_version_id;
+ IF
+TG_OP='DELETE' THEN v=OLD.prompt_version_id;
 ELSE v=NEW.prompt_version_id;
 END IF;
  PERFORM
@@ -220,12 +229,16 @@ END IF;
 RETURN NEW;
 END $$;
 CREATE TRIGGER protect_variables
-    BEFORE INSERT OR UPDATE OR DELETE ON prompt_variable_definitions FOR EACH ROW
-EXECUTE FUNCTION protect_prompt_variables();
+    BEFORE INSERT OR
+UPDATE OR
+DELETE
+ON prompt_variable_definitions FOR EACH ROW
+    EXECUTE FUNCTION protect_prompt_variables();
 CREATE FUNCTION protect_experiment() RETURNS trigger
     LANGUAGE plpgsql AS $$
 BEGIN
- IF OLD.status<>'DRAFT' THEN
+ IF
+OLD.status<>'DRAFT' THEN
   IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Experiment configuration is immutable' USING ERRCODE='23514';
 END IF;
   IF
@@ -239,12 +252,15 @@ END IF;
 RETURN NEW;
 END $$;
 CREATE TRIGGER protect_experiment_config
-    BEFORE UPDATE OR DELETE ON prompt_experiments FOR EACH ROW
+    BEFORE UPDATE OR
+DELETE
+ON prompt_experiments FOR EACH ROW
 EXECUTE FUNCTION protect_experiment();
 CREATE FUNCTION protect_variant() RETURNS trigger
     LANGUAGE plpgsql AS $$ DECLARE e uuid;
 BEGIN
- IF TG_OP='DELETE' THEN e=OLD.experiment_id;
+ IF
+TG_OP='DELETE' THEN e=OLD.experiment_id;
 ELSE e=NEW.experiment_id;
 END IF;
  PERFORM
@@ -262,12 +278,16 @@ END IF;
 RETURN NEW;
 END $$;
 CREATE TRIGGER protect_variants
-    BEFORE INSERT OR UPDATE OR DELETE ON prompt_experiment_variants FOR EACH ROW
-EXECUTE FUNCTION protect_variant();
+    BEFORE INSERT OR
+UPDATE OR
+DELETE
+ON prompt_experiment_variants FOR EACH ROW
+    EXECUTE FUNCTION protect_variant();
 CREATE FUNCTION protect_generation_prompt() RETURNS trigger
     LANGUAGE plpgsql AS $$
 BEGIN
- IF OLD.prompt_snapshot_id IS NOT NULL AND (NEW.prompt_snapshot_id,NEW.prompt_version_id,NEW.experiment_id,NEW.experiment_variant_id,NEW.prompt,NEW.prompt_request)
+ IF
+OLD.prompt_snapshot_id IS NOT NULL AND (NEW.prompt_snapshot_id,NEW.prompt_version_id,NEW.experiment_id,NEW.experiment_variant_id,NEW.prompt,NEW.prompt_request)
  IS DISTINCT FROM (OLD.prompt_snapshot_id,OLD.prompt_version_id,OLD.experiment_id,OLD.experiment_variant_id,OLD.prompt,OLD.prompt_request) THEN
  RAISE EXCEPTION 'Generation prompt attribution is immutable' USING ERRCODE='23514';
 END IF;

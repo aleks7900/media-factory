@@ -5,7 +5,9 @@ import static com.mediafactory.processing.ProcessingJson.*;
 import java.util.*;
 
 public final class VideoProfiles {
-  private VideoProfiles() {}
+
+  private VideoProfiles() {
+  }
 
   public static Map<String, Object> settings(
       Map<String, Object> base, Map<String, Object> changes) {
@@ -33,8 +35,9 @@ public final class VideoProfiles {
             "allowCpuFallback",
             "targetBitrate",
             "bitrateMode");
-    if (!allowed.containsAll(changes.keySet()))
+    if (!allowed.containsAll(changes.keySet())) {
       throw new IllegalArgumentException("Unknown video processing setting");
+    }
     var p = new LinkedHashMap<>(base);
     p.putAll(changes);
     range(p, "width", 64, 4096);
@@ -44,17 +47,24 @@ public final class VideoProfiles {
     range(p, "quality", 0, 40);
     range(p, "targetBitrate", 100000, 30000000);
     range(p, "saturation", .5, 1.5);
-    for (String axis : List.of("width", "height"))
-      if (number(p, axis, 0) % 2 != 0)
+    for (String axis : List.of("width", "height")) {
+      if (number(p, axis, 0) % 2 != 0) {
         throw new IllegalArgumentException("Video dimensions must be even integers");
-    if (number(p, "fps", 0) % 1 != 0 || number(p, "width", 0) * number(p, "height", 0) > 9_000_000)
+      }
+    }
+    if (number(p, "fps", 0) % 1 != 0
+        || number(p, "width", 0) * number(p, "height", 0) > 9_000_000) {
       throw new IllegalArgumentException("Video processing bounds exceeded");
-    for (String k : List.of("focalX", "focalY")) range(p, k, 0, 1);
+    }
+    for (String k : List.of("focalX", "focalY")) {
+      range(p, k, 0, 1);
+    }
     range(p, "crossfadeSeconds", .1, 2);
-    if (number(p, "crossfadeSeconds", .5) * 2 >= number(p, "duration", 5))
+    if (number(p, "crossfadeSeconds", .5) * 2 >= number(p, "duration", 5)) {
       throw new IllegalArgumentException("Crossfade is too long");
-    for (String k : List.of("denoise", "sharpen", "saturation", "trimStart"))
-      if (p.containsKey(k))
+    }
+    for (String k : List.of("denoise", "sharpen", "saturation", "trimStart")) {
+      if (p.containsKey(k)) {
         range(
             p,
             k,
@@ -62,6 +72,8 @@ public final class VideoProfiles {
             k.equals("trimStart")
                 ? 25
                 : k.equals("denoise") ? 3 : k.equals("saturation") ? 1.5 : 1);
+      }
+    }
     for (var rule :
         Map.of(
                 "codec",
@@ -76,12 +88,16 @@ public final class VideoProfiles {
                 Set.of("FIT", "FILL"),
                 "bitrateMode",
                 Set.of("QUALITY", "BITRATE"))
-            .entrySet())
-      if (!rule.getValue().contains(p.get(rule.getKey())))
+            .entrySet()) {
+      if (!rule.getValue().contains(p.get(rule.getKey()))) {
         throw new IllegalArgumentException("Unsupported " + rule.getKey());
-    for (String k : List.of("stabilize", "interpolate", "allowCpuFallback"))
-      if (p.containsKey(k) && !(p.get(k) instanceof Boolean))
+      }
+    }
+    for (String k : List.of("stabilize", "interpolate", "allowCpuFallback")) {
+      if (p.containsKey(k) && !(p.get(k) instanceof Boolean)) {
         throw new IllegalArgumentException("Invalid " + k);
+      }
+    }
     return p;
   }
 
@@ -89,6 +105,8 @@ public final class VideoProfiles {
     if (!(p.get(key) instanceof Number n)
         || !Double.isFinite(n.doubleValue())
         || n.doubleValue() < low
-        || n.doubleValue() > high) throw new IllegalArgumentException("Invalid " + key);
+        || n.doubleValue() > high) {
+      throw new IllegalArgumentException("Invalid " + key);
+    }
   }
 }

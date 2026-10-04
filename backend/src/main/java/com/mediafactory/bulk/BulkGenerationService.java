@@ -19,12 +19,56 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class BulkGenerationService {
+
   final JdbcClient db;
   final TransactionTemplate tx;
   final MediaStorage storage;
   final FactoryService factory;
   final BulkArchiveParser parser;
   final Map<String, BulkProcessor> processors;
+
+  public BulkGenerationService(
+      JdbcClient db,
+      TransactionTemplate tx,
+      MediaStorage storage,
+      FactoryService factory,
+      BulkArchiveParser parser,
+      List<BulkProcessor> processors) {
+    this.db = db;
+    this.tx = tx;
+    this.storage = storage;
+    this.factory = factory;
+    this.parser = parser;
+    var map = new HashMap<String, BulkProcessor>();
+    processors.forEach(p -> map.put(p.kind(), p));
+    this.processors = Map.copyOf(map);
+  }
+
+  static void check(boolean ok, String message) {
+    if (!ok) {
+      throw new IllegalArgumentException(message);
+    }
+  }
+
+  static String sha(byte[] bytes) {
+    try {
+      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+    } catch (Exception e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
+  static Map<String, Object> clean(Map<String, Object> row) {
+    var result = new LinkedHashMap<>(row);
+    result.replaceAll(
+        (k, v) ->
+            v != null && v.getClass().getSimpleName().equals("PGobject")
+                ? tools.jackson.databind.json.JsonMapper.builder()
+                .build()
+                .readValue(v.toString(), Object.class)
+                : v);
+    return result;
+  }
 
   JdbcClient database() {
     return db;
@@ -44,56 +88,6 @@ public class BulkGenerationService {
 
   BulkArchiveParser archiveParser() {
     return parser;
-  }
-
-  public BulkGenerationService(
-      JdbcClient db,
-      TransactionTemplate tx,
-      MediaStorage storage,
-      FactoryService factory,
-      BulkArchiveParser parser,
-      List<BulkProcessor> processors) {
-    this.db = db;
-    this.tx = tx;
-    this.storage = storage;
-    this.factory = factory;
-    this.parser = parser;
-    var map = new HashMap<String, BulkProcessor>();
-    processors.forEach(p -> map.put(p.kind(), p));
-    this.processors = Map.copyOf(map);
-  }
-
-  public record ImportRequest(
-      UUID projectId,
-      String name,
-      String kind,
-      String provider,
-      String model,
-      Map<String, Object> options,
-      boolean authorizePaid) {}
-
-  static void check(boolean ok, String message) {
-    if (!ok) throw new IllegalArgumentException(message);
-  }
-
-  static String sha(byte[] bytes) {
-    try {
-      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
-    } catch (Exception e) {
-      throw new IllegalStateException(e);
-    }
-  }
-
-  static Map<String, Object> clean(Map<String, Object> row) {
-    var result = new LinkedHashMap<>(row);
-    result.replaceAll(
-        (k, v) ->
-            v != null && v.getClass().getSimpleName().equals("PGobject")
-                ? tools.jackson.databind.json.JsonMapper.builder()
-                    .build()
-                    .readValue(v.toString(), Object.class)
-                : v);
-    return result;
   }
 
   Map<String, Object> batch(UUID id) {
@@ -158,9 +152,10 @@ public class BulkGenerationService {
             .query()
             .listOfRows();
     if (!existing.isEmpty()) {
-      if (!hash.equals(existing.getFirst().get("request_hash")))
+      if (!hash.equals(existing.getFirst().get("request_hash"))) {
         throw new ResponseStatusException(
             HttpStatus.CONFLICT, "Import key conflicts with previous archive/options");
+      }
       return detail((UUID) existing.getFirst().get("id"));
     }
     var parsed = parser.parse(new ByteArrayInputStream(archive));
@@ -169,7 +164,9 @@ public class BulkGenerationService {
     String archiveKey = "bulk/" + id + "/source.zip";
     storage.putOriginal(archiveKey, archive, "application/zip");
     String display = filename == null ? "tasks.zip" : filename.replaceAll("[\\\\/\\p{Cntrl}]", "_");
-    if (display.length() > 200) display = display.substring(display.length() - 200);
+    if (display.length() > 200) {
+      display = display.substring(display.length() - 200);
+    }
     db.sql(
             "insert into"
                 + " bulk_batches(id,project_id,collection_id,name,kind,provider,model,configuration,archive_key,archive_sha256,archive_name,idempotency_key,request_hash)"
@@ -220,18 +217,19 @@ public class BulkGenerationService {
               item.prompt(),
               r.options(),
               item.references());
-      if (error == null)
+      if (error == null) {
         try {
           check(item.prompt().length() <= 10000, "Prompt exceeds 10000 characters");
           processor(r.kind()).validate(input);
         } catch (RuntimeException invalid) {
           error =
               invalid instanceof IllegalArgumentException
-                      || invalid
-                          instanceof com.mediafactory.provider.resilience.ImageGenerationException
+                  || invalid
+                  instanceof com.mediafactory.provider.resilience.ImageGenerationException
                   ? invalid.getMessage()
                   : "Provider unavailable or configuration invalid";
         }
+      }
       UUID concept =
           (UUID)
               factory
@@ -298,8 +296,10 @@ public class BulkGenerationService {
             .listOfRows();
     var stats = new LinkedHashMap<String, Long>();
     for (String state :
-        List.of("PENDING", "QUEUED", "GENERATING", "COMPLETED", "FAILED", "RETRYING", "CANCELLED"))
+        List.of("PENDING", "QUEUED", "GENERATING", "COMPLETED", "FAILED", "RETRYING",
+            "CANCELLED")) {
       stats.put(state, 0L);
+    }
     counts.forEach(
         c -> stats.put(c.get("status").toString(), ((Number) c.get("count")).longValue()));
     long total = stats.values().stream().mapToLong(Long::longValue).sum();
@@ -310,19 +310,19 @@ public class BulkGenerationService {
         Boolean.TRUE.equals(b.get("cancelled"))
             ? "CANCELLED"
             : Boolean.TRUE.equals(b.get("paused"))
-                ? "PAUSED"
+              ? "PAUSED"
                 : stats.get("GENERATING") > 0 || stats.get("RETRYING") > 0
-                    ? "RUNNING"
+                  ? "RUNNING"
                     : stats.get("QUEUED") > 0
-                        ? "QUEUED"
+                      ? "QUEUED"
                         : stats.get("FAILED") > 0
-                            ? "FAILED"
+                          ? "FAILED"
                             : stats.get("CANCELLED") == total && total > 0
-                                ? "CANCELLED"
+                              ? "CANCELLED"
                                 : "COMPLETED";
     b.put("status", status);
     if (stats.get("QUEUED") + stats.get("PENDING") + stats.get("GENERATING") + stats.get("RETRYING")
-        == 0)
+        == 0) {
       b.put(
           "completed_at",
           db.sql("select max(completed_at) completed_at from bulk_tasks where batch_id=?")
@@ -330,6 +330,7 @@ public class BulkGenerationService {
               .query()
               .singleRow()
               .get("completed_at"));
+    }
     b.put(
         "references",
         db.sql(
@@ -373,7 +374,9 @@ public class BulkGenerationService {
             .param("offset", page * 100)
             .query(UUID.class)
             .list();
-    if (ids.isEmpty()) return List.of();
+    if (ids.isEmpty()) {
+      return List.of();
+    }
     var batchList =
         db.sql("select * from bulk_batches where id in (:ids) order by created_at desc, id")
             .param("ids", ids)
@@ -431,8 +434,9 @@ public class BulkGenerationService {
               "COMPLETED",
               "FAILED",
               "RETRYING",
-              "CANCELLED"))
+              "CANCELLED")) {
         stats.put(state, 0L);
+      }
       var actualCounts = countsByBatch.getOrDefault(bid, Map.of());
       actualCounts.forEach(stats::put);
       long total = stats.values().stream().mapToLong(Long::longValue).sum();
@@ -443,21 +447,21 @@ public class BulkGenerationService {
           Boolean.TRUE.equals(b.get("cancelled"))
               ? "CANCELLED"
               : Boolean.TRUE.equals(b.get("paused"))
-                  ? "PAUSED"
+                ? "PAUSED"
                   : stats.get("GENERATING") > 0 || stats.get("RETRYING") > 0
-                      ? "RUNNING"
+                    ? "RUNNING"
                       : stats.get("QUEUED") > 0
-                          ? "QUEUED"
+                        ? "QUEUED"
                           : stats.get("FAILED") > 0
-                              ? "FAILED"
+                            ? "FAILED"
                               : stats.get("CANCELLED") == total && total > 0
-                                  ? "CANCELLED"
+                                ? "CANCELLED"
                                   : "COMPLETED";
       b.put("status", st);
       if (stats.get("QUEUED")
-              + stats.get("PENDING")
-              + stats.get("GENERATING")
-              + stats.get("RETRYING")
+          + stats.get("PENDING")
+          + stats.get("GENERATING")
+          + stats.get("RETRYING")
           == 0) {
         b.put("completed_at", completedByBatch.get(bid));
       }
@@ -608,15 +612,14 @@ public class BulkGenerationService {
             .param(id)
             .update();
       }
-      case "cancel", "delete" ->
-          db.sql(
-                  "update bulk_tasks set cancel_requested=true,status=case when status in"
-                      + " ('QUEUED','PENDING','RETRYING') then 'CANCELLED' else status"
-                      + " end,completed_at=case when status in ('QUEUED','PENDING','RETRYING') then"
-                      + " now() else completed_at end,deleted_at=case when ? then now() else"
-                      + " deleted_at end where id=?")
-              .params(action.equals("delete"), id)
-              .update();
+      case "cancel", "delete" -> db.sql(
+              "update bulk_tasks set cancel_requested=true,status=case when status in"
+                  + " ('QUEUED','PENDING','RETRYING') then 'CANCELLED' else status"
+                  + " end,completed_at=case when status in ('QUEUED','PENDING','RETRYING') then"
+                  + " now() else completed_at end,deleted_at=case when ? then now() else"
+                  + " deleted_at end where id=?")
+          .params(action.equals("delete"), id)
+          .update();
       case "regenerate" -> {
         check(
             operationKey != null && operationKey.matches("[A-Za-z0-9:_-]{1,160}"),
@@ -689,8 +692,6 @@ public class BulkGenerationService {
         refs);
   }
 
-  public record Content(byte[] bytes, String type) {}
-
   public Content reference(UUID id, int index) {
     var refs = (List<?>) task(id).get("inputs");
     check(index >= 0 && index < refs.size(), "Reference not found");
@@ -720,12 +721,16 @@ public class BulkGenerationService {
         entry.put("name", row.get("name"));
         entry.put("status", row.get("status"));
         if (!"COMPLETED".equals(row.get("status"))) {
-          if (row.get("error_code") != null) entry.put("errorCode", row.get("error_code"));
+          if (row.get("error_code") != null) {
+            entry.put("errorCode", row.get("error_code"));
+          }
           String errMsg =
               row.get("validation_error") != null
                   ? Objects.toString(row.get("validation_error"))
                   : Objects.toString(row.get("error_message"), null);
-          if (errMsg != null) entry.put("errorMessage", errMsg);
+          if (errMsg != null) {
+            entry.put("errorMessage", errMsg);
+          }
         }
         entry.put("metadata", clean(row).get("provider_metadata"));
         if (row.get("status").equals("COMPLETED") && row.get("storage_key") != null) {
@@ -741,7 +746,9 @@ public class BulkGenerationService {
                   ? ".mp4"
                   : type.equals("image/png") ? ".png" : ".jpg";
           String base = row.get("name").toString().replaceAll("[^A-Za-z0-9_-]", "_");
-          if (base.isBlank()) base = "task";
+          if (base.isBlank()) {
+            base = "task";
+          }
           String candidate = base + ext;
           if (!usedNames.add(candidate.toLowerCase(Locale.ROOT))) {
             candidate = base + "-" + row.get("id") + ext;
@@ -761,5 +768,20 @@ public class BulkGenerationService {
           write(Map.of("batchId", batch, "tasks", manifest)).getBytes(StandardCharsets.UTF_8));
       zip.closeEntry();
     }
+  }
+
+  public record ImportRequest(
+      UUID projectId,
+      String name,
+      String kind,
+      String provider,
+      String model,
+      Map<String, Object> options,
+      boolean authorizePaid) {
+
+  }
+
+  public record Content(byte[] bytes, String type) {
+
   }
 }

@@ -9,6 +9,7 @@ import java.util.zip.*;
 import org.junit.jupiter.api.Test;
 
 class BulkArchiveParserTest {
+
   BulkArchiveParser parser =
       new BulkArchiveParser(
           new BulkArchiveParser.Limits(
@@ -37,7 +38,9 @@ class BulkArchiveParserTest {
   @Test
   void importsMoreThanOneHundredIndependentTasksAndIsolatesInvalid() throws Exception {
     var files = new LinkedHashMap<String, byte[]>();
-    for (int n = 0; n < 125; n++) files.put("car-" + n + "/task.md", text("Generate car " + n));
+    for (int n = 0; n < 125; n++) {
+      files.put("car-" + n + "/task.md", text("Generate car " + n));
+    }
     files.put("invalid/readme.exe", text("Unsupported"));
     var result = parse(files);
     assertThat(result.tasks()).hasSize(126);
@@ -55,7 +58,7 @@ class BulkArchiveParserTest {
                 "b.txt",
                 text("Car"),
                 "bad.md",
-                new byte[] {(byte) 0xc3, 0x28}));
+                new byte[]{(byte) 0xc3, 0x28}));
     assertThat(result.tasks()).hasSize(3);
     assertThat(result.tasks().stream().filter(BulkArchiveParser.Task::valid)).hasSize(2);
   }
@@ -69,9 +72,10 @@ class BulkArchiveParserTest {
             "C:/evil.md",
             "task/../evil.md",
             "task/nested/task.md",
-            "task\\task.md"))
+            "task\\task.md")) {
       assertThatThrownBy(() -> parse(Map.of(path, text("prompt"))))
           .isInstanceOf(IllegalArgumentException.class);
+    }
   }
 
   @Test
@@ -116,7 +120,8 @@ class BulkArchiveParserTest {
     var result = parse(files);
     assertThat(result.tasks()).hasSize(2);
     assertThat(result.tasks().stream().allMatch(BulkArchiveParser.Task::valid)).isTrue();
-    var car = result.tasks().stream().filter(t -> t.name().equals("car_task")).findFirst().orElseThrow();
+    var car = result.tasks().stream().filter(t -> t.name().equals("car_task")).findFirst()
+        .orElseThrow();
     assertThat(car.prompt()).isEqualTo("A red sportscar");
   }
 

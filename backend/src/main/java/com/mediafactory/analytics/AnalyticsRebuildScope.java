@@ -4,9 +4,11 @@ import java.time.LocalDate;
 import java.util.*;
 
 public record AnalyticsRebuildScope(UUID assetId, UUID collectionId, LocalDate from, LocalDate to) {
+
   public AnalyticsRebuildScope {
-    if (from != null && to != null && !from.isBefore(to))
+    if (from != null && to != null && !from.isBefore(to)) {
       throw new IllegalArgumentException("Rebuild from must precede exclusive to");
+    }
   }
 
   public static AnalyticsRebuildScope all() {
@@ -31,10 +33,18 @@ public record AnalyticsRebuildScope(UUID assetId, UUID collectionId, LocalDate f
 
   public Map<String, Object> audit() {
     var result = new LinkedHashMap<String, Object>();
-    if (assetId != null) result.put("assetId", assetId);
-    if (collectionId != null) result.put("collectionId", collectionId);
-    if (from != null) result.put("from", from);
-    if (to != null) result.put("to", to);
+    if (assetId != null) {
+      result.put("assetId", assetId);
+    }
+    if (collectionId != null) {
+      result.put("collectionId", collectionId);
+    }
+    if (from != null) {
+      result.put("from", from);
+    }
+    if (to != null) {
+      result.put("to", to);
+    }
     return result;
   }
 }

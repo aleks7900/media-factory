@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class RunwayVideoProperties {
+
   final String apiKey;
   final URI endpoint;
   final boolean enabled;
@@ -24,8 +25,9 @@ public class RunwayVideoProperties {
     this.endpoint = URI.create(endpoint);
     this.enabled = enabled;
     this.pricePerSecond = price.isBlank() ? null : new BigDecimal(price);
-    if (pricePerSecond != null && pricePerSecond.signum() < 0)
+    if (pricePerSecond != null && pricePerSecond.signum() < 0) {
       throw new IllegalArgumentException("Negative video price");
+    }
     this.downloadHosts =
         new HashSet<>(
             Arrays.stream(hosts.split(",")).map(String::trim).filter(s -> !s.isBlank()).toList());

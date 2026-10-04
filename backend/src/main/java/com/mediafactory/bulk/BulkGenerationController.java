@@ -12,6 +12,7 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 @RestController
 @RequestMapping("/api/v1/bulk")
 public class BulkGenerationController {
+
   final BulkGenerationService service;
   final ImageProviderRouter images;
   final ImageGenerationProperties imageConfig;
@@ -100,7 +101,7 @@ public class BulkGenerationController {
         "invalidTasks", invalid,
         "referenceCount", parsed.referenceCount(),
         "sampleTasks",
-            parsed.tasks().stream().limit(10).map(BulkArchiveParser.Task::name).toList());
+        parsed.tasks().stream().limit(10).map(BulkArchiveParser.Task::name).toList());
   }
 
   @GetMapping("/batches")

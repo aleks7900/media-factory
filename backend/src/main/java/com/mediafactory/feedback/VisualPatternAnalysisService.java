@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class VisualPatternAnalysisService {
+
   private final FeedbackStore store;
   private final FeedbackDatasetBuilder datasets;
 
@@ -31,14 +32,19 @@ public class VisualPatternAnalysisService {
         .param(run)
         .query()
         .singleRow();
-    if (analysis.get("status").equals("COMPLETED")) return store.one("feedback_analysis_runs", run);
+    if (analysis.get("status").equals("COMPLETED")) {
+      return store.one("feedback_analysis_runs", run);
+    }
     var p = map(analysis.get("parameters"));
     var attrs = (List<?>) p.get("attributes");
     var combinations = (List<?>) p.get("combinations");
     int tests = 0;
-    for (Object a : attrs) tests += analyzeDimension(run, p, List.of(a.toString()));
-    for (Object pair : combinations)
+    for (Object a : attrs) {
+      tests += analyzeDimension(run, p, List.of(a.toString()));
+    }
+    for (Object pair : combinations) {
       tests += analyzeDimension(run, p, ((List<?>) pair).stream().map(Object::toString).toList());
+    }
     store
         .db
         .sql(
@@ -134,15 +140,17 @@ public class VisualPatternAnalysisService {
       int min = integer(p, "minimumSample", 20);
       long countA = ((Number) control.get("count")).longValue(),
           countB = ((Number) treatment.get("count")).longValue();
-      if (keys.size() == 2 && (countA < min || countB < min)) continue;
+      if (keys.size() == 2 && (countA < min || countB < min)) {
+        continue;
+      }
       var stats =
           new LinkedHashMap<>(
               costRatio
                   ? FeedbackStatistics.compareCostPerApproved(
-                      pairedSample(base, absent, args),
-                      pairedSample(base, present, args),
-                      ((Number) p.get("randomSeed")).longValue(),
-                      min)
+                  pairedSample(base, absent, args),
+                  pairedSample(base, present, args),
+                  ((Number) p.get("randomSeed")).longValue(),
+                  min)
                   : FeedbackStatistics.compare(
                       sample(base, absent, args),
                       sample(base, present, args),
@@ -163,10 +171,13 @@ public class VisualPatternAnalysisService {
       var warnings = new ArrayList<String>();
       warnings.add("EXPLORATORY: intervals are unadjusted; no significance claim");
       warnings.add("UNKNOWN_ATTRIBUTES_EXCLUDED_FROM_COMPARISON");
-      if (groups.size() == 32) warnings.add("DIMENSION_CAPPED_AT_32_VALUES");
-      if (countA > 2048 || countB > 2048)
+      if (groups.size() == 32) {
+        warnings.add("DIMENSION_CAPPED_AT_32_VALUES");
+      }
+      if (countA > 2048 || countB > 2048) {
         warnings.add(
             "BOOTSTRAP_USES_DETERMINISTIC_SUBSAMPLE; exact population distributions shown");
+      }
       var confounders =
           store
               .db
@@ -188,8 +199,9 @@ public class VisualPatternAnalysisService {
           .anyMatch(
               r ->
                   ((Number) r.get("control")).longValue() == 0
-                      || ((Number) r.get("treatment")).longValue() == 0))
+                      || ((Number) r.get("treatment")).longValue() == 0)) {
         warnings.add("PROVIDER_MODEL_PROMPT_IMBALANCE: compare within strata before interpreting");
+      }
       var periods =
           store
               .db
@@ -223,9 +235,10 @@ public class VisualPatternAnalysisService {
                 .singleRow();
         stats.put("numericPearsonCorrelation", corr.get("correlation"));
       }
-      if (costRatio)
+      if (costRatio) {
         warnings.add(
             "PRIMARY_MEAN_IS_COST_SUM_PER_APPROVAL; quantiles describe per-generated-asset costs");
+      }
       boolean sufficient = countA >= min && countB >= min;
       stats.put("sufficient", sufficient);
       String status =
@@ -289,8 +302,8 @@ public class VisualPatternAnalysisService {
             base
                 + "select count(*) count,"
                 + (ratio
-                    ? "sum(value)/nullif(sum((metrics->>'approved')::numeric),0)"
-                    : "avg(value)")
+                ? "sum(value)/nullif(sum((metrics->>'approved')::numeric),0)"
+                : "avg(value)")
                 + " mean,percentile_cont(.5) within group(order by value)"
                 + " median,percentile_cont(.25) within group(order by value)"
                 + " p25,percentile_cont(.75) within group(order by value) p75,percentile_cont(.9)"
@@ -316,8 +329,9 @@ public class VisualPatternAnalysisService {
         .stream()
         .map(
             r ->
-                new double[] {
-                  ((Number) r.get("cost")).doubleValue(), ((Number) r.get("approved")).doubleValue()
+                new double[]{
+                    ((Number) r.get("cost")).doubleValue(),
+                    ((Number) r.get("approved")).doubleValue()
                 })
         .toArray(double[][]::new);
   }

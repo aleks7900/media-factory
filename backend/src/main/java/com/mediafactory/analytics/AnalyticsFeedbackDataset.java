@@ -4,9 +4,12 @@ import java.util.*;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 
-/** TASK-10 cohort projection shared with the feedback engine. No second measurement ledger. */
+/**
+ * TASK-10 cohort projection shared with the feedback engine. No second measurement ledger.
+ */
 @Service
 public class AnalyticsFeedbackDataset {
+
   private final JdbcClient db;
 
   public AnalyticsFeedbackDataset(JdbcClient db) {
@@ -71,16 +74,16 @@ public class AnalyticsFeedbackDataset {
         });
     String sql =
         """
-        with population as (
-         select l.*,p.at as published_at,ps.variables,
-          case when l.status in ('APPROVED','PUBLISHED') then 1.0 when l.status='REJECTED' then 0.0 else null end as approved
-         from analytics_lineage l
-         left join rendered_prompt_snapshots ps on ps.id=l.prompt_snapshot_id
-         left join lateral(select min(published_at) at from publications p where p.asset_id=l.asset_id
-          and (cast(:platform as text) is null or p.channel=:platform)
-          and p.channel not in ('WALLPAPER_MOCK','WALLPAPER_DRY_RUN','WALLPAPER_EXPORT')) p on true
-         where l.asset_id is not null
-        """
+            with population as (
+             select l.*,p.at as published_at,ps.variables,
+              case when l.status in ('APPROVED','PUBLISHED') then 1.0 when l.status='REJECTED' then 0.0 else null end as approved
+             from analytics_lineage l
+             left join rendered_prompt_snapshots ps on ps.id=l.prompt_snapshot_id
+             left join lateral(select min(published_at) at from publications p where p.asset_id=l.asset_id
+              and (cast(:platform as text) is null or p.channel=:platform)
+              and p.channel not in ('WALLPAPER_MOCK','WALLPAPER_DRY_RUN','WALLPAPER_EXPORT')) p on true
+             where l.asset_id is not null
+            """
             + filters
             + " and "
             + (qa ? "l.generated_at" : "p.at")
@@ -88,8 +91,8 @@ public class AnalyticsFeedbackDataset {
             + (qa ? "l.generated_at" : "p.at")
             + "<cast(:to as timestamptz)"
             + (qa
-                ? ""
-                : " and p.at+cast(:days as int)*interval '1 day'<=cast(:asOf as timestamptz)")
+            ? ""
+            : " and p.at+cast(:days as int)*interval '1 day'<=cast(:asOf as timestamptz)")
             + """
             ), performance as (
              select p.asset_id,

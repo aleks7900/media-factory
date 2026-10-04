@@ -5,9 +5,11 @@ import java.awt.image.BufferedImage;
 import java.util.*;
 
 public final class DeterministicVisualFeatures {
+
   public static final String VERSION = "visual-v1";
 
-  private DeterministicVisualFeatures() {}
+  private DeterministicVisualFeatures() {
+  }
 
   public static Map<String, Object> extract(BufferedImage image) {
     int stepX = Math.max(1, (image.getWidth() + 255) / 256),
@@ -23,7 +25,9 @@ public final class DeterministicVisualFeatures {
         sum += v;
         square += v * v;
         n++;
-        if (v < .1) dark++;
+        if (v < .1) {
+          dark++;
+        }
         histogram[Math.min(31, (int) (v * 32))]++;
         saturation += Color.RGBtoHSB(c.getRed(), c.getGreen(), c.getBlue(), null)[1];
         int max = Math.max(c.getRed(), Math.max(c.getGreen(), c.getBlue())),
@@ -32,24 +36,31 @@ public final class DeterministicVisualFeatures {
             v < .1
                 ? 0
                 : v > .9
-                    ? 1
+                  ? 1
                     : max - min < 25 ? 2 : c.getRed() == max ? 3 : c.getGreen() == max ? 4 : 5;
         palette[bin]++;
         if (previous >= 0) {
           pairs++;
-          if (Math.abs(previous - v) > .15) edges++;
+          if (Math.abs(previous - v) > .15) {
+            edges++;
+          }
         }
         previous = v;
       }
     }
     double entropy = 0;
-    for (int h : histogram)
+    for (int h : histogram) {
       if (h > 0) {
         double p = (double) h / n;
         entropy -= p * Math.log(p) / Math.log(2);
       }
+    }
     int best = 0;
-    for (int i = 1; i < palette.length; i++) if (palette[i] > palette[best]) best = i;
+    for (int i = 1; i < palette.length; i++) {
+      if (palette[i] > palette[best]) {
+        best = i;
+      }
+    }
     return Map.of(
         "brightness",
         sum / n,

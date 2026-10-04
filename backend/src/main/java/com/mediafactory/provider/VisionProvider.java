@@ -11,7 +11,9 @@ public interface VisionProvider {
 
   Result<String> inspect(Media media);
 
-  /** Structured semantic extraction is a separate capability from existing QA/stock inspection. */
+  /**
+   * Structured semantic extraction is a separate capability from existing QA/stock inspection.
+   */
   default Result<String> extractVisualAttributes(Media media, String versionedPrompt) {
     throw new UnsupportedOperationException("Provider does not support visual attribute schema v1");
   }

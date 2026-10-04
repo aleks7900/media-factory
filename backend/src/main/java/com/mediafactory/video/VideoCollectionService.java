@@ -8,9 +8,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-/** Collection budgets reserve each candidate's entire allowance before it is queued. */
+/**
+ * Collection budgets reserve each candidate's entire allowance before it is queued.
+ */
 @Service
 public class VideoCollectionService {
+
   final VideoProductionService s;
   final boolean enabled;
 
@@ -38,7 +41,9 @@ public class VideoCollectionService {
         || budget == null
         || budget.signum() < 0
         || allowance == null
-        || allowance.signum() < 0) throw new IllegalArgumentException("Invalid collection limits");
+        || allowance.signum() < 0) {
+      throw new IllegalArgumentException("Invalid collection limits");
+    }
     s.profile(profile);
     s.router.route(provider, false);
     return s.tx.execute(
@@ -94,12 +99,14 @@ public class VideoCollectionService {
 
   @Scheduled(fixedDelay = 5000)
   public void tick() {
-    if (!enabled) return;
+    if (!enabled) {
+      return;
+    }
     for (UUID id :
         s.db
             .sql("select collection_id from video_collection_plans where status='RUNNING'")
             .query(UUID.class)
-            .list())
+            .list()) {
       try {
         advance(id);
       } catch (RuntimeException error) {
@@ -110,6 +117,7 @@ public class VideoCollectionService {
             .param(id)
             .update();
       }
+    }
   }
 
   public void advance(UUID collection) {
@@ -121,7 +129,9 @@ public class VideoCollectionService {
                   .param(collection)
                   .query()
                   .singleRow();
-          if (!"RUNNING".equals(p.get("status"))) return;
+          if (!"RUNNING".equals(p.get("status"))) {
+            return;
+          }
           var stats = map(progress(collection).get("progress"));
           int count = integer(stats, "candidates", 0), ready = integer(stats, "approved", 0);
           if (ready >= integer(p, "target_approved", 1)) {
@@ -173,7 +183,9 @@ public class VideoCollectionService {
                     .query(UUID.class)
                     .list();
             if (candidates.isEmpty()) {
-              if (active == 0) stop(collection, "PAUSED", "NO_APPROVED_SOURCE");
+              if (active == 0) {
+                stop(collection, "PAUSED", "NO_APPROVED_SOURCE");
+              }
               return;
             }
             s.start(

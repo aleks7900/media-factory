@@ -20,20 +20,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Component
 @ConditionalOnProperty(name = "media.worker.enabled", havingValue = "true", matchIfMissing = true)
 public class VideoGenerationWorker implements AutoCloseable {
-  final VideoProductionService s;
-  final ProviderRateLimiter limiter;
-  final RetryDecisionService retries;
-  final int remoteLimit, pollSeconds;
 
-  @Value("${VIDEO_REQUESTS_PER_MINUTE:60}")
-  int requestsPerMinute = 60;
-
-  @Value("${VIDEO_MAX_HTTP_CALLS:3}")
-  int httpConcurrency = 3;
-
-  final Semaphore downloads = new Semaphore(2);
-  final ConcurrentMap<UUID, UUID> active = new ConcurrentHashMap<>();
-  final ExecutorService pool = Executors.newFixedThreadPool(3);
   static final Set<String> LIVE =
       Set.of(
           "SUBMITTING",
@@ -43,6 +30,17 @@ public class VideoGenerationWorker implements AutoCloseable {
           "DOWNLOADING",
           "SUBMISSION_UNKNOWN",
           "TIMED_OUT");
+  final VideoProductionService s;
+  final ProviderRateLimiter limiter;
+  final RetryDecisionService retries;
+  final int remoteLimit, pollSeconds;
+  final Semaphore downloads = new Semaphore(2);
+  final ConcurrentMap<UUID, UUID> active = new ConcurrentHashMap<>();
+  final ExecutorService pool = Executors.newFixedThreadPool(3);
+  @Value("${VIDEO_REQUESTS_PER_MINUTE:60}")
+  int requestsPerMinute = 60;
+  @Value("${VIDEO_MAX_HTTP_CALLS:3}")
+  int httpConcurrency = 3;
 
   public VideoGenerationWorker(
       VideoProductionService s,
@@ -67,15 +65,19 @@ public class VideoGenerationWorker implements AutoCloseable {
                     + " and (lease_until is null or lease_until<now()) order by created_at limit 3")
             .query(UUID.class)
             .list()) {
-      if (active.size() >= 3) break;
+      if (active.size() >= 3) {
+        break;
+      }
       UUID token = UUID.randomUUID();
       if (s.db
-              .sql(
-                  "update video_productions set lease_token=?,lease_until=now()+interval '3"
-                      + " minutes' where id=? and (lease_until is null or lease_until<now())")
-              .params(token, id)
-              .update()
-          != 1) continue;
+          .sql(
+              "update video_productions set lease_token=?,lease_until=now()+interval '3"
+                  + " minutes' where id=? and (lease_until is null or lease_until<now())")
+          .params(token, id)
+          .update()
+          != 1) {
+        continue;
+      }
       active.put(id, token);
       pool.submit(
           () -> {
@@ -87,11 +89,12 @@ public class VideoGenerationWorker implements AutoCloseable {
                   id,
                   "GENERATION_STAGE_ERROR",
                   Map.of("errorType", error.getClass().getSimpleName()));
-              if (!v.get("status").equals("CANCELLED"))
+              if (!v.get("status").equals("CANCELLED")) {
                 s.move(
                     v,
                     "GENERATION_FAILED",
                     error instanceof VideoFailure ? error.getMessage() : "GENERATION_STAGE_FAILED");
+              }
             } finally {
               active.remove(id, token);
               s.db
@@ -119,21 +122,25 @@ public class VideoGenerationWorker implements AutoCloseable {
 
   public void step(UUID id) {
     var v = s.one(id);
-    if (Boolean.TRUE.equals(v.get("paused")) || v.get("status").equals("CANCELLED")) return;
+    if (Boolean.TRUE.equals(v.get("paused")) || v.get("status").equals("CANCELLED")) {
+      return;
+    }
     var a =
         v.get("current_attempt_id") == null
             ? prepare(v)
             : attempt((UUID) v.get("current_attempt_id"));
-    if (a == null) return;
+    if (a == null) {
+      return;
+    }
     String status = a.get("status").toString();
     if (status.equals("SUBMITTING")) {
       var provider = s.router.provider(a.get("provider").toString());
-      if (provider.capabilities().idempotentSubmission())
+      if (provider.capabilities().idempotentSubmission()) {
         s.db
             .sql("update video_generation_attempts set status='REQUESTED' where id=?")
             .param(a.get("id"))
             .update();
-      else {
+      } else {
         unknown(v, a, "SUBMISSION_INTERRUPTED");
         return;
       }
@@ -172,9 +179,12 @@ public class VideoGenerationWorker implements AutoCloseable {
           s.lock((UUID) v.get("id"));
           var fresh = s.one((UUID) v.get("id"));
           if (!fresh.get("status").equals("GENERATION_QUEUED")
-              || Boolean.TRUE.equals(fresh.get("paused"))) return null;
-          if (fresh.get("current_attempt_id") != null)
+              || Boolean.TRUE.equals(fresh.get("paused"))) {
+            return null;
+          }
+          if (fresh.get("current_attempt_id") != null) {
             return attempt((UUID) fresh.get("current_attempt_id"));
+          }
           int count = integer(fresh, "attempt_count", 0) + 1;
           if (count > integer(fresh, "max_attempts", 3)) {
             s.move(fresh, "GENERATION_FAILED", "ATTEMPT_LIMIT");
@@ -235,9 +245,9 @@ public class VideoGenerationWorker implements AutoCloseable {
                 || estimate.cost() == null
                 || !estimate.currency().equals("USD")
                 || spent
-                        .add(estimate.cost())
-                        .compareTo(new BigDecimal(fresh.get("budget").toString()))
-                    > 0) {
+                .add(estimate.cost())
+                .compareTo(new BigDecimal(fresh.get("budget").toString()))
+                > 0) {
               s.move(fresh, "GENERATION_FAILED", "BUDGET_OR_PRICING_UNKNOWN");
               return null;
             }
@@ -305,8 +315,9 @@ public class VideoGenerationWorker implements AutoCloseable {
     byte[] bytes;
     try {
       bytes = s.storage.read(source.get("storage_key").toString());
-      if (!PerceptualHash.sha(bytes).equals(r.sourceChecksum()))
+      if (!PerceptualHash.sha(bytes).equals(r.sourceChecksum())) {
         throw new VideoFailure("SOURCE_CHECKSUM_CHANGED");
+      }
       s.router.provider(providerId).validateInput(r, bytes, source.get("media_type").toString());
     } catch (RuntimeException invalidInput) {
       s.db
@@ -335,7 +346,9 @@ public class VideoGenerationWorker implements AutoCloseable {
                   .singleRow();
               var fresh = s.one((UUID) v.get("id"));
               if (fresh.get("status").equals("CANCELLED")
-                  || Boolean.TRUE.equals(fresh.get("paused"))) return false;
+                  || Boolean.TRUE.equals(fresh.get("paused"))) {
+                return false;
+              }
               int live =
                   s.db
                       .sql(
@@ -345,13 +358,15 @@ public class VideoGenerationWorker implements AutoCloseable {
                       .param(providerId)
                       .query(Integer.class)
                       .single();
-              if (live >= remoteLimit) return false;
+              if (live >= remoteLimit) {
+                return false;
+              }
               return s.db
-                      .sql(
-                          "update video_generation_attempts set status='SUBMITTING' where id=? and"
-                              + " status='REQUESTED'")
-                      .param(attemptId)
-                      .update()
+                  .sql(
+                      "update video_generation_attempts set status='SUBMITTING' where id=? and"
+                          + " status='REQUESTED'")
+                  .param(attemptId)
+                  .update()
                   == 1;
             });
     if (!claimed) {
@@ -433,14 +448,18 @@ public class VideoGenerationWorker implements AutoCloseable {
             decision.retry() ? "REQUESTED" : "PROVIDER_FAILED",
             a.get("id"))
         .update();
-    if (decision.retry()) defer((UUID) v.get("id"), Math.max(2, decision.delay().toSeconds()));
-    else {
+    if (decision.retry()) {
+      defer((UUID) v.get("id"), Math.max(2, decision.delay().toSeconds()));
+    } else {
       s.db
           .sql("update generation_costs set outcome='FAILED' where id=?")
           .param(a.get("cost_id"))
           .update();
-      if (decision.fallback()) fallback(s.one((UUID) v.get("id")), a);
-      else s.move(s.one((UUID) v.get("id")), "GENERATION_FAILED", error.type().name());
+      if (decision.fallback()) {
+        fallback(s.one((UUID) v.get("id")), a);
+      } else {
+        s.move(s.one((UUID) v.get("id")), "GENERATION_FAILED", error.type().name());
+      }
     }
   }
 
@@ -507,21 +526,25 @@ public class VideoGenerationWorker implements AutoCloseable {
                   + " end,next_poll_at=now()+(?*interval '1 second') where id=?")
           .params(next, write(state.metadata()), next, pollSeconds, a.get("id"))
           .update();
-      if (state.actualCost() != null)
+      if (state.actualCost() != null) {
         s.db
             .sql(
                 "update generation_costs set actual_cost=?,currency=?,pricing_status='ACTUAL' where"
                     + " id=?")
             .params(state.actualCost(), state.currency(), a.get("cost_id"))
             .update();
+      }
       if (next.equals("PROVIDER_FAILED")) {
         s.db
             .sql("update generation_costs set outcome='FAILED' where id=?")
             .param(a.get("cost_id"))
             .update();
         fallback(v, attempt((UUID) a.get("id")));
-      } else if (next.equals("CANCELLED")) s.move(v, "GENERATION_FAILED", "PROVIDER_CANCELLED");
-      else defer((UUID) v.get("id"), next.equals("DOWNLOADING") ? 0 : pollSeconds);
+      } else if (next.equals("CANCELLED")) {
+        s.move(v, "GENERATION_FAILED", "PROVIDER_CANCELLED");
+      } else {
+        defer((UUID) v.get("id"), next.equals("DOWNLOADING") ? 0 : pollSeconds);
+      }
     } catch (RuntimeException error) {
       s.db
           .sql(
@@ -573,8 +596,9 @@ public class VideoGenerationWorker implements AutoCloseable {
                   image.get("media_type").toString());
       if (result.bytes().length == 0
           || result.bytes().length > 134217728
-          || !result.mediaType().equals("video/mp4"))
+          || !result.mediaType().equals("video/mp4")) {
         throw new VideoFailure("INVALID_VIDEO_RESULT");
+      }
       String sha = PerceptualHash.sha(result.bytes()),
           key = "video/raw/" + r.generationId() + "/" + sha + ".mp4";
       putImmutable(key, result.bytes(), result.mediaType());
@@ -597,7 +621,9 @@ public class VideoGenerationWorker implements AutoCloseable {
                 .sql("update generation_costs set outcome='SUCCEEDED' where id=?")
                 .param(a.get("cost_id"))
                 .update();
-            if (fresh.get("status").equals("CANCELLED")) return;
+            if (fresh.get("status").equals("CANCELLED")) {
+              return;
+            }
             s.db
                 .sql(
                     "insert into"
@@ -634,9 +660,11 @@ public class VideoGenerationWorker implements AutoCloseable {
                   + " 'DOWNLOAD_FAILED' else status end where id=?")
           .params(failures, failures, a.get("id"))
           .update();
-      if (failures >= 3)
+      if (failures >= 3) {
         s.move(s.one((UUID) v.get("id")), "GENERATION_FAILED", "DOWNLOAD_FAILED_RETRY_SAME_JOB");
-      else defer((UUID) v.get("id"), 10);
+      } else {
+        defer((UUID) v.get("id"), 10);
+      }
     } finally {
       downloads.release();
     }
@@ -647,7 +675,9 @@ public class VideoGenerationWorker implements AutoCloseable {
       s.storage.putOriginal(key, bytes, type);
     } catch (RuntimeException failure) {
       try {
-        if (PerceptualHash.sha(s.storage.read(key)).equals(PerceptualHash.sha(bytes))) return;
+        if (PerceptualHash.sha(s.storage.read(key)).equals(PerceptualHash.sha(bytes))) {
+          return;
+        }
       } catch (RuntimeException ignored) {
       }
       throw failure;
@@ -667,18 +697,21 @@ public class VideoGenerationWorker implements AutoCloseable {
           s.lock(id);
           var v = s.one(id);
           if (integer(v, "revision", 0) != revision
-              || v.get("current_attempt_id") == null)
+              || v.get("current_attempt_id") == null) {
             throw VideoProductionService.conflict("Video changed");
+          }
           var a = attempt((UUID) v.get("current_attempt_id"));
           if (!Set.of("SUBMISSION_UNKNOWN", "TIMED_OUT", "DOWNLOAD_FAILED")
-              .contains(a.get("status")))
+              .contains(a.get("status"))) {
             throw VideoProductionService.conflict("No uncertain job to reconcile");
+          }
           String job =
               providerJobId == null
                   ? Objects.toString(a.get("provider_job_id"), null)
                   : providerJobId;
-          if (job == null || job.isBlank() || job.length() > 200)
+          if (job == null || job.isBlank() || job.length() > 200) {
             throw new IllegalArgumentException("Known provider job ID required");
+          }
           s.db
               .sql(
                   "update video_generation_attempts set"
@@ -690,7 +723,9 @@ public class VideoGenerationWorker implements AutoCloseable {
                   a.get("id"))
               .update();
           // Reconciliation of a cancelled production only lets cancellation reach the known job.
-          if(!"CANCELLED".equals(v.get("status")))s.move(v, "GENERATING", "");
+          if (!"CANCELLED".equals(v.get("status"))) {
+            s.move(v, "GENERATING", "");
+          }
           defer(id, 0);
           s.event(id, "REMOTE_JOB_RECONCILED", Map.of("attemptId", a.get("id")));
           return s.one(id);

@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class SkillDomainOperations {
+
   final JdbcClient db;
   final FactoryService factory;
   final QualityReviewService qa;
@@ -154,36 +155,41 @@ public class SkillDomainOperations {
                 .query(UUID.class)
                 .list();
         int target = integer(plan, "generationCount", 0);
-        for (int n = 0; n < target; n++)
+        for (int n = 0; n < target; n++) {
           item(
               execution,
               String.format("%05d", n),
               "GENERATE",
               Map.of("conceptId", concepts.get(n % concepts.size())));
+        }
       } else if (skill.equals("run-qa") || skill.equals("prepare-stock")) {
         int n = 0;
-        for (UUID asset : ids(plan.get("items")))
+        for (UUID asset : ids(plan.get("items"))) {
           item(
               execution,
               String.format("%05d", n++),
               skill.equals("run-qa") ? "QA" : "STOCK",
               Map.of("assetId", asset));
+        }
       } else {
         var selected = ids(plan.get("items"));
         boolean process = Boolean.TRUE.equals(input.get("processOnly"));
         int count = process ? selected.size() : integer(plan, "targetAssetCount", selected.size());
-        for (int n = 0; n < count; n++)
+        for (int n = 0; n < count; n++) {
           item(
               execution,
               String.format("%05d", n),
               "WALLPAPER",
               Map.of(process ? "assetId" : "conceptId", selected.get(n % selected.size())));
+        }
       }
     }
-    for (var i : items(execution))
+    for (var i : items(execution)) {
       if (i.get("resource_id") != null
-          && !Set.of("COMPLETED", "FAILED", "REJECTED").contains(i.get("status")))
+          && !Set.of("COMPLETED", "FAILED", "REJECTED").contains(i.get("status"))) {
         refresh(i, input);
+      }
+    }
     var all = items(execution);
     boolean active = all.stream().anyMatch(i -> i.get("status").equals("RUNNING")),
         waiting = all.stream().anyMatch(i -> i.get("status").equals("WAITING"));
@@ -193,9 +199,12 @@ public class SkillDomainOperations {
     }
     if (!active) {
       int dispatched = 0;
-      for (var i : all)
+      for (var i : all) {
         if (i.get("status").equals("PLANNED")
-            && dispatched++ < Math.max(1, Math.min(stageSize, 20))) dispatch(e, i, input, plan);
+            && dispatched++ < Math.max(1, Math.min(stageSize, 20))) {
+          dispatch(e, i, input, plan);
+        }
+      }
     }
     all = items(execution);
     if (all.stream()
@@ -227,7 +236,7 @@ public class SkillDomainOperations {
                   "EXPORT",
                   Map.of("productionId", production.get("resource_id")));
             }
-            for (var exportItem : items(execution))
+            for (var exportItem : items(execution)) {
               if (exportItem.get("operation").equals("EXPORT")
                   && exportItem.get("resource_id") == null) {
                 var exported =
@@ -236,6 +245,7 @@ public class SkillDomainOperations {
                             id(map(exportItem.get("input")), "productionId"), null));
                 resource(exportItem, "wallpaper_exports", (UUID) exported.get("id"));
               }
+            }
             return;
           }
         }
@@ -245,14 +255,15 @@ public class SkillDomainOperations {
           execution,
           failure
               ? (all.stream().anyMatch(i -> i.get("status").equals("COMPLETED"))
-                  ? "PARTIALLY_COMPLETED"
-                  : "FAILED")
+                 ? "PARTIALLY_COMPLETED"
+              : "FAILED")
               : "COMPLETED",
           summary(all));
-    } else
+    } else {
       db.sql("update skill_executions set result_summary=?::jsonb where id=?")
           .params(write(summary(all)), execution)
           .update();
+    }
   }
 
   void createCollection(
@@ -261,16 +272,15 @@ public class SkillDomainOperations {
     String type = plan.get("mediaType").toString();
     Map<String, Object> c =
         switch (type) {
-          case "WALLPAPER" ->
-              map(
-                  wallpaperCollections.create(
-                      project,
-                      text(input, "name"),
-                      text(input, "slug"),
-                      Objects.toString(input.get("description"), ""),
-                      Objects.toString(input.get("theme"), ""),
-                      Objects.toString(input.get("style"), ""),
-                      Boolean.TRUE.equals(input.get("amoled"))));
+          case "WALLPAPER" -> map(
+              wallpaperCollections.create(
+                  project,
+                  text(input, "name"),
+                  text(input, "slug"),
+                  Objects.toString(input.get("description"), ""),
+                  Objects.toString(input.get("theme"), ""),
+                  Objects.toString(input.get("style"), ""),
+                  Boolean.TRUE.equals(input.get("amoled"))));
           case "STOCK" -> map(stockCollections.create(project, text(input, "name")));
           default -> factory.collection(project, text(input, "name"));
         };
@@ -279,10 +289,11 @@ public class SkillDomainOperations {
       var concept = map(value);
       factory.concept(collection, text(concept, "name"), text(concept, "prompt"));
     }
-    if (input.containsKey("trendCandidateId"))
+    if (input.containsKey("trendCandidateId")) {
       db.sql("update collections set trend_candidate_id=? where id=?")
           .params(id(input, "trendCandidateId"), collection)
           .update();
+    }
     db.sql("update skill_executions set collection_id=? where id=?")
         .params(collection, e.get("id"))
         .update();
@@ -399,7 +410,7 @@ public class SkillDomainOperations {
           check(
               Objects.equals(providers.defaultProvider(), plan.get("provider"))
                   && Objects.equals(
-                      providers.provider(providers.defaultProvider()).model(), plan.get("model")),
+                  providers.provider(providers.defaultProvider()).model(), plan.get("model")),
               "Wallpaper provider defaults changed or differ from the plan");
           guard(execution, concept, c.get("prompt").toString());
         }
@@ -431,8 +442,9 @@ public class SkillDomainOperations {
           .update();
     }
     if ("HIGH_REPETITION_RISK".equals(evidence.get("decision"))
-        || Boolean.TRUE.equals(evidence.get("blocked")))
+        || Boolean.TRUE.equals(evidence.get("blocked"))) {
       throw new IllegalArgumentException("SIMILARITY_BLOCKED: diversity review required");
+    }
   }
 
   void refresh(Map<String, Object> item, Map<String, Object> input) {
@@ -444,8 +456,9 @@ public class SkillDomainOperations {
     switch (type) {
       case "quality_reviews" -> {
         String execution = r.get("execution_status").toString();
-        if (execution.equals("FAILED")) state(item, "FAILED", "QA_FAILED");
-        else if (execution.equals("COMPLETED")) {
+        if (execution.equals("FAILED")) {
+          state(item, "FAILED", "QA_FAILED");
+        } else if (execution.equals("COMPLETED")) {
           String decision = r.get("final_decision").toString();
           state(
               item,
@@ -456,10 +469,13 @@ public class SkillDomainOperations {
         }
       }
       case "generations" -> {
-        if (Set.of("APPROVED", "PUBLISHED").contains(status)) state(item, "COMPLETED", null);
-        else if (status.equals("REJECTED")) state(item, "REJECTED", "QA_REJECTED");
-        else if (status.equals("FAILED")) state(item, "FAILED", "PROVIDER_ERROR");
-        else if (status.equals("QA_PENDING")) {
+        if (Set.of("APPROVED", "PUBLISHED").contains(status)) {
+          state(item, "COMPLETED", null);
+        } else if (status.equals("REJECTED")) {
+          state(item, "REJECTED", "QA_REJECTED");
+        } else if (status.equals("FAILED")) {
+          state(item, "FAILED", "PROVIDER_ERROR");
+        } else if (status.equals("QA_PENDING")) {
           var review =
               db.sql(
                       "select q.execution_status,q.final_decision from assets a join"
@@ -470,41 +486,54 @@ public class SkillDomainOperations {
                   .listOfRows();
           if (!review.isEmpty()
               && review.getFirst().get("execution_status").equals("COMPLETED")
-              && review.getFirst().get("final_decision").equals("NEEDS_REVIEW"))
+              && review.getFirst().get("final_decision").equals("NEEDS_REVIEW")) {
             state(item, "WAITING", "HUMAN_QA_REQUIRED");
+          }
         }
       }
       case "stock_productions" -> {
-        if (status.equals("READY_FOR_EXPORT") || status.equals("EXPORTED"))
+        if (status.equals("READY_FOR_EXPORT") || status.equals("EXPORTED")) {
           state(item, "COMPLETED", null);
-        else if (status.contains("REJECTED")) state(item, "REJECTED", status);
-        else if (status.contains("FAILED") || status.equals("CANCELLED"))
+        } else if (status.contains("REJECTED")) {
+          state(item, "REJECTED", status);
+        } else if (status.contains("FAILED") || status.equals("CANCELLED")) {
           state(item, "FAILED", status);
-        else if (status.contains("REVIEW")
+        } else if (status.contains("REVIEW")
             || status.equals("PAUSED")
-            || humanQa(r.get("source_asset_id"))) state(item, "WAITING", status);
+            || humanQa(r.get("source_asset_id"))) {
+          state(item, "WAITING", status);
+        }
       }
       case "wallpaper_productions" -> {
         if (Set.of("PUBLICATION_REVIEW", "APPROVED_FOR_PUBLICATION", "PUBLISHED", "UNPUBLISHED")
             .contains(status)) {
           publications.prepare(resource);
-          if (Boolean.TRUE.equals(input.get("publishToBackend")) && !status.equals("PUBLISHED"))
+          if (Boolean.TRUE.equals(input.get("publishToBackend")) && !status.equals("PUBLISHED")) {
             state(item, "WAITING", "PUBLICATION_APPROVAL_REQUIRED");
-          else state(item, "COMPLETED", null);
-        } else if (status.equals("PAUSED") && "STAGE_FAILED".equals(r.get("failure_code")))
+          } else {
+            state(item, "COMPLETED", null);
+          }
+        } else if (status.equals("PAUSED") && "STAGE_FAILED".equals(r.get("failure_code"))) {
           state(item, "FAILED", "STAGE_FAILED");
-        else if (status.equals("PAUSED") || humanQa(r.get("master_asset_id")))
+        } else if (status.equals("PAUSED") || humanQa(r.get("master_asset_id"))) {
           state(item, "WAITING", Objects.toString(r.get("failure_code"), "HUMAN_QA_REQUIRED"));
-        else if (status.contains("FAILED") || status.equals("CANCELLED"))
+        } else if (status.contains("FAILED") || status.equals("CANCELLED")) {
           state(item, "FAILED", status);
-        else if (status.contains("REJECTED")) state(item, "REJECTED", status);
+        } else if (status.contains("REJECTED")) {
+          state(item, "REJECTED", status);
+        }
       }
       case "stock_exports", "wallpaper_exports" -> {
         if (status.equals(type.equals("stock_exports") ? "READY" : "COMPLETED")) {
-          if (type.equals("stock_exports")) stockExports.download(resource);
-          else wallpaperExports.download(resource);
+          if (type.equals("stock_exports")) {
+            stockExports.download(resource);
+          } else {
+            wallpaperExports.download(resource);
+          }
           state(item, "COMPLETED", null);
-        } else if (status.equals("FAILED")) state(item, "FAILED", "EXPORT_FAILED");
+        } else if (status.equals("FAILED")) {
+          state(item, "FAILED", "EXPORT_FAILED");
+        }
       }
     }
   }
@@ -512,22 +541,24 @@ public class SkillDomainOperations {
   boolean humanQa(Object asset) {
     return asset != null
         && db.sql(
-                    "select count(*) from assets a join quality_reviews q on"
-                        + " q.id=a.current_review_id where a.id=? and"
-                        + " q.execution_status='COMPLETED' and q.final_decision='NEEDS_REVIEW'")
-                .param(asset)
-                .query(Long.class)
-                .single()
-            > 0;
+            "select count(*) from assets a join quality_reviews q on"
+                + " q.id=a.current_review_id where a.id=? and"
+                + " q.execution_status='COMPLETED' and q.final_decision='NEEDS_REVIEW'")
+        .param(asset)
+        .query(Long.class)
+        .single()
+        > 0;
   }
 
   Map<String, Object> summary(List<Map<String, Object>> items) {
     var out = new LinkedHashMap<String, Object>();
     out.put("planned", items.stream().filter(i -> !i.get("operation").equals("EXPORT")).count());
-    for (String state : List.of("PLANNED", "RUNNING", "WAITING", "COMPLETED", "FAILED", "REJECTED"))
+    for (String state : List.of("PLANNED", "RUNNING", "WAITING", "COMPLETED", "FAILED",
+        "REJECTED")) {
       out.put(
           state.equals("PLANNED") ? "pending" : state.toLowerCase(Locale.ROOT),
           items.stream().filter(i -> i.get("status").equals(state)).count());
+    }
     out.put("attempted", items.stream().filter(i -> i.get("resource_id") != null).count());
     var reviews =
         items.stream()

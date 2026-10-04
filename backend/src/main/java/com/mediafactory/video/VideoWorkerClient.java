@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class VideoWorkerClient {
+
   private final URI endpoint;
   private final HttpClient client =
       HttpClient.newBuilder()
@@ -60,15 +61,18 @@ public class VideoWorkerClient {
     try {
       var builder =
           HttpRequest.newBuilder(endpoint.resolve(path)).timeout(Duration.ofSeconds(seconds));
-      if (body == null) builder.GET();
-      else
+      if (body == null) {
+        builder.GET();
+      } else {
         builder
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(write(body)));
+      }
       var response = client.send(builder.build(), info -> new BoundedVideoBody(190_000_000));
-      var result = map(new String(response.body(),java.nio.charset.StandardCharsets.UTF_8));
-      if (response.statusCode() != 200)
+      var result = map(new String(response.body(), java.nio.charset.StandardCharsets.UTF_8));
+      if (response.statusCode() != 200) {
         throw new VideoFailure(Objects.toString(result.get("code"), "WORKER_FAILED"));
+      }
       return result;
     } catch (VideoFailure e) {
       throw e;

@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(name = "media.worker.enabled", havingValue = "true", matchIfMissing = true)
 public class StockWorker {
+
   static final Set<String> ACTIVE =
       Set.of(
           "DRAFT",
@@ -44,12 +45,14 @@ public class StockWorker {
             .list()) {
       UUID token = UUID.randomUUID();
       if (s.db
-              .sql(
-                  "update stock_productions set lease_token=?,lease_until=now()+interval '2"
-                      + " minutes' where id=? and (lease_until is null or lease_until<now())")
-              .params(token, id)
-              .update()
-          != 1) continue;
+          .sql(
+              "update stock_productions set lease_token=?,lease_until=now()+interval '2"
+                  + " minutes' where id=? and (lease_until is null or lease_until<now())")
+          .params(token, id)
+          .update()
+          != 1) {
+        continue;
+      }
       active.put(id, token);
       long start = System.nanoTime();
       try {
@@ -87,19 +90,22 @@ public class StockWorker {
               .singleRow();
           var row = s.one(id);
           String stage = row.get("status").toString();
-          if (!token.equals(row.get("lease_token")) || !ACTIVE.contains(stage)) return;
+          if (!token.equals(row.get("lease_token")) || !ACTIVE.contains(stage)) {
+            return;
+          }
           int attempts = ((Number) row.get("attempt")).intValue() + 1;
           s.db
               .sql("update stock_productions set attempt=? where id=?")
               .params(attempts, id)
               .update();
-          if (attempts >= 3)
+          if (attempts >= 3) {
             s.move(
                 row,
                 stage.equals("METADATA_GENERATION")
                     ? "METADATA_FAILED"
                     : stage.equals("PROCESSING") ? "PROCESSING_FAILED" : "VALIDATION_FAILED",
                 "STAGE_EXECUTION_FAILED:" + stage);
+          }
         });
   }
 
@@ -118,7 +124,9 @@ public class StockWorker {
                     + " ('VALIDATING','BUILDING') and lease_until<now()) order by created_at limit"
                     + " 1")
             .query(UUID.class)
-            .list()) exports.execute(id);
+            .list()) {
+      exports.execute(id);
+    }
   }
 
   @Scheduled(fixedDelay = 5000)
@@ -129,12 +137,13 @@ public class StockWorker {
                 "select collection_id from stock_collection_plans where status='RUNNING' order by"
                     + " created_at limit 5")
             .query(UUID.class)
-            .list())
+            .list()) {
       try {
         collections.advance(id);
       } catch (Exception e) {
         collections.pause(id, "PLAN_EXECUTION_FAILED");
       }
+    }
   }
 
   @Scheduled(fixedDelay = 15000)

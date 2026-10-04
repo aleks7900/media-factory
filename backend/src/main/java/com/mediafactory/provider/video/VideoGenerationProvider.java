@@ -2,8 +2,11 @@ package com.mediafactory.provider.video;
 
 import com.mediafactory.provider.video.VideoTypes.*;
 
-/** Async provider-neutral port; legacy synchronous foundation API remains source-compatible. */
+/**
+ * Async provider-neutral port; legacy synchronous foundation API remains source-compatible.
+ */
 public interface VideoGenerationProvider {
+
   String providerId();
 
   boolean configured();
@@ -22,5 +25,6 @@ public interface VideoGenerationProvider {
 
   Result result(String providerJobId, Request request, byte[] source, String mediaType);
 
-  default void cancel(String providerJobId) {}
+  default void cancel(String providerJobId) {
+  }
 }

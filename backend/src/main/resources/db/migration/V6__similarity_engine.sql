@@ -37,7 +37,8 @@ CREATE UNIQUE INDEX embedding_one_active ON embedding_models (active) WHERE acti
 CREATE FUNCTION protect_model_identity() RETURNS trigger
     LANGUAGE plpgsql AS $$
 BEGIN
- IF (OLD.provider,OLD.model,OLD.version,OLD.dimension,OLD.preprocessing) IS DISTINCT FROM (NEW.provider,NEW.model,NEW.version,NEW.dimension,NEW.preprocessing) THEN RAISE EXCEPTION 'Embedding model identity is immutable';
+ IF
+(OLD.provider,OLD.model,OLD.version,OLD.dimension,OLD.preprocessing) IS DISTINCT FROM (NEW.provider,NEW.model,NEW.version,NEW.dimension,NEW.preprocessing) THEN RAISE EXCEPTION 'Embedding model identity is immutable';
 END IF;
 RETURN NEW;
 END $$;
@@ -85,7 +86,8 @@ CREATE INDEX embedding_clip_hnsw ON asset_embeddings USING hnsw((embedding::vect
 CREATE FUNCTION protect_embedding() RETURNS trigger
     LANGUAGE plpgsql AS $$
 BEGIN
- IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'Historical features are immutable';
+ IF
+TG_OP<>'INSERT' THEN RAISE EXCEPTION 'Historical features are immutable';
 END IF;
  IF
 NEW.dimension<>(SELECT dimension FROM embedding_models WHERE id=NEW.model_id) THEN RAISE EXCEPTION 'Incompatible embedding dimension';
@@ -93,10 +95,15 @@ END IF;
 RETURN NEW;
 END $$;
 CREATE TRIGGER immutable_embeddings
-    BEFORE INSERT OR UPDATE OR DELETE ON asset_embeddings FOR EACH ROW
-EXECUTE FUNCTION protect_embedding();
+    BEFORE INSERT OR
+UPDATE OR
+DELETE
+ON asset_embeddings FOR EACH ROW
+    EXECUTE FUNCTION protect_embedding();
 CREATE TRIGGER immutable_fingerprints
-    BEFORE UPDATE OR DELETE ON asset_fingerprints FOR EACH ROW
+    BEFORE UPDATE OR
+DELETE
+ON asset_fingerprints FOR EACH ROW
 EXECUTE FUNCTION immutable_review_action();
 
 CREATE TABLE similarity_comparisons
@@ -133,7 +140,9 @@ CREATE TABLE similarity_evaluation_history
     created_at    timestamptz NOT NULL DEFAULT now()
 );
 CREATE TRIGGER immutable_similarity_evaluations
-    BEFORE UPDATE OR DELETE ON similarity_evaluation_history FOR EACH ROW
+    BEFORE UPDATE OR
+DELETE
+ON similarity_evaluation_history FOR EACH ROW
 EXECUTE FUNCTION immutable_review_action();
 CREATE TABLE similarity_findings
 (
@@ -158,7 +167,9 @@ CREATE TABLE similarity_review_actions
     created_at    timestamptz   NOT NULL DEFAULT now()
 );
 CREATE TRIGGER immutable_similarity_actions
-    BEFORE UPDATE OR DELETE ON similarity_review_actions FOR EACH ROW
+    BEFORE UPDATE OR
+DELETE
+ON similarity_review_actions FOR EACH ROW
 EXECUTE FUNCTION immutable_review_action();
 CREATE TABLE duplicate_groups
 (
@@ -211,7 +222,8 @@ CREATE INDEX similarity_job_asset ON similarity_jobs (asset_id, model_id);
 CREATE FUNCTION enqueue_asset_similarity() RETURNS trigger
     LANGUAGE plpgsql AS $$
 BEGIN
- INSERT INTO asset_fingerprints(id,asset_id,type,value,algorithm,algorithm_version) VALUES(gen_random_uuid(),NEW.id,'SHA256',NEW.sha256,'SHA-256','1');
+INSERT INTO asset_fingerprints(id, asset_id, type, value, algorithm, algorithm_version)
+VALUES (gen_random_uuid(), NEW.id, 'SHA256', NEW.sha256, 'SHA-256', '1');
 INSERT INTO similarity_jobs(id, type, asset_id, model_id, idempotency_key)
 SELECT gen_random_uuid(), 'GENERATE_ASSET_EMBEDDING', NEW.id, id, 'asset:' || NEW.id || ':' || id
 FROM embedding_models
@@ -310,7 +322,9 @@ CREATE TABLE generation_batch_actions
     created_at     timestamptz   NOT NULL DEFAULT now()
 );
 CREATE TRIGGER immutable_batch_actions
-    BEFORE UPDATE OR DELETE ON generation_batch_actions FOR EACH ROW
+    BEFORE UPDATE OR
+DELETE
+ON generation_batch_actions FOR EACH ROW
 EXECUTE FUNCTION immutable_review_action();
 CREATE TABLE diversity_guard_events
 (
@@ -333,7 +347,9 @@ CREATE TABLE concept_embeddings
     UNIQUE (concept_id, model_id, prompt_sha256)
 );
 CREATE TRIGGER immutable_concept_embeddings
-    BEFORE UPDATE OR DELETE ON concept_embeddings FOR EACH ROW
+    BEFORE UPDATE OR
+DELETE
+ON concept_embeddings FOR EACH ROW
 EXECUTE FUNCTION immutable_review_action();
 ALTER TABLE quality_findings DROP CONSTRAINT quality_findings_source_check;
 ALTER TABLE quality_findings
@@ -399,8 +415,9 @@ END IF;
 RETURN NEW;
 END $$;
 CREATE TRIGGER publication_similarity
-    BEFORE INSERT OR UPDATE ON publications FOR EACH ROW
-EXECUTE FUNCTION require_similarity_publication();
+    BEFORE INSERT OR
+UPDATE ON publications FOR EACH ROW
+    EXECUTE FUNCTION require_similarity_publication();
 CREATE TRIGGER generation_similarity
     BEFORE UPDATE OF status
     ON generations
