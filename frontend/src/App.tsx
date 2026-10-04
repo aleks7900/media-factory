@@ -29,12 +29,13 @@ import {StockWorkspace} from './StockWorkspace';
 import {VideoWorkspace} from './VideoWorkspace';
 import {AnalyticsWorkspace} from './AnalyticsWorkspace';
 import {FeedbackWorkspace} from './FeedbackWorkspace';
+import {BulkWorkspace} from './BulkWorkspace';
 
-const pages = ['Dashboard', 'Collections', 'Generation Queue', 'Assets', 'Review', 'Providers', 'Costs', 'Settings', 'Processing', 'Wallpaper Factory', 'Stock Factory', 'Video Factory', 'Analytics', 'Feedback'] as const;
+const pages = ['Dashboard', 'Collections', 'Generation Queue', 'Assets', 'Review', 'Providers', 'Costs', 'Settings', 'Processing', 'Wallpaper Factory', 'Stock Factory', 'Video Factory', 'Analytics', 'Feedback', 'Bulk Gemini Video', 'Bulk GPT Image'] as const;
 const promptPages = ['Prompt Library', 'Prompt Editor', 'Prompt History', 'Presets', 'Experiments'] as const;
 const similarityPages = ['Duplicate Review', 'Similarity Explorer', 'Collection Diversity', 'Embedding Jobs'] as const;
 type Page = typeof pages[number] | typeof promptPages[number] | typeof similarityPages[number];
-const icons = [LayoutDashboard, Layers3, ListVideo, Images, ScanEye, Plug, CircleDollarSign, Settings, Sparkles, Images, Layers3, ListVideo, Activity, Sparkles];
+const icons = [LayoutDashboard, Layers3, ListVideo, Images, ScanEye, Plug, CircleDollarSign, Settings, Sparkles, Images, Layers3, ListVideo, Activity, Sparkles, ListVideo, Images];
 const labels: Record<string, string> = {
     generated_today: 'Generated today',
     approved_today: 'Approved today',
@@ -138,6 +139,10 @@ export function App() {
                     <button aria-label="Dismiss notification" onClick={() => setNotice('')}><X size={15}/></button>
                 </div>}
                 {page === 'Dashboard' && <>
+                    <div className="bulk-entry-cards">
+                        <button onClick={()=>setPage('Bulk Gemini Video')}><ListVideo size={24}/><strong>Bulk Gemini Video</strong><span>Turn a ZIP of prompts and references into a video queue.</span><b>Upload ZIP →</b></button>
+                        <button onClick={()=>setPage('Bulk GPT Image')}><Images size={24}/><strong>Bulk GPT Image</strong><span>Generate independent images from one task archive.</span><b>Upload ZIP →</b></button>
+                    </div>
                     <section className="hero">
                         <div>
                             <div className="hero-tag"><Sparkles size={14}/> IMAGINATION, IN PRODUCTION</div>
@@ -184,6 +189,8 @@ export function App() {
                 {page === 'Video Factory' && <VideoWorkspace/>}
                 {page === 'Analytics' && <AnalyticsWorkspace/>}
                 {page === 'Feedback' && <FeedbackWorkspace/>}
+                {page === 'Bulk Gemini Video' && <BulkWorkspace key="bulk-video" kind="GEMINI_VIDEO"/>}
+                {page === 'Bulk GPT Image' && <BulkWorkspace key="bulk-image" kind="GPT_IMAGE"/>}
                 {page === 'Wallpaper Factory' && <WallpaperWorkspace onProcess={(id,profiles)=>{setProcessingAsset(id);setProcessingProfiles(profiles);setPage('Processing');}}/>}
                 {page === 'Generation Queue' && <Jobs onSelect={setSelectedGeneration} rows={jobs.data ?? []}
                                                       retry={id => action.mutate({path: `/jobs/${id}/retry`, body: {}})}

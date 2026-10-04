@@ -218,3 +218,7 @@ See [setup and API](docs/feedback-engine.md), [statistics](docs/feedback-statist
 ## Codex operational workflows
 
 TASK-12 skill setup, API execution, human gates and verification are documented in [Codex skills](docs/codex-skills.md). Install the five canonical repository skills with `powershell -File scripts/install-media-factory-skills.ps1`. See the testing guide for current verification limits.
+
+## Bulk image and video generation
+
+Use **Bulk GPT Image** or **Bulk Gemini Video** to import a ZIP of independent prompts, monitor durable queues and export completed results. See [bulk generation setup, API, limits and recovery](docs/bulk-generation.md). Mock modes require no paid API calls.

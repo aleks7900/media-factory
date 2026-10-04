@@ -1,6 +1,11 @@
 server:
   port: 8080
 spring:
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 102MB
+      file-size-threshold: 0
   task:
     scheduling:
       pool:

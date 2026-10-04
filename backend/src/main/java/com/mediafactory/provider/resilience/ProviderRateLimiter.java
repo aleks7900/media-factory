@@ -44,6 +44,11 @@ public class ProviderRateLimiter {
     return acquireOwned(provider, attemptId, "video_attempt_id", rate, lease);
   }
 
+  public Admission acquireBulk(String provider, UUID taskId,
+      ImageGenerationProperties.RateLimit rate, Duration lease) {
+    return acquireOwned(provider, taskId, "bulk_task_id", rate, lease);
+  }
+
   private Admission acquireOwned(String provider, UUID jobId, String owner,
       ImageGenerationProperties.RateLimit rate, Duration lease) {
     return tx.execute(s -> {

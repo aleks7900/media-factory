@@ -41,13 +41,15 @@ public class VideoProviderRouter {
         .map(
             id -> {
               provider(id);
-              return Map.<String, Object>of(
-                  "provider",
-                  id,
-                  "model",
-                  id.equals("mock-video") ? "deterministic-motion-v1" : model);
+              return Map.<String, Object>of("provider", id, "model", modelFor(id));
             })
         .toList();
+  }
+
+  String modelFor(String id) {
+    if (id.equals("mock-video")) return "deterministic-motion-v1";
+    if (id.equals("gemini")) return providers.get(id).capabilities().models().iterator().next();
+    return model;
   }
 
   public Object info() {
@@ -64,7 +66,7 @@ public class VideoProviderRouter {
                     "capabilities",
                     p.capabilities(),
                     "model",
-                    p.providerId().equals("mock-video") ? "deterministic-motion-v1" : model))
+                    modelFor(p.providerId())))
         .toList();
   }
 }
