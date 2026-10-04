@@ -134,10 +134,12 @@ public class BulkGenerationController {
 
   @GetMapping("/batches/{id}/results.zip")
   public ResponseEntity<StreamingResponseBody> export(@PathVariable UUID id) {
-    service.detail(id);
+    var b = service.detail(id);
+    String base = Objects.toString(b.get("archive_name"), "batch").replaceFirst("(?i)\\.zip$", "");
+    String downloadName = base.replaceAll("[^A-Za-z0-9_-]", "_") + "-results.zip";
     return ResponseEntity.ok()
         .contentType(MediaType.parseMediaType("application/zip"))
-        .header("Content-Disposition", "attachment; filename=bulk-" + id + ".zip")
+        .header("Content-Disposition", "attachment; filename=" + downloadName)
         .body(out -> service.export(id, out));
   }
 }

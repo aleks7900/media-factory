@@ -373,7 +373,98 @@ public class BulkGenerationService {
             .param("offset", page * 100)
             .query(UUID.class)
             .list();
-    return ids.stream().map(this::detail).toList();
+    if (ids.isEmpty()) return List.of();
+    var batchList =
+        db.sql("select * from bulk_batches where id in (:ids) order by created_at desc, id")
+            .param("ids", ids)
+            .query()
+            .listOfRows()
+            .stream()
+            .map(BulkGenerationService::clean)
+            .toList();
+    var countsRows =
+        db.sql(
+                "select batch_id, status, count(*) count from bulk_tasks where batch_id in (:ids)"
+                    + " and deleted_at is null group by batch_id, status")
+            .param("ids", ids)
+            .query()
+            .listOfRows();
+    var countsByBatch = new HashMap<UUID, Map<String, Long>>();
+    for (var cr : countsRows) {
+      UUID bid = (UUID) cr.get("batch_id");
+      countsByBatch
+          .computeIfAbsent(bid, k -> new LinkedHashMap<>())
+          .put(cr.get("status").toString(), ((Number) cr.get("count")).longValue());
+    }
+    var refRows =
+        db.sql(
+                "select batch_id, coalesce(sum(jsonb_array_length(inputs)),0) ref_count from"
+                    + " bulk_tasks where batch_id in (:ids) and deleted_at is null group by"
+                    + " batch_id")
+            .param("ids", ids)
+            .query()
+            .listOfRows();
+    var refsByBatch = new HashMap<UUID, Long>();
+    for (var rr : refRows) {
+      refsByBatch.put((UUID) rr.get("batch_id"), ((Number) rr.get("ref_count")).longValue());
+    }
+    var maxCompletedRows =
+        db.sql(
+                "select batch_id, max(completed_at) max_completed from bulk_tasks where batch_id"
+                    + " in (:ids) and deleted_at is null group by batch_id")
+            .param("ids", ids)
+            .query()
+            .listOfRows();
+    var completedByBatch = new HashMap<UUID, Object>();
+    for (var mcr : maxCompletedRows) {
+      completedByBatch.put((UUID) mcr.get("batch_id"), mcr.get("max_completed"));
+    }
+    var results = new ArrayList<Map<String, Object>>();
+    for (var b : batchList) {
+      UUID bid = (UUID) b.get("id");
+      var stats = new LinkedHashMap<String, Long>();
+      for (String state :
+          List.of(
+              "PENDING",
+              "QUEUED",
+              "GENERATING",
+              "COMPLETED",
+              "FAILED",
+              "RETRYING",
+              "CANCELLED"))
+        stats.put(state, 0L);
+      var actualCounts = countsByBatch.getOrDefault(bid, Map.of());
+      actualCounts.forEach(stats::put);
+      long total = stats.values().stream().mapToLong(Long::longValue).sum();
+      b.put("counts", stats);
+      b.put("totalTasks", total);
+      b.put("progress", total == 0 ? 0 : 100 * stats.get("COMPLETED") / total);
+      String st =
+          Boolean.TRUE.equals(b.get("cancelled"))
+              ? "CANCELLED"
+              : Boolean.TRUE.equals(b.get("paused"))
+                  ? "PAUSED"
+                  : stats.get("GENERATING") > 0 || stats.get("RETRYING") > 0
+                      ? "RUNNING"
+                      : stats.get("QUEUED") > 0
+                          ? "QUEUED"
+                          : stats.get("FAILED") > 0
+                              ? "FAILED"
+                              : stats.get("CANCELLED") == total && total > 0
+                                  ? "CANCELLED"
+                                  : "COMPLETED";
+      b.put("status", st);
+      if (stats.get("QUEUED")
+              + stats.get("PENDING")
+              + stats.get("GENERATING")
+              + stats.get("RETRYING")
+          == 0) {
+        b.put("completed_at", completedByBatch.get(bid));
+      }
+      b.put("references", refsByBatch.getOrDefault(bid, 0L));
+      results.add(b);
+    }
+    return results;
   }
 
   public Object tasks(UUID batch, String status, String search, int page) {
@@ -403,6 +494,10 @@ public class BulkGenerationService {
             .param(id)
             .query()
             .listOfRows());
+    t.put("nextRetryAt", t.get("available_at"));
+    t.put(
+        "lastError",
+        t.get("error_message") != null ? t.get("error_message") : t.get("error_code"));
     return t;
   }
 
@@ -430,10 +525,16 @@ public class BulkGenerationService {
                 "update bulk_tasks set cancel_requested=true,status=case when status in"
                     + " ('QUEUED','PENDING','RETRYING') then 'CANCELLED' else status"
                     + " end,completed_at=case when status in ('QUEUED','PENDING','RETRYING') then"
-                    + " now() else completed_at end where batch_id=? and status not in"
+                    + " now() else completed_at end,deleted_at=case when ? then now() else"
+                    + " deleted_at end where batch_id=? and status not in"
                     + " ('COMPLETED','FAILED','CANCELLED')")
-            .param(id)
+            .params(action.equals("delete"), id)
             .update();
+        if (action.equals("delete")) {
+          db.sql("update bulk_tasks set deleted_at=now() where batch_id=? and deleted_at is null")
+              .param(id)
+              .update();
+        }
       }
       case "retry-failed" -> {
         check(!Boolean.TRUE.equals(b.get("cancelled")), "Cancelled batch cannot retry");
@@ -603,13 +704,14 @@ public class BulkGenerationService {
     var rows =
         db.sql(
                 "select"
-                    + " t.id,t.name,t.status,t.provider_metadata,a.storage_key,a.sha256,a.media_type"
+                    + " t.id,t.name,t.status,t.error_code,t.error_message,t.validation_error,t.provider_metadata,a.storage_key,a.sha256,a.media_type"
                     + " from bulk_tasks t left join assets a on a.id=t.asset_id where t.batch_id=?"
                     + " and t.deleted_at is null order by t.created_at,t.id")
             .param(batch)
             .query()
             .listOfRows();
     var manifest = new ArrayList<Map<String, Object>>();
+    var usedNames = new HashSet<String>();
     long total = 0;
     try (var zip = new ZipOutputStream(output)) {
       for (var row : rows) {
@@ -617,6 +719,14 @@ public class BulkGenerationService {
         entry.put("taskId", row.get("id"));
         entry.put("name", row.get("name"));
         entry.put("status", row.get("status"));
+        if (!"COMPLETED".equals(row.get("status"))) {
+          if (row.get("error_code") != null) entry.put("errorCode", row.get("error_code"));
+          String errMsg =
+              row.get("validation_error") != null
+                  ? Objects.toString(row.get("validation_error"))
+                  : Objects.toString(row.get("error_message"), null);
+          if (errMsg != null) entry.put("errorMessage", errMsg);
+        }
         entry.put("metadata", clean(row).get("provider_metadata"));
         if (row.get("status").equals("COMPLETED") && row.get("storage_key") != null) {
           byte[] bytes = storage.read(row.get("storage_key").toString());
@@ -626,13 +736,18 @@ public class BulkGenerationService {
               total <= 2L * 1024 * 1024 * 1024,
               "Export exceeds 2 GiB; download outputs individually");
           String type = row.get("media_type").toString();
-          String name =
-              row.get("name").toString().replaceAll("[^A-Za-z0-9_-]", "_")
-                  + "-"
-                  + row.get("id")
-                  + (type.equals("video/mp4")
-                      ? ".mp4"
-                      : type.equals("image/png") ? ".png" : ".jpg");
+          String ext =
+              type.equals("video/mp4")
+                  ? ".mp4"
+                  : type.equals("image/png") ? ".png" : ".jpg";
+          String base = row.get("name").toString().replaceAll("[^A-Za-z0-9_-]", "_");
+          if (base.isBlank()) base = "task";
+          String candidate = base + ext;
+          if (!usedNames.add(candidate.toLowerCase(Locale.ROOT))) {
+            candidate = base + "-" + row.get("id") + ext;
+            usedNames.add(candidate.toLowerCase(Locale.ROOT));
+          }
+          String name = candidate;
           zip.putNextEntry(new ZipEntry(name));
           zip.write(bytes);
           zip.closeEntry();

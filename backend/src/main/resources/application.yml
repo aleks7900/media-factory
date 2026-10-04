@@ -119,3 +119,24 @@ media-factory:
             text-input-per-million: 2.50
             image-input-per-million: 4.00
             output-per-million: 15.00
+bulk:
+  worker:
+    concurrency: ${BULK_WORKER_CONCURRENCY:3}
+    requests-per-minute: ${BULK_WORKER_RPM:20}
+    max-attempts: ${BULK_WORKER_MAX_ATTEMPTS:3}
+    poll-ms: ${BULK_WORKER_POLL_MS:1000}
+    retry:
+      initial-delay-ms: ${BULK_RETRY_INITIAL_DELAY_MS:2000}
+      max-delay-ms: ${BULK_RETRY_MAX_DELAY_MS:120000}
+      multiplier: ${BULK_RETRY_MULTIPLIER:2.0}
+      jitter: ${BULK_RETRY_JITTER:true}
+  zip:
+    max-archive-bytes: ${BULK_ZIP_MAX_ARCHIVE:104857600}
+    max-extracted-bytes: ${BULK_ZIP_MAX_EXTRACTED:268435456}
+    max-entry-bytes: ${BULK_ZIP_MAX_ENTRY:16777216}
+    max-files: ${BULK_ZIP_MAX_FILES:5000}
+    max-tasks: ${BULK_ZIP_MAX_TASKS:1000}
+    max-depth: ${BULK_ZIP_MAX_DEPTH:2}
+    max-ratio: ${BULK_ZIP_MAX_RATIO:200}
+    max-prompt-bytes: ${BULK_ZIP_MAX_PROMPT:40000}
+    max-image-pixels: ${BULK_ZIP_MAX_PIXELS:40000000}

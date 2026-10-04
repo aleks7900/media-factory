@@ -103,4 +103,32 @@ class BulkArchiveParserTest {
     var result = parse(Map.of("task/image.jpg", text("not an image")));
     assertThat(result.tasks().getFirst().valid()).isFalse();
   }
+
+  @Test
+  void supportsDirectoryTaskTxtAndIgnoresOsMetadata() throws Exception {
+    var files = new LinkedHashMap<String, byte[]>();
+    files.put(".DS_Store", text("os junk"));
+    files.put("car_task/task.txt", text("A red sportscar"));
+    files.put("car_task/.DS_Store", text("more junk"));
+    files.put("car_task/Thumbs.db", text("windows junk"));
+    files.put("__MACOSX/._car_task", text("mac junk"));
+    files.put("audi/task.md", text("An Audi RS6"));
+    var result = parse(files);
+    assertThat(result.tasks()).hasSize(2);
+    assertThat(result.tasks().stream().allMatch(BulkArchiveParser.Task::valid)).isTrue();
+    var car = result.tasks().stream().filter(t -> t.name().equals("car_task")).findFirst().orElseThrow();
+    assertThat(car.prompt()).isEqualTo("A red sportscar");
+  }
+
+  @Test
+  void supportsUnicodeAndSpacesInTaskNamesAndPrompts() throws Exception {
+    var files = new LinkedHashMap<String, byte[]>();
+    files.put("Спортивная машина/task.md", text("Гоночный автомобиль на треке 🏎️"));
+    files.put("cyberpunk dragon 2077/task.txt", text("赛博朋克龙在霓虹城市"));
+    var result = parse(files);
+    assertThat(result.tasks()).hasSize(2);
+    assertThat(result.tasks().stream().allMatch(BulkArchiveParser.Task::valid)).isTrue();
+    assertThat(result.tasks().getFirst().prompt()).contains("Гоночный автомобиль");
+    assertThat(result.tasks().getLast().prompt()).contains("赛博朋克龙");
+  }
 }

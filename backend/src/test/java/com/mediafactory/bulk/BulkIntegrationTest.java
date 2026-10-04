@@ -300,4 +300,106 @@ class BulkIntegrationTest {
     assertThat(db.sql("select count(*) from generation_costs").query(Long.class).single())
         .isEqualTo(1);
   }
+
+  @Test
+  void abandonedTaskWithExpiredLeaseIsReclaimedAfterRestart() throws Exception {
+    upload(1, false);
+    var claimed = worker.claim();
+    assertThat(claimed).isNotNull();
+    UUID taskId = (UUID) claimed.get("id");
+    db.sql(
+            "update bulk_tasks set status='GENERATING', lease_until=now() - interval '1 minute', available_at=now() - interval '1 minute' where id=?")
+        .param(taskId)
+        .update();
+
+    var reclaimed = worker.claim();
+    assertThat(reclaimed).isNotNull();
+    assertThat(reclaimed.get("id")).isEqualTo(taskId);
+    worker.step(reclaimed);
+    assertThat(service.task(taskId).get("status")).isEqualTo("COMPLETED");
+  }
+
+  @Test
+  void asyncPollingDelaysNextAttemptBy5SecondsToPreventTightLoop() throws Exception {
+    upload(1, false);
+    var processor = fake(true);
+    when(processor.submit(any())).thenReturn("operations/op-123");
+    when(processor.status(eq("operations/op-123"), any()))
+        .thenReturn("RUNNING");
+    try (var custom = scripted(processor)) {
+      var claimed = custom.claim();
+      assertThat(claimed).isNotNull();
+      custom.step(claimed);
+      due();
+      claimed = custom.claim();
+      assertThat(claimed).isNotNull();
+      custom.step(claimed);
+      assertThat(custom.claim()).isNull();
+
+      var availableAt =
+          db.sql("select available_at from bulk_tasks where id=?")
+              .param(claimed.get("id"))
+              .query(java.time.Instant.class)
+              .single();
+      assertThat(availableAt).isAfter(java.time.Instant.now());
+    }
+  }
+
+  @Test
+  void batchDeleteCascadesToTasksAndWorkerIgnoresDeletedTasks() throws Exception {
+    UUID batch = upload(2, false);
+    service.batchAction(batch, "delete");
+    var deletedTasks =
+        db.sql("select count(*) from bulk_tasks where batch_id=? and deleted_at is not null")
+            .param(batch)
+            .query(Long.class)
+            .single();
+    assertThat(deletedTasks).isEqualTo(2);
+    assertThat(worker.claim()).isNull();
+  }
+
+  @Test
+  void scale500TasksListingAndPaginationPerformance() throws Exception {
+    long start = System.currentTimeMillis();
+    UUID batch = upload(500, false);
+    long importTime = System.currentTimeMillis() - start;
+    assertThat(importTime).isLessThan(20000);
+
+    long listStart = System.currentTimeMillis();
+    var batches = (List<?>) service.list(project, "GPT_IMAGE", "%%", "ALL", 0);
+    long listDuration = System.currentTimeMillis() - listStart;
+    assertThat(batches).isNotEmpty();
+    assertThat(listDuration).isLessThan(1500);
+
+    long pageStart = System.currentTimeMillis();
+    var page1 = (List<?>) service.tasks(batch, "ALL", "", 0);
+    var page2 = (List<?>) service.tasks(batch, "ALL", "", 1);
+    long pageDuration = System.currentTimeMillis() - pageStart;
+    assertThat(page1).hasSize(100);
+    assertThat(page2).hasSize(100);
+    assertThat(pageDuration).isLessThan(500);
+  }
+
+  @Test
+  void exportProducesCleanFilenamesAndManifestIncludesErrorDetails() throws Exception {
+    UUID batch = upload(2, true);
+    runOne();
+    var bytes = new ByteArrayOutputStream();
+    service.export(batch, bytes);
+
+    String manifestContent = null;
+    try (var zip = new ZipInputStream(new ByteArrayInputStream(bytes.toByteArray()))) {
+      ZipEntry entry;
+      while ((entry = zip.getNextEntry()) != null) {
+        if ("manifest.json".equals(entry.getName())) {
+          manifestContent = new String(zip.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+      }
+    }
+    assertThat(manifestContent).isNotNull();
+    assertThat(manifestContent).contains("errorCode");
+    assertThat(manifestContent).contains("VALIDATION_ERROR");
+    assertThat(manifestContent).contains("status");
+  }
 }
+

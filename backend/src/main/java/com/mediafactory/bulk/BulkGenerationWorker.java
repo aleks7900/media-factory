@@ -26,6 +26,11 @@ public class BulkGenerationWorker implements AutoCloseable {
   final Set<UUID> active = ConcurrentHashMap.newKeySet();
   final Map<UUID, UUID> leases = new ConcurrentHashMap<>();
 
+  static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(BulkGenerationWorker.class);
+  final long retryInitialDelayMs, retryMaxDelayMs;
+  final double retryMultiplier;
+  final boolean retryJitter;
+
   @Scheduled(fixedDelay = 30000)
   public void heartbeat() {
     leases.forEach(
@@ -38,21 +43,41 @@ public class BulkGenerationWorker implements AutoCloseable {
                 .update());
   }
 
+  @org.springframework.beans.factory.annotation.Autowired
   public BulkGenerationWorker(
       BulkGenerationService s,
       ProviderRateLimiter limiter,
       RetryDecisionService retries,
       @Value("${bulk.worker.concurrency:3}") int concurrency,
       @Value("${bulk.worker.requests-per-minute:20}") int rpm,
-      @Value("${bulk.worker.max-attempts:3}") int maxAttempts) {
+      @Value("${bulk.worker.max-attempts:3}") int maxAttempts,
+      @Value("${bulk.worker.retry.initial-delay-ms:2000}") long initialDelayMs,
+      @Value("${bulk.worker.retry.max-delay-ms:120000}") long maxDelayMs,
+      @Value("${bulk.worker.retry.multiplier:2.0}") double multiplier,
+      @Value("${bulk.worker.retry.jitter:true}") boolean jitter) {
     this.s = s;
     this.limiter = limiter;
     this.retries = retries;
     this.concurrency = Math.max(1, Math.min(16, concurrency));
     this.rpm = Math.max(1, rpm);
     this.maxAttempts = Math.max(1, Math.min(10, maxAttempts));
+    this.retryInitialDelayMs = Math.max(100, initialDelayMs);
+    this.retryMaxDelayMs = Math.max(1000, maxDelayMs);
+    this.retryMultiplier = Math.max(1.0, multiplier);
+    this.retryJitter = jitter;
     pool = Executors.newFixedThreadPool(this.concurrency);
   }
+
+  public BulkGenerationWorker(
+      BulkGenerationService s,
+      ProviderRateLimiter limiter,
+      RetryDecisionService retries,
+      int concurrency,
+      int rpm,
+      int maxAttempts) {
+    this(s, limiter, retries, concurrency, rpm, maxAttempts, 2000L, 120000L, 2.0, true);
+  }
+
 
   @Scheduled(fixedDelayString = "${bulk.worker.poll-ms:1000}")
   public void tick() {
@@ -67,11 +92,10 @@ public class BulkGenerationWorker implements AutoCloseable {
             try {
               step(t);
             } catch (Exception error) {
-              org.slf4j.LoggerFactory.getLogger(getClass())
-                  .error(
-                      "bulk_cycle_failed taskId={} errorType={}",
-                      id,
-                      error.getClass().getSimpleName());
+              log.error(
+                  "bulk_cycle_failed taskId={} errorType={}",
+                  id,
+                  error.getClass().getSimpleName());
             } finally {
               active.remove(id);
               leases.remove(id);
@@ -100,12 +124,11 @@ public class BulkGenerationWorker implements AutoCloseable {
                           .sql(
                               "select t.id from bulk_tasks t join bulk_batches b on b.id=t.batch_id"
                                   + " where t.available_at<=now() and (t.lease_until is null or"
-                                  + " t.lease_until<now()) and ((t.status='GENERATING') or"
+                                  + " t.lease_until<now()) and b.deleted_at is null and t.deleted_at is null and ((t.status='GENERATING') or"
                                   + " (t.status in ('QUEUED','RETRYING') and not b.paused and not"
-                                  + " b.cancelled and b.deleted_at is null and t.deleted_at is null"
-                                  + " and not t.cancel_requested and (select count(*) from"
+                                  + " b.cancelled and not t.cancel_requested and (select count(*) from"
                                   + " bulk_tasks busy join bulk_batches owner on"
-                                  + " owner.id=busy.batch_id where busy.status='GENERATING' and"
+                                  + " owner.id=busy.batch_id where busy.status='GENERATING' and busy.lease_until>now() and"
                                   + " owner.provider=b.provider) < ?)) order by case when"
                                   + " t.status='GENERATING' then 0 else 1"
                                   + " end,t.available_at,t.created_at for update of t skip locked"
@@ -142,7 +165,15 @@ public class BulkGenerationWorker implements AutoCloseable {
     boolean externalStarted = false;
     boolean polling = false;
     var t = s.task(id);
+    if (t.get("deleted_at") != null || t.get("batch_deleted") != null) return;
     BulkProcessor processor = s.processor(t.get("kind").toString());
+    log.info(
+        "bulk_task_started batchId={} taskId={} provider={} model={} attempt={}",
+        t.get("batch_id"),
+        id,
+        t.get("provider"),
+        t.get("model"),
+        t.get("attempts"));
     try {
       boolean unsent =
           t.get("current_attempt_id") == null
@@ -256,6 +287,14 @@ public class BulkGenerationWorker implements AutoCloseable {
                         .params(submitted, current.get("current_attempt_id"))
                         .update();
                   });
+          log.info(
+              "bulk_task_submitted batchId={} taskId={} provider={} model={} attempt={} remoteJobId={}",
+              t.get("batch_id"),
+              id,
+              t.get("provider"),
+              t.get("model"),
+              t.get("attempts"),
+              submitted);
           return;
         }
         var deadline =
@@ -263,8 +302,8 @@ public class BulkGenerationWorker implements AutoCloseable {
                 .sql("select remote_deadline_at from bulk_tasks where id=?")
                 .param(id)
                 .query(java.time.OffsetDateTime.class)
-                .single();
-        if (deadline.toInstant().isBefore(Instant.now())) {
+                .optional();
+        if (deadline.isPresent() && deadline.get().toInstant().isBefore(Instant.now())) {
           terminal(t, "FAILED", "PROVIDER_POLL_DEADLINE", true);
           return;
         }
@@ -273,7 +312,13 @@ public class BulkGenerationWorker implements AutoCloseable {
           terminal(t, "FAILED", "PROVIDER_" + state, false);
           return;
         }
-        if (!state.equals("SUCCEEDED")) return;
+        if (!state.equals("SUCCEEDED")) {
+          s.database()
+              .sql("update bulk_tasks set available_at=now()+interval '5 seconds' where id=?")
+              .param(id)
+              .update();
+          return;
+        }
       }
       externalStarted = !processor.asynchronous();
       var output = processor.result(remote, input);
@@ -303,10 +348,24 @@ public class BulkGenerationWorker implements AutoCloseable {
                   ? ((Number) current.get("poll_failures")).intValue() + 1
                   : ((Number) current.get("attempts")).intValue(),
               new ImageGenerationProperties.Retry(
-                  maxAttempts, Duration.ofSeconds(2), Duration.ofMinutes(2), 2, true, false),
+                  maxAttempts,
+                  Duration.ofMillis(retryInitialDelayMs),
+                  Duration.ofMillis(retryMaxDelayMs),
+                  (int) retryMultiplier,
+                  retryJitter,
+                  false),
               safe || polling,
               false);
       if (decision.retry() && !Boolean.TRUE.equals(current.get("cancel_requested"))) {
+        log.warn(
+            "bulk_task_retry batchId={} taskId={} provider={} model={} attempt={} errorCode={} delayMs={}",
+            current.get("batch_id"),
+            id,
+            current.get("provider"),
+            current.get("model"),
+            current.get("attempts"),
+            classified.type().name(),
+            decision.delay().toMillis());
         if (polling) {
           s.database()
               .sql(
@@ -325,9 +384,9 @@ public class BulkGenerationWorker implements AutoCloseable {
           s.database()
               .sql(
                   "update bulk_tasks set"
-                      + " status='RETRYING',retry_count=retry_count+1,current_attempt_id=null,remote_job_id=null,error_code=?,error_message=?,available_at=now()+(?"
-                      + " * interval '1 millisecond') where id=? and status='GENERATING' and not"
-                      + " cancel_requested")
+                  + " status='RETRYING',retry_count=retry_count+1,current_attempt_id=null,remote_job_id=null,error_code=?,error_message=?,available_at=now()+(?"
+                  + " * interval '1 millisecond') where id=? and status='GENERATING' and not"
+                  + " cancel_requested")
               .params(
                   classified.type().name(),
                   "Retryable provider failure",
@@ -335,14 +394,22 @@ public class BulkGenerationWorker implements AutoCloseable {
                   id)
               .update();
         }
-      } else
-        terminal(
-            current,
-            "FAILED",
+      } else {
+        String terminalCode =
             decision.recoveryRequired() || polling
                 ? "PROVIDER_OUTCOME_UNKNOWN"
-                : classified.type().name(),
-            decision.recoveryRequired() || polling);
+                : classified.type().name();
+        log.error(
+            "bulk_task_failed batchId={} taskId={} provider={} model={} attempt={} errorCode={} error={}",
+            current.get("batch_id"),
+            id,
+            current.get("provider"),
+            current.get("model"),
+            current.get("attempts"),
+            terminalCode,
+            classified.getMessage());
+        terminal(current, "FAILED", terminalCode, decision.recoveryRequired() || polling);
+      }
     } finally {
       limiter.release(permit);
     }
@@ -501,6 +568,13 @@ public class BulkGenerationWorker implements AutoCloseable {
                   (UUID) t.get("id"),
                   "OUTPUT_STORED",
                   Map.of("assetId", asset, "sha256", hash));
+              log.info(
+                  "bulk_task_completed batchId={} taskId={} provider={} model={} assetId={}",
+                  t.get("batch_id"),
+                  t.get("id"),
+                  t.get("provider"),
+                  t.get("model"),
+                  asset);
             });
   }
 

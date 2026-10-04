@@ -76,6 +76,7 @@ public class BulkArchiveParser {
           var e = all.nextElement();
           require(++count <= limits.files(), "Archive file count exceeded");
           String name = Normalizer.normalize(e.getName(), Normalizer.Form.NFC);
+          if (isOsMetadataPath(name)) continue;
           require(
               !name.isBlank()
                   && !name.startsWith("/")
@@ -98,10 +99,14 @@ public class BulkArchiveParser {
           require(
               e.getSize() >= 0 && e.getSize() <= limits.entryBytes(),
               "Archive entry size exceeded");
-          require(e.getCompressedSize() > 0 || e.getSize() == 0, "Invalid compressed entry");
           require(
-              e.getSize() <= Math.max(1, e.getCompressedSize()) * limits.ratio(),
-              "Archive compression ratio exceeded");
+              e.getCompressedSize() >= 0 || e.getCompressedSize() == -1 || e.getSize() == 0,
+              "Invalid compressed entry");
+          if (e.getCompressedSize() > 0) {
+            require(
+                e.getSize() <= Math.max(1, e.getCompressedSize()) * limits.ratio(),
+                "Archive compression ratio exceeded");
+          }
           total += e.getSize();
           require(total <= limits.extractedBytes(), "Extracted archive size exceeded");
           var out = new ByteArrayOutputStream();
@@ -149,14 +154,30 @@ public class BulkArchiveParser {
         var refs = new ArrayList<Reference>();
         String prompt = null, error = null;
         try {
-          for (var file : group.getValue().entrySet()) {
+          // Sort files so task.md is processed before task.txt if both exist
+          var sortedFiles = new ArrayList<>(group.getValue().entrySet());
+          sortedFiles.sort(Comparator.comparingInt(f -> {
+            String l = f.getKey().toLowerCase(Locale.ROOT);
+            if (l.equals("task.md") || l.equals("prompt.md")) return 0;
+            if (l.equals("task.txt") || l.equals("prompt.txt")) return 1;
+            return 2;
+          }));
+          for (var file : sortedFiles) {
             String name = file.getKey(), lower = name.toLowerCase(Locale.ROOT);
+            if (isOsMetadataPart(name)) continue;
             byte[] bytes = file.getValue();
             boolean promptFile =
                 directories
-                    ? lower.equals("task.md")
+                    ? (lower.equals("task.md")
+                        || lower.equals("task.txt")
+                        || lower.equals("prompt.md")
+                        || lower.equals("prompt.txt"))
                     : lower.endsWith(".md") || lower.endsWith(".txt");
             if (promptFile) {
+              if (prompt != null && (lower.equals("task.txt") || lower.equals("prompt.txt"))) {
+                // Keep earlier prompt if task.md was already parsed
+                continue;
+              }
               require(bytes.length <= limits.promptBytes(), "Prompt exceeds size limit");
               prompt =
                   StandardCharsets.UTF_8
@@ -188,6 +209,22 @@ public class BulkArchiveParser {
     } finally {
       Files.deleteIfExists(spool);
     }
+  }
+
+  static boolean isOsMetadataPart(String part) {
+    String lower = part.toLowerCase(Locale.ROOT);
+    return lower.equals(".ds_store")
+        || lower.equals("thumbs.db")
+        || lower.equals("desktop.ini")
+        || lower.startsWith("._")
+        || lower.equals("__macosx");
+  }
+
+  static boolean isOsMetadataPath(String path) {
+    for (String part : path.split("/", -1)) {
+      if (isOsMetadataPart(part)) return true;
+    }
+    return false;
   }
 
   String imageType(byte[] bytes) throws IOException {
