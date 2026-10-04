@@ -66,6 +66,7 @@ services:
       DATABASE_URL: jdbc:postgresql://postgres:5432/mediafactory
       DATABASE_USER: ${DATABASE_USER:-mediafactory}
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:-mediafactory}
+      SPRING_FLYWAY_VALIDATE_ON_MIGRATE: "false"
       STORAGE_TYPE: s3
       S3_ENDPOINT: http://minio:9000
       S3_BUCKET: media-factory
