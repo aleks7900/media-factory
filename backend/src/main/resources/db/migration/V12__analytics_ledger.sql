@@ -174,9 +174,8 @@ SELECT g.id                                                               AS gen
        g.prompt_snapshot_id,
        coalesce(ps.variables ->>'style',ps.variables->>'wallpaper_style') AS style,
        ps.presets                                                         AS presets,
-       g.request_options -
-        >>'profile' AS generation_profile,
-        vp.profile_version_id AS video_profile,vp.profile_snapshot->>'loopStrategy' AS loop_strategy,
+       g.request_options->>'profile'                                      AS generation_profile,
+       vp.profile_version_id AS video_profile,vp.profile_snapshot->>'loopStrategy' AS loop_strategy,
         vp.motion_version_id AS motion_profile,wp.profile_key AS wallpaper_profile,
         coalesce ((wp.profile_snapshot->>'amoled')::boolean, false) AS amoled,
         (wp.id IS NOT NULL) AS wallpaper,(vp.id IS NOT NULL) AS video,
