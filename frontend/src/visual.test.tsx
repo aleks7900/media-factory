@@ -6,7 +6,8 @@ import { useGenerationProgress, resetGlobalJobState } from './hooks/useGeneratio
 import { ImmersiveProgress } from './components/ImmersiveProgress';
 import { GlobalJobIndicator } from './components/GlobalJobIndicator';
 import { GenerationStatus } from './components/GenerationStatus';
-import { detectDefaultQuality } from './visual/quality';
+import { detectDefaultQuality, QUALITY_CONFIGS } from './visual/quality';
+import { ParticleField, createRoundParticleTexture, createGlowingOrbTexture } from './visual/ParticleField';
 import { api, setAuth, subscribeUnauthorized } from './api';
 
 describe('Media Factory Visual System & Immersive Loaders', () => {
@@ -86,6 +87,77 @@ describe('Media Factory Visual System & Immersive Loaders', () => {
 
       sceneState.setReducedMotion(false);
       expect(sceneState.isReducedMotion()).toBe(false);
+    });
+  });
+
+  describe('ParticleField & Round Particle System', () => {
+    it('generates procedural round particle texture with anti-aliased radial decay', () => {
+      const texture = createRoundParticleTexture(64);
+      expect(texture.image.width).toBe(64);
+      expect(texture.image.height).toBe(64);
+
+      const data = texture.image.data as Uint8Array;
+      const getAlpha = (x: number, y: number) => data[(y * 64 + x) * 4 + 3];
+
+      // Corners must be fully transparent (round clipping, no squares)
+      expect(getAlpha(0, 0)).toBe(0);
+      expect(getAlpha(63, 0)).toBe(0);
+      expect(getAlpha(0, 63)).toBe(0);
+      expect(getAlpha(63, 63)).toBe(0);
+
+      // Center must have maximum/near-maximum opacity
+      const centerAlpha = getAlpha(32, 32);
+      expect(centerAlpha).toBeGreaterThan(250);
+
+      // Radial decay: monotonic falloff from center to perimeter
+      const innerAlpha = getAlpha(32, 20); // dist ~12
+      const midAlpha = getAlpha(32, 10);   // dist ~22
+      const edgeAlpha = getAlpha(32, 2);   // dist ~30
+
+      expect(centerAlpha).toBeGreaterThanOrEqual(innerAlpha);
+      expect(innerAlpha).toBeGreaterThan(midAlpha);
+      expect(midAlpha).toBeGreaterThan(edgeAlpha);
+      expect(edgeAlpha).toBeGreaterThanOrEqual(0);
+    });
+
+    it('generates glowing orb texture with luminous core and atmospheric halo', () => {
+      const texture = createGlowingOrbTexture(64);
+      expect(texture.image.width).toBe(64);
+      expect(texture.image.height).toBe(64);
+
+      const data = texture.image.data as Uint8Array;
+      const getAlpha = (x: number, y: number) => data[(y * 64 + x) * 4 + 3];
+
+      // Corners must be completely transparent
+      expect(getAlpha(0, 0)).toBe(0);
+      expect(getAlpha(63, 63)).toBe(0);
+
+      // Core center must be pure white intensity (255)
+      expect(getAlpha(32, 32)).toBe(255);
+
+      // Atmospheric halo must remain luminous at medium radius
+      const haloAlpha = getAlpha(32, 22);
+      expect(haloAlpha).toBeGreaterThan(50);
+    });
+
+    it('initializes ParticleField with round textures, additive blending and proper sizes', () => {
+      const field = new ParticleField(QUALITY_CONFIGS['HIGH']);
+      expect(field.group.children.length).toBe(3); // particlesMesh, nodesMesh, linesMesh
+
+      const particlesMesh = field.group.children[0] as any;
+      const nodesMesh = field.group.children[1] as any;
+
+      expect(particlesMesh.material.map).toBeDefined();
+      expect(particlesMesh.material.map.image.width).toBe(64);
+      expect(particlesMesh.material.size).toBe(3.6);
+      expect(particlesMesh.material.transparent).toBe(true);
+
+      expect(nodesMesh.material.map).toBeDefined();
+      expect(nodesMesh.material.map.image.width).toBe(64);
+      expect(nodesMesh.material.size).toBe(7.2);
+      expect(nodesMesh.material.transparent).toBe(true);
+
+      expect(() => field.dispose()).not.toThrow();
     });
   });
 

@@ -2,8 +2,100 @@ import * as THREE from 'three';
 import { QualityConfig } from './quality';
 import { SceneParameters } from './sceneState';
 
+export function createRoundParticleTexture(size = 64): THREE.DataTexture {
+  const data = new Uint8Array(size * size * 4);
+  const center = size / 2;
+  const radius = size / 2;
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 4;
+      const dx = (x + 0.5) - center;
+      const dy = (y + 0.5) - center;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const normalized = dist / radius;
+
+      if (normalized >= 1.0) {
+        data[idx] = 255;
+        data[idx + 1] = 255;
+        data[idx + 2] = 255;
+        data[idx + 3] = 0;
+      } else {
+        // Smooth cosine ease-out falloff for anti-aliased round particles
+        const falloff = Math.pow(Math.cos(normalized * (Math.PI / 2)), 1.8);
+        data[idx] = 255;
+        data[idx + 1] = 255;
+        data[idx + 2] = 255;
+        data[idx + 3] = Math.round(falloff * 255);
+      }
+    }
+  }
+
+  const texture = new THREE.DataTexture(
+    data,
+    size,
+    size,
+    THREE.RGBAFormat,
+    THREE.UnsignedByteType
+  );
+  texture.generateMipmaps = false;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+export function createGlowingOrbTexture(size = 64): THREE.DataTexture {
+  const data = new Uint8Array(size * size * 4);
+  const center = size / 2;
+  const radius = size / 2;
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 4;
+      const dx = (x + 0.5) - center;
+      const dy = (y + 0.5) - center;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const normalized = dist / radius;
+
+      if (normalized >= 1.0) {
+        data[idx] = 255;
+        data[idx + 1] = 255;
+        data[idx + 2] = 255;
+        data[idx + 3] = 0;
+      } else {
+        // High-intensity luminous core with soft atmospheric halo
+        const core = Math.pow(Math.max(0, 1 - normalized / 0.35), 2);
+        const halo = Math.pow(Math.cos(normalized * (Math.PI / 2)), 2.2);
+        const intensity = Math.min(1.0, core * 0.7 + halo * 0.55);
+
+        data[idx] = 255;
+        data[idx + 1] = 255;
+        data[idx + 2] = 255;
+        data[idx + 3] = Math.round(intensity * 255);
+      }
+    }
+  }
+
+  const texture = new THREE.DataTexture(
+    data,
+    size,
+    size,
+    THREE.RGBAFormat,
+    THREE.UnsignedByteType
+  );
+  texture.generateMipmaps = false;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+  return texture;
+}
+
 export class ParticleField {
   public group = new THREE.Group();
+
+  private particleTexture: THREE.DataTexture;
+  private nodeTexture: THREE.DataTexture;
 
   private particlesGeometry: THREE.BufferGeometry;
   private particlesMaterial: THREE.PointsMaterial;
@@ -81,11 +173,14 @@ export class ParticleField {
     this.particlesGeometry.setAttribute('position', new THREE.BufferAttribute(this.particlePositions, 3));
     this.particlesGeometry.setAttribute('color', new THREE.BufferAttribute(this.particleColors, 3));
 
+    this.particleTexture = createRoundParticleTexture(64);
+
     this.particlesMaterial = new THREE.PointsMaterial({
-      size: 2.2,
+      size: 3.6,
       vertexColors: true,
       transparent: true,
-      opacity: 0.65,
+      opacity: 0.72,
+      map: this.particleTexture,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
@@ -116,11 +211,14 @@ export class ParticleField {
     this.nodesGeometry = new THREE.BufferGeometry();
     this.nodesGeometry.setAttribute('position', new THREE.BufferAttribute(this.nodePositions, 3));
 
+    this.nodeTexture = createGlowingOrbTexture(64);
+
     this.nodesMaterial = new THREE.PointsMaterial({
-      size: 4.8,
+      size: 7.2,
       color: new THREE.Color('#c4b5fd'),
       transparent: true,
-      opacity: 0.85,
+      opacity: 0.9,
+      map: this.nodeTexture,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
@@ -280,6 +378,12 @@ export class ParticleField {
   }
 
   public dispose(): void {
+    if (this.particleTexture) {
+      this.particleTexture.dispose();
+    }
+    if (this.nodeTexture) {
+      this.nodeTexture.dispose();
+    }
     this.particlesGeometry.dispose();
     this.particlesMaterial.dispose();
     this.nodesGeometry.dispose();
