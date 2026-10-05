@@ -267,6 +267,32 @@ export function PublishingWorkspace() {
     }
   };
 
+  const handleTikTokReauth = async () => {
+    setActionError(null);
+
+    try {
+      const response = await fetch(
+          apiUrl('/v1/publishing/tiktok/auth-url')
+      );
+
+      if (!response.ok) {
+        throw new Error(
+            `Failed to get TikTok authorization URL: ${response.status}`
+        );
+      }
+
+      const data: { url?: string } = await response.json();
+
+      if (!data.url) {
+        throw new Error('TikTok authorization URL was not returned');
+      }
+
+      window.location.assign(data.url);
+    } catch (e: any) {
+      setActionError(e.message ?? 'Failed to start TikTok authorization');
+    }
+  };
+
   const account = accountQuery.data;
 
   return (
@@ -294,10 +320,8 @@ export function PublishingWorkspace() {
 
         <div>
           <button
-            className="control-btn"
-            onClick={() => {
-              window.open(apiUrl('/v1/publishing/tiktok/auth-url'), '_blank');
-            }}
+              className="control-btn"
+              onClick={handleTikTokReauth}
           >
             <RefreshCw size={14} /> Switch / Re-auth Account
           </button>
@@ -612,7 +636,7 @@ export function PublishingWorkspace() {
 
             <div className="pre-publish-body">
               {previewData.tasks.map((task) => {
-                const isInvalid = !task.validationError === false;
+                const isInvalid = Boolean(task.validationError);
                 return (
                   <div key={task.id} className={`preview-task-item ${isInvalid ? 'invalid' : ''}`}>
                     <div className="preview-thumb-box">
