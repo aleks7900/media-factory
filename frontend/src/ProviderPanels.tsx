@@ -3,6 +3,8 @@ import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {ArrowRight, Clock, ShieldCheck, Sparkles, X} from 'lucide-react';
 import {api, apiUrl, type Row} from './api';
 import {PromptGenerationFields} from './PromptStudio';
+import {useGenerationProgress} from './hooks/useGenerationProgress';
+import {GenerationStatus} from './components/GenerationStatus';
 
 export interface ProviderInfo {
   id: string;
@@ -72,6 +74,7 @@ export function GenerationDialog({concepts, providers, close, onCreated}: {
   close: () => void;
   onCreated: (id: string) => void
 }) {
+  const {startJob} = useGenerationProgress();
   const [provider, setProvider] = useState('');
   const [ratio, setRatio] = useState('SQUARE');
   const [model, setModel] = useState('');
@@ -84,7 +87,16 @@ export function GenerationDialog({concepts, providers, close, onCreated}: {
       if (idempotency.current.payload && idempotency.current.payload !== payload) idempotency.current.key = crypto.randomUUID();
       idempotency.current.payload = payload;
       return api<{ generationId: string }>('/v1/generations/images', body, idempotency.current.key);
-    }, onSuccess: r => onCreated(r.generationId)
+    }, onSuccess: r => {
+      startJob({
+        id: r.generationId,
+        title: 'Studio frame generation',
+        kind: 'IMAGE',
+        status: 'PROCESSING',
+        phaseDescription: 'Rendering frame via configured provider route',
+      });
+      onCreated(r.generationId);
+    }
   });
 
   function submit(e: FormEvent<HTMLFormElement>) {
@@ -224,11 +236,27 @@ interface Details {
 export function GenerationDetails({id, close}: { id: string; close: () => void }) {
   const client = useQueryClient();
   const [acknowledged, setAcknowledged] = useState(false);
+  const {updateJob, completeJob, failJob} = useGenerationProgress();
   const {data, error} = useQuery({
     queryKey: ['generation-details', id],
     queryFn: () => api<Details>(`/v1/generations/${id}`),
     refetchInterval: 2000
   });
+
+  useEffect(() => {
+    if (!data) return;
+    if (data.status === 'COMPLETED' || data.status === 'APPROVED' || data.status === 'SUCCEEDED') {
+      completeJob(id);
+    } else if (data.status === 'FAILED') {
+      failJob(id, data.job?.failure_reason ?? 'Generation failed');
+    } else {
+      updateJob(id, {
+        status: data.status,
+        phaseDescription: `Attempt ${data.attempts.length}: ${data.selected_provider} · ${data.model}`,
+      });
+    }
+  }, [data, id, completeJob, failJob, updateJob]);
+
   const retry = useMutation({
     mutationFn: () => api(`/jobs/${data!.job.id}/retry`, {acknowledgeDuplicateRisk: acknowledged}),
     onSuccess: () => {
@@ -241,9 +269,10 @@ export function GenerationDetails({id, close}: { id: string; close: () => void }
     <h2>Generation details</h2>{error &&
       <p className="error" role="alert">{error.message}</p>}{!data ?
       <p className="muted">Loading generation…</p> : <>
-        <div className="lifecycle"><span
-            className={'badge ' + data.status.toLowerCase()}>{data.status.replaceAll('_', ' ')}</span><span
-            className="muted">{data.attempts.length} attempts</span></div>
+        <div className="lifecycle">
+          <GenerationStatus status={data.status} />
+          <span className="muted">{data.attempts.length} attempts</span>
+        </div>
         <div className="route-line">{data.provider_route.map((h, i) => <span
             key={h.provider}>{i > 0 &&
             <ArrowRight

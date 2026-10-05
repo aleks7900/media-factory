@@ -1,0 +1,373 @@
+/* ==========================================================================
+   Media Factory Cinematic 3D Visual System & Immersive Loaders
+   ========================================================================== */
+
+/* WebGL Persistent Canvas Layer */
+.webgl-background-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.85;
+  transition: opacity 0.8s ease;
+}
+
+/* CSS Fallback Animated Gradient Mesh (when WebGL is unavailable or lost) */
+.webgl-fallback-gradient {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse at 80% 20%, rgba(139, 92, 246, 0.15) 0%, transparent 60%),
+    radial-gradient(ellipse at 20% 80%, rgba(6, 182, 212, 0.12) 0%, transparent 55%),
+    radial-gradient(ellipse at 50% 50%, rgba(99, 102, 241, 0.08) 0%, transparent 70%),
+    #07070b;
+  animation: fallbackNebula 18s ease-in-out infinite alternate;
+}
+
+@keyframes fallbackNebula {
+  0% {
+    filter: hue-rotate(0deg) brightness(1);
+    transform: scale(1);
+  }
+  50% {
+    filter: hue-rotate(20deg) brightness(1.1);
+    transform: scale(1.02);
+  }
+  100% {
+    filter: hue-rotate(-15deg) brightness(0.95);
+    transform: scale(1);
+  }
+}
+
+/* Page Transitions (Restrained 250ms) */
+.page-view-container {
+  position: relative;
+  z-index: 1;
+  animation: pageFadeIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes pageFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Glass UI Enhancements */
+.app-shell aside {
+  background: rgba(14, 14, 20, 0.72) !important;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-right: 1px solid rgba(255, 255, 255, 0.07) !important;
+  z-index: 2;
+}
+
+.app-shell header {
+  background: rgba(14, 14, 20, 0.65) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.panel {
+  background: rgba(22, 22, 30, 0.68) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+}
+
+.hero {
+  background: radial-gradient(ellipse at 85% 50%, rgba(88, 28, 135, 0.45), rgba(28, 25, 44, 0.7) 50%, rgba(18, 16, 26, 0.85) 80%) !important;
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(167, 139, 250, 0.22) !important;
+}
+
+/* Global Background Job Indicator Pill (in Header) */
+.global-job-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  background: rgba(30, 27, 46, 0.85);
+  border: 1px solid rgba(167, 139, 250, 0.35);
+  border-radius: 9999px;
+  font-size: 11px;
+  color: #e9e1f5;
+  box-shadow: 0 0 15px rgba(139, 92, 246, 0.25);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(10px);
+}
+
+.global-job-indicator:hover {
+  background: rgba(45, 38, 70, 0.95);
+  border-color: rgba(196, 181, 253, 0.6);
+  transform: translateY(-1px);
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+}
+
+.global-job-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #a855f7;
+  position: relative;
+}
+
+.global-job-pulse::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px solid #c084fc;
+  animation: pulseRipple 1.8s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+}
+
+@keyframes pulseRipple {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+/* Full-Screen Immersive Progress Overlay */
+.immersive-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 7, 12, 0.82);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  animation: overlayFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  padding: 24px;
+}
+
+@keyframes overlayFadeIn {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(24px);
+  }
+}
+
+.immersive-hud-card {
+  position: relative;
+  width: 100%;
+  max-width: 540px;
+  background: linear-gradient(135deg, rgba(26, 23, 40, 0.85) 0%, rgba(15, 14, 25, 0.92) 100%);
+  border: 1px solid rgba(167, 139, 250, 0.25);
+  border-radius: 20px;
+  padding: 40px 36px 32px;
+  box-shadow:
+    0 25px 60px -15px rgba(0, 0, 0, 0.7),
+    0 0 40px -10px rgba(139, 92, 246, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+/* Holographic Orb Visualizer */
+.hologram-visualizer {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  margin-bottom: 24px;
+  display: grid;
+  place-items: center;
+}
+
+.hologram-ring-outer {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px dashed rgba(167, 139, 250, 0.4);
+  animation: rotateRing 14s linear infinite;
+}
+
+.hologram-ring-inner {
+  position: absolute;
+  inset: 16px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: #06b6d4;
+  border-bottom-color: #8b5cf6;
+  animation: rotateRingRev 7s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.hologram-core {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #e9d5ff, #8b5cf6 45%, #3b0764 90%);
+  box-shadow:
+    0 0 30px rgba(147, 51, 234, 0.6),
+    inset 0 0 15px rgba(255, 255, 255, 0.5);
+  animation: corePulse 3s ease-in-out infinite alternate;
+}
+
+@keyframes rotateRing {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes rotateRingRev {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+@keyframes corePulse {
+  0% { transform: scale(0.92); filter: brightness(0.9); }
+  100% { transform: scale(1.08); filter: brightness(1.2); }
+}
+
+/* Percent or Indeterminate Badge */
+.hud-percent-value {
+  font-size: 42px;
+  font-weight: 700;
+  letter-spacing: -1.5px;
+  background: linear-gradient(135deg, #ffffff 30%, #c4b5fd 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin: 6px 0;
+  line-height: 1;
+}
+
+.hud-indeterminate-badge {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #c4b5fd;
+  background: rgba(139, 92, 246, 0.16);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  padding: 6px 14px;
+  border-radius: 9999px;
+  margin-bottom: 12px;
+}
+
+.hud-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #f3e8ff;
+  margin-bottom: 8px;
+}
+
+.hud-phase-desc {
+  font-size: 12px;
+  color: #a78bfa;
+  margin-bottom: 24px;
+  max-width: 380px;
+  line-height: 1.6;
+}
+
+/* Real Progress Track vs Indeterminate Shimmer Track */
+.hud-progress-track {
+  width: 100%;
+  height: 7px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+  overflow: hidden;
+  position: relative;
+  margin-bottom: 14px;
+}
+
+.hud-progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #8b5cf6, #06b6d4);
+  border-radius: 9999px;
+  transition: width 0.35s ease-out;
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.6);
+}
+
+.hud-progress-shimmer {
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, #8b5cf6, #06b6d4, transparent);
+  border-radius: 9999px;
+  position: absolute;
+  top: 0;
+  animation: indeterminateShimmer 1.7s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes indeterminateShimmer {
+  0% { left: -40%; }
+  100% { left: 100%; }
+}
+
+.hud-footer-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  font-size: 11px;
+  color: #9ca3af;
+  margin-bottom: 26px;
+  padding: 0 4px;
+}
+
+.hud-actions {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  justify-content: center;
+}
+
+.hud-background-btn {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #e5e7eb;
+  padding: 10px 22px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.hud-background-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
+/* Reduced Motion Overrides */
+@media (prefers-reduced-motion: reduce) {
+  .webgl-fallback-gradient,
+  .hologram-ring-outer,
+  .hologram-ring-inner,
+  .hologram-core,
+  .global-job-pulse::after,
+  .hud-progress-shimmer {
+    animation: none !important;
+  }
+
+  .page-view-container,
+  .immersive-overlay {
+    animation: none !important;
+  }
+}

@@ -1,8 +1,9 @@
-import {useRef, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {Archive, Download, Film, ImagePlus, UploadCloud} from 'lucide-react';
 import {api, apiUrl} from './api';
 import './bulk.css';
+import {useGenerationProgress} from './hooks/useGenerationProgress';
 
 type Data = Record<string, any>;
 type Kind = 'GPT_IMAGE' | 'GEMINI_VIDEO';
@@ -55,6 +56,27 @@ export function BulkWorkspace({kind}: { kind: Kind }) {
     queryFn: () => api<Data>(`/v1/bulk/batches/${selected}`),
     refetchInterval: 3000
   });
+  const { startJob, updateJob, completeJob, failJob } = useGenerationProgress();
+
+  useEffect(() => {
+    if (!batch.data || !selected) return;
+    const b = batch.data;
+    const total = Number(b.total_tasks ?? b.totalTasks ?? 0);
+    const completed = Number(b.completed_tasks ?? b.completedTasks ?? 0) + Number(b.failed_tasks ?? b.failedTasks ?? 0);
+    const percent = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : null;
+
+    if (b.status === 'COMPLETED') {
+      completeJob(selected);
+    } else if (b.status === 'FAILED') {
+      failJob(selected, b.error_message || 'Bulk batch failed');
+    } else if (['PENDING', 'QUEUED', 'PROCESSING', 'GENERATING', 'RUNNING'].includes(b.status)) {
+      updateJob(selected, {
+        status: b.status,
+        percent,
+        phaseDescription: total > 0 ? `Batch progress (${completed} / ${total} tasks)` : 'Processing batch tasks',
+      });
+    }
+  }, [batch.data, selected, completeJob, failJob, updateJob]);
   const tasks = useQuery({
     queryKey: ['bulk', 'tasks', selected, filter, search, page], enabled: !!selected,
     queryFn: () => api<Data[]>(`/v1/bulk/batches/${selected}/tasks?${new URLSearchParams({
@@ -108,6 +130,14 @@ export function BulkWorkspace({kind}: { kind: Kind }) {
       setSelected(b.id);
       setPage(0);
       setTask('');
+      startJob({
+        id: b.id,
+        title: `Bulk ${video ? 'video' : 'image'} batch`,
+        kind: 'BULK',
+        status: 'PROCESSING',
+        percent: 0,
+        phaseDescription: `Imported ${b.totalTasks ?? 0} tasks for batch processing`,
+      });
       setNotice(`Imported ${b.totalTasks} tasks: ${b.totalTasks - (b.counts.FAILED ?? 0)} valid, ${b.counts.FAILED ?? 0} invalid, ${b.references} references.`);
       refresh();
     }, onError: e => setNotice(e.message)

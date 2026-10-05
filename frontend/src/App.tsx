@@ -29,6 +29,12 @@ import {
     type ProviderInfo,
     ProvidersPanel
 } from './ProviderPanels';
+import { WebGLBackground } from './visual/WebGLBackground';
+import { GlobalJobIndicator } from './components/GlobalJobIndicator';
+import { ImmersiveProgress } from './components/ImmersiveProgress';
+import { useGenerationProgress } from './hooks/useGenerationProgress';
+import { useReducedMotion } from './hooks/useReducedMotion';
+import './visual/visual.css';
 import {PromptStudio} from './PromptStudio';
 import {CollectionQaPolicies, QaDashboard, QaJobs, ReviewWorkspace} from './ReviewWorkspace';
 import {SimilarityDashboard, SimilarityWorkspace} from './SimilarityWorkspace';
@@ -70,6 +76,8 @@ export function App() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => getCurrentUser());
   const [authChecked, setAuthChecked] = useState(false);
   const client = useQueryClient();
+  const { activeJob, setBackground } = useGenerationProgress();
+  useReducedMotion();
 
   useEffect(() => {
     let mounted = true;
@@ -149,21 +157,32 @@ export function App() {
   const visibleAssets = assets.data ?? [];
   const error = [dashboard, assets, generations, jobs, collections, projects, concepts, costs, providers].find(q => q.error)?.error;
 
-  if (!currentUser) {
-    if (!authChecked) {
-      return (
-        <div className="login-container">
-          <div className="login-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 180 }}>
-            <Loader2 size={24} className="login-spinner" style={{ color: '#c7b2fc' }} />
-          </div>
-        </div>
-      );
-    }
-    return <Login onLoginSuccess={(user) => { setCurrentUser(user); client.invalidateQueries(); }} />;
-  }
+  return (
+    <>
+      <WebGLBackground
+        route={currentUser ? page : 'Login'}
+        generationState={activeJob?.status ?? null}
+      />
+      <ImmersiveProgress
+        onViewResult={(id) => {
+          setSelectedGeneration(id);
+          setPage('Generation Queue');
+        }}
+      />
 
-  return <div className="app-shell">
-    <aside><a className="brand" href="#" onClick={() => setPage('Dashboard')}><span
+      {!currentUser ? (
+        !authChecked ? (
+          <div className="login-container">
+            <div className="login-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 180 }}>
+              <Loader2 size={24} className="login-spinner" style={{ color: '#c7b2fc' }} />
+            </div>
+          </div>
+        ) : (
+          <Login onLoginSuccess={(user) => { setCurrentUser(user); client.invalidateQueries(); }} />
+        )
+      ) : (
+        <div className="app-shell">
+          <aside><a className="brand" href="#" onClick={() => setPage('Dashboard')}><span
         className="brand-mark"><Layers3
         size={24}/></span>media<span>factory</span><sup>®</sup></a>
       <div className="workspace"><span className="workspace-avatar">S</span>
@@ -219,6 +238,11 @@ export function App() {
       <header>
         <div className="breadcrumb">Workspace <ChevronRight size={13}/> <span>{page === 'TikTok Publishing' ? 'Publishing → TikTok' : page}</span></div>
         <div className="header-right">
+          <GlobalJobIndicator onOpenDetails={() => {
+            if (activeJob) {
+              setBackground(activeJob.id, false);
+            }
+          }} />
           <span className="environment">● {realEnabled ? 'LIVE PROVIDERS ENABLED' : 'MOCK ENVIRONMENT'}</span>
           <button
             type="button"
@@ -234,6 +258,7 @@ export function App() {
         </div>
       </header>
       <div className="page-content">
+        <div key={page} className="page-view-container">
         <div className="page-heading">
           <div>
             <div className="eyebrow">YOUR CREATIVE OPERATING SYSTEM</div>
@@ -402,6 +427,7 @@ export function App() {
         <footer>MEDIA
           FACTORY <span>Built for the space between idea and impact.</span><span>FOUNDATION / v0.1</span>
         </footer>
+        </div>
       </div>
     </main>
     {creating && <GenerationDialog concepts={concepts.data ?? []} providers={providers.data ?? []}
@@ -413,7 +439,10 @@ export function App() {
     }}/>}
     {selectedGeneration &&
         <GenerationDetails id={selectedGeneration} close={() => setSelectedGeneration(null)}/>}
-  </div>;
+  </div>
+      )}
+    </>
+  );
 }
 
 function Empty({text}: { text: string }) {
