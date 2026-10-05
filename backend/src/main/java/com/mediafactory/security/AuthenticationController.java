@@ -3,13 +3,15 @@ package com.mediafactory.security;
 import jakarta.validation.Valid;
 import java.time.Instant;
 import java.util.Map;
-import java.util.Optional;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -20,34 +22,44 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/auth")
 public class AuthenticationController {
 
-  private final AdminUserRepository adminUserRepository;
-  private final PasswordEncoder passwordEncoder;
+  private final AuthenticationManager authenticationManager;
   private final JwtService jwtService;
   private final SecurityProperties properties;
 
   public AuthenticationController(
-      AdminUserRepository adminUserRepository,
-      PasswordEncoder passwordEncoder,
+      AuthenticationManager authenticationManager,
       JwtService jwtService,
       SecurityProperties properties
   ) {
-    this.adminUserRepository = adminUserRepository;
-    this.passwordEncoder = passwordEncoder;
+    this.authenticationManager = authenticationManager;
     this.jwtService = jwtService;
     this.properties = properties;
   }
 
   @PostMapping("/login")
   public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request) {
-    Optional<AdminUser> userOpt = adminUserRepository.findByUsernameOrEmail(request.username());
-
-    if (userOpt.isEmpty() || !passwordEncoder.matches(request.password(), userOpt.get().passwordHash())) {
+    Authentication authentication;
+    try {
+      authentication = authenticationManager.authenticate(
+          new UsernamePasswordAuthenticationToken(request.username(), request.password())
+      );
+    } catch (AuthenticationException ex) {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
           .body(Map.of("error", "Unauthorized", "message", "Invalid username or password"));
     }
 
-    AdminUser user = userOpt.get();
-    String token = jwtService.generateToken(user.username(), user.role());
+    String principalName = authentication.getName();
+    String username = (properties.getAdmin().getEmail() != null
+        && properties.getAdmin().getEmail().equalsIgnoreCase(principalName))
+        ? properties.getAdmin().getUsername()
+        : principalName;
+
+    String role = authentication.getAuthorities().stream()
+        .map(GrantedAuthority::getAuthority)
+        .findFirst()
+        .orElse(AdminUser.ROLE_ADMIN);
+
+    String token = jwtService.generateToken(username, role);
     long expirationSeconds = properties.getJwt().getExpirationSeconds();
 
     ResponseCookie cookie = ResponseCookie.from(properties.getCookie().getName(), token)
@@ -60,8 +72,8 @@ public class AuthenticationController {
 
     LoginResponse responseBody = new LoginResponse(
         token,
-        user.username(),
-        user.role(),
+        username,
+        role,
         Instant.now().plusSeconds(expirationSeconds)
     );
 

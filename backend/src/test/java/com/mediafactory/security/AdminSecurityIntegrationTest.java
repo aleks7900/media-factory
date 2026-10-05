@@ -27,7 +27,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
     "media.worker.enabled=false",
-    "media.similarity.enabled=false"
+    "media.similarity.enabled=false",
+    "media-factory.auth.admin.username=admin",
+    "media-factory.auth.admin.password=admin123",
+    "media-factory.auth.admin.email=admin@mediafactory.local"
 })
 class AdminSecurityIntegrationTest {
 

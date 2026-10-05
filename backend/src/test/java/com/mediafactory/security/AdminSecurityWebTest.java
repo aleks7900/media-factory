@@ -16,9 +16,13 @@ import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.InsufficientAuthenticationException;
+import org.springframework.security.authentication.ProviderManager;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
@@ -51,6 +55,9 @@ class AdminSecurityWebTest {
     SecurityContextHolder.clearContext();
     passwordEncoder = new BCryptPasswordEncoder();
     properties = new SecurityProperties();
+    properties.getAdmin().setUsername("admin");
+    properties.getAdmin().setPassword("admin123");
+    properties.getAdmin().setEmail("admin@mediafactory.local");
     properties.getJwt().setSecret("a-very-secure-jwt-secret-key-that-is-at-least-256-bits-long-for-tests-1234567890!");
     properties.getJwt().setExpirationSeconds(3600);
     properties.getCookie().setName("media_factory_jwt");
@@ -60,35 +67,13 @@ class AdminSecurityWebTest {
     jwtService = new JwtService(properties);
     jwtFilter = new JwtAuthenticationFilter(jwtService, properties);
 
-    AdminUserRepository mockRepo = new AdminUserRepository(null) {
-      @Override
-      public Optional<AdminUser> findByUsernameOrEmail(String identifier) {
-        if ("admin".equalsIgnoreCase(identifier) || "admin@mediafactory.local".equalsIgnoreCase(identifier)) {
-          return Optional.of(new AdminUser(
-              UUID.randomUUID(),
-              "admin",
-              "admin@mediafactory.local",
-              passwordEncoder.encode("admin123"),
-              AdminUser.ROLE_ADMIN,
-              Instant.now(),
-              Instant.now()
-          ));
-        }
-        return Optional.empty();
-      }
+    SecurityConfiguration secConfig = new SecurityConfiguration(jwtFilter, properties);
+    UserDetailsService userDetailsService = secConfig.userDetailsService(passwordEncoder);
+    DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider(userDetailsService);
+    authProvider.setPasswordEncoder(passwordEncoder);
+    AuthenticationManager authenticationManager = new ProviderManager(authProvider);
 
-      @Override
-      public long count() {
-        return 1;
-      }
-
-      @Override
-      public AdminUser save(AdminUser user) {
-        return user;
-      }
-    };
-
-    authController = new AuthenticationController(mockRepo, passwordEncoder, jwtService, properties);
+    authController = new AuthenticationController(authenticationManager, jwtService, properties);
     mockMvc = MockMvcBuilders.standaloneSetup(authController).build();
   }
 
@@ -114,6 +99,23 @@ class AdminSecurityWebTest {
         .andExpect(header().string("Set-Cookie", containsString("media_factory_jwt=")))
         .andExpect(header().string("Set-Cookie", containsString("HttpOnly")))
         .andExpect(header().string("Set-Cookie", containsString("Path=/")));
+  }
+
+  @Test
+  void validAdminLoginWithEmailSuccess() throws Exception {
+    String body = json.writeValueAsString(Map.of(
+        "username", "admin@mediafactory.local",
+        "password", "admin123"
+    ));
+
+    mockMvc.perform(post("/api/auth/login")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(body))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.token", notNullValue()))
+        .andExpect(jsonPath("$.username").value("admin"))
+        .andExpect(jsonPath("$.role").value("ROLE_ADMIN"))
+        .andExpect(header().string("Set-Cookie", containsString("media_factory_jwt=")));
   }
 
   @Test

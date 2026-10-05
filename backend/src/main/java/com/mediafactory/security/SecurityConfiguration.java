@@ -5,13 +5,19 @@ import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -37,6 +43,46 @@ public class SecurityConfiguration {
   @Bean
   public PasswordEncoder passwordEncoder() {
     return new BCryptPasswordEncoder();
+  }
+
+  @Bean
+  public UserDetailsService userDetailsService(PasswordEncoder passwordEncoder) {
+    String rawPassword = properties.getAdmin().getPassword();
+    if (rawPassword == null || rawPassword.isBlank()) {
+      rawPassword = "admin123";
+    }
+
+    String encodedPassword = (rawPassword.startsWith("$2a$") || rawPassword.startsWith("$2b$"))
+        ? rawPassword
+        : passwordEncoder.encode(rawPassword);
+
+    String username = properties.getAdmin().getUsername();
+    if (username == null || username.isBlank()) {
+      username = "admin";
+    }
+
+    UserDetails adminByUsername = User.builder()
+        .username(username)
+        .password(encodedPassword)
+        .roles("ADMIN")
+        .build();
+
+    String email = properties.getAdmin().getEmail();
+    if (email != null && !email.isBlank() && !email.equalsIgnoreCase(username)) {
+      UserDetails adminByEmail = User.builder()
+          .username(email)
+          .password(encodedPassword)
+          .roles("ADMIN")
+          .build();
+      return new InMemoryUserDetailsManager(adminByUsername, adminByEmail);
+    }
+
+    return new InMemoryUserDetailsManager(adminByUsername);
+  }
+
+  @Bean
+  public AuthenticationManager authenticationManager(AuthenticationConfiguration configuration) throws Exception {
+    return configuration.getAuthenticationManager();
   }
 
   @Bean
