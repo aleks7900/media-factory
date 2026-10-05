@@ -228,7 +228,7 @@ export function BulkWorkspace({kind}: { kind: Kind }) {
           }
           changePlan();
         }}>{providers.map(p => <option key={p.provider}
-                                       value={p.provider}>{p.provider}{!p.enabled ? ' · not configured' : ''}</option>)}</select></label>
+                                       value={p.provider}>{p.name ?? p.provider}{!p.enabled ? ' · not configured' : ''}</option>)}</select></label>
         <label>Model<select value={chosenModel} onChange={e => {
           setModel(e.target.value);
           changePlan();

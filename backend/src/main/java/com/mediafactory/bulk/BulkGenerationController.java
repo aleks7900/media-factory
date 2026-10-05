@@ -36,12 +36,18 @@ public class BulkGenerationController {
     return Map.of(
         "imageProviders",
         images.all().stream()
-            .filter(p -> Set.of("openai", "mock").contains(p.providerId()))
+            .filter(p -> Set.of("openai", "mock", "gemini").contains(p.providerId()))
             .map(
                 p ->
                     Map.of(
                         "provider",
                         p.providerId(),
+                        "name",
+                        p.providerId().equals("mock")
+                            ? "Mock Studio"
+                            : p.providerId().equals("openai")
+                                ? "GPT Image 2"
+                                : "Gemini 3.1 Flash Image",
                         "enabled",
                         p.configured() && imageConfig.provider(p.providerId()).enabled(),
                         "models",

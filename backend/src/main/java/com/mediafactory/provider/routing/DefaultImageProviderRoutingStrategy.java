@@ -19,7 +19,8 @@ public class DefaultImageProviderRoutingStrategy implements ImageProviderRouting
 
   public ProviderRoute resolve(Request request) {
     String explicit = request.options().provider();
-    String selected = explicit == null ? properties.defaultProvider() : explicit;
+    String normalized = ImageProviderRouter.resolveProviderId(explicit);
+    String selected = normalized == null ? properties.defaultProvider() : normalized;
     router.provider(selected);
     var hops = new ArrayList<ProviderRoute.Hop>();
     hops.add(new ProviderRoute.Hop(selected,

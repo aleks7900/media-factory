@@ -88,6 +88,10 @@ media-factory:
   openai:
     api-key: ${OPENAI_API_KEY:}
     endpoint: ${OPENAI_IMAGE_ENDPOINT:https://api.openai.com/v1/images/generations}
+  gemini-image:
+    api-key: ${GEMINI_API_KEY:}
+    endpoint: ${GEMINI_IMAGE_ENDPOINT:https://generativelanguage.googleapis.com/v1beta/}
+    model: ${GEMINI_IMAGE_MODEL:gemini-3.1-flash-image}
   image-generation:
     default-provider: ${MEDIA_FACTORY_IMAGE_PROVIDER:mock}
     environment: ${MEDIA_FACTORY_ENVIRONMENT:development}
@@ -136,6 +140,34 @@ media-factory:
             text-input-per-million: 2.50
             image-input-per-million: 4.00
             output-per-million: 15.00
+      gemini:
+        enabled: ${GEMINI_IMAGE_ENABLED:true}
+        model: ${GEMINI_IMAGE_MODEL:gemini-3.1-flash-image}
+        models: [ gemini-3.1-flash-image ]
+        timeout:
+          connect: ${GEMINI_CONNECT_TIMEOUT:10s}
+          request: ${GEMINI_IMAGE_TIMEOUT:120s}
+        rate-limit:
+          requests-per-minute: ${GEMINI_REQUESTS_PER_MINUTE:60}
+          concurrent-requests: ${GEMINI_MAX_CONCURRENT:5}
+        retry:
+          max-attempts: ${GEMINI_MAX_ATTEMPTS:3}
+          initial-delay: 1s
+          max-delay: 30s
+          multiplier: 2
+          jitter: true
+          retry-ambiguous: ${GEMINI_RETRY_AMBIGUOUS:false}
+        circuit:
+          failure-threshold: 3
+          cooldown: 60s
+        pricing:
+          "[gemini-3.1-flash-image]":
+            version: "2026-02-15"
+            source: https://ai.google.dev/pricing
+            currency: USD
+            text-input-per-million: 0.10
+            image-input-per-million: 0.40
+            output-per-million: 30.00
 bulk:
   worker:
     concurrency: ${BULK_WORKER_CONCURRENCY:3}

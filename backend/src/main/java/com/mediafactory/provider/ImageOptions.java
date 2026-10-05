@@ -23,7 +23,21 @@ public record ImageOptions(String provider, String model, AspectRatio aspectRati
         referenceImage, transparentBackground, numberOfImages);
   }
 
-  public enum AspectRatio {SQUARE, PORTRAIT, LANDSCAPE, CUSTOM}
+  public ImageOptions withProvider(String selectedProvider) {
+    return new ImageOptions(selectedProvider, model, aspectRatio, quality, format, negativePrompt, seed,
+        referenceImage, transparentBackground, numberOfImages);
+  }
+
+  public enum AspectRatio {
+    SQUARE,
+    PORTRAIT,
+    LANDSCAPE,
+    WIDE_16_9,
+    TALL_9_16,
+    PHOTO_4_3,
+    PHOTO_3_4,
+    CUSTOM
+  }
 
   public enum Quality {AUTO, LOW, MEDIUM, HIGH}
 

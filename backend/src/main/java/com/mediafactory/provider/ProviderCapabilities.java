@@ -52,6 +52,10 @@ public record ProviderCapabilities(Set<AspectRatio> supportedAspectRatios,
       case SQUARE -> r.width() == r.height();
       case PORTRAIT -> r.width() * 3 == r.height() * 2;
       case LANDSCAPE -> r.width() * 2 == r.height() * 3;
+      case WIDE_16_9 -> r.width() * 9 == r.height() * 16 || Math.abs((double) r.width() / r.height() - 16.0 / 9.0) < 0.05;
+      case TALL_9_16 -> r.width() * 16 == r.height() * 9 || Math.abs((double) r.height() / r.width() - 16.0 / 9.0) < 0.05;
+      case PHOTO_4_3 -> r.width() * 3 == r.height() * 4 || Math.abs((double) r.width() / r.height() - 4.0 / 3.0) < 0.05;
+      case PHOTO_3_4 -> r.width() * 4 == r.height() * 3 || Math.abs((double) r.height() / r.width() - 4.0 / 3.0) < 0.05;
       case CUSTOM -> true;
     };
     if (!matching) {

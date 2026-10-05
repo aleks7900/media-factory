@@ -33,7 +33,13 @@ public class ProviderInfoService {
       var config = properties.provider(id);
       var row = new LinkedHashMap<String, Object>();
       row.put("id", id);
-      row.put("name", id.equals("mock") ? "Mock Studio" : id);
+      String displayName = switch (id) {
+        case "mock" -> "Mock Studio";
+        case "openai" -> "GPT Image 2";
+        case "gemini" -> "Gemini 3.1 Flash Image";
+        default -> id;
+      };
+      row.put("name", displayName);
       boolean enabled = config.enabled() && adapter.configured();
       row.put("enabled", enabled);
       String health = db.sql("select health from provider_runtime where provider=?").param(id)

@@ -102,13 +102,17 @@ export function GenerationDialog({concepts, providers, close, onCreated}: {
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
+    const refImg = f.get('referenceImage');
     mutation.mutate({
       conceptId: f.get('conceptId'), ...(promptSource.promptVersionId ? promptSource : {prompt: f.get('prompt')}),
       provider: provider || null,
       model: model || null,
       aspectRatio: ratio,
       quality: f.get('quality'),
-      format: f.get('format'), ...(ratio === 'CUSTOM' ? {
+      format: f.get('format'),
+      referenceImage: refImg ? String(refImg).trim() : null,
+      transparentBackground: f.get('transparentBackground') === 'on',
+      ...(ratio === 'CUSTOM' ? {
         width: Number(f.get('width')),
         height: Number(f.get('height'))
       } : {})
@@ -148,6 +152,14 @@ export function GenerationDialog({concepts, providers, close, onCreated}: {
             <option value="SQUARE">Square · 1:1</option>
             <option value="PORTRAIT">Portrait · 2:3</option>
             <option value="LANDSCAPE">Landscape · 3:2</option>
+            {(!selected || selected.capabilities?.supportedAspectRatios?.includes('WIDE_16_9')) && (
+              <>
+                <option value="WIDE_16_9">Wide · 16:9</option>
+                <option value="TALL_9_16">Tall · 9:16</option>
+                <option value="PHOTO_4_3">Standard · 4:3</option>
+                <option value="PHOTO_3_4">Vertical · 3:4</option>
+              </>
+            )}
             <option value="CUSTOM">Custom dimensions</option>
           </select></label>
             <label>Quality<select name="quality"
@@ -165,10 +177,27 @@ export function GenerationDialog({concepts, providers, close, onCreated}: {
                   defaultValue="1024"
                   required/></label>
               </div>}
-          <label>Format<select name="format">
-            <option>PNG</option>
-            <option>JPEG</option>
-          </select></label>
+          <div className="dimensions">
+            <label>Format<select name="format">
+              <option>PNG</option>
+              <option>JPEG</option>
+            </select></label>
+            {selected?.capabilities?.supportsTransparentBackground && (
+              <label className="bulk-check" style={{display: 'flex', alignItems: 'center', marginTop: '1.8rem'}}>
+                <input type="checkbox" name="transparentBackground" />
+                Transparent (PNG)
+              </label>
+            )}
+          </div>
+          {selected?.capabilities?.supportsReferenceImage && (
+            <label>Reference Image (optional)
+              <input
+                type="text"
+                name="referenceImage"
+                placeholder="Base64 or data URL for image guidance…"
+              />
+            </label>
+          )}
           {mutation.error && <p role="alert" className="error">{mutation.error.message}</p>}
           <button className="primary"
                   disabled={mutation.isPending}>{mutation.isPending ? 'Queuing…' : 'Generate image'}<Sparkles

@@ -1,11 +1,16 @@
 package com.mediafactory.provider;
 
+import com.mediafactory.provider.gemini.GeminiImageProperties;
 import com.mediafactory.provider.openai.OpenAiImageProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@EnableConfigurationProperties({ImageGenerationProperties.class, OpenAiImageProperties.class})
+@EnableConfigurationProperties({
+    ImageGenerationProperties.class,
+    OpenAiImageProperties.class,
+    GeminiImageProperties.class
+})
 public class ImageProviderConfiguration {
 
   public ImageProviderConfiguration(ImageGenerationProperties properties) {

@@ -89,18 +89,43 @@ public class ImageGenerationController {
                                    @Size(max = 3000) String manualNegativeSuffix) {
 
     public ImageOptions options() {
-      return new ImageOptions(provider, model,
+      String resolvedProvider = com.mediafactory.provider.ImageProviderType.resolveProviderId(provider);
+      String resolvedModel = com.mediafactory.provider.ImageProviderType.resolveDefaultModel(provider, model);
+      return new ImageOptions(resolvedProvider != null ? resolvedProvider : provider,
+          resolvedModel != null ? resolvedModel : model,
           aspectRatio == null ? AspectRatio.SQUARE : aspectRatio, quality, format, negativePrompt,
           seed, referenceImage, Boolean.TRUE.equals(transparentBackground),
           numberOfImages == null ? 1 : numberOfImages);
     }
 
     public int resolvedWidth() {
-      return width == null ? (aspectRatio == AspectRatio.LANDSCAPE ? 1536 : 1024) : width;
+      if (width != null) {
+        return width;
+      }
+      return switch (aspectRatio == null ? AspectRatio.SQUARE : aspectRatio) {
+        case WIDE_16_9 -> 1920;
+        case TALL_9_16 -> 1080;
+        case PHOTO_4_3 -> 1408;
+        case PHOTO_3_4 -> 1056;
+        case LANDSCAPE -> 1536;
+        case PORTRAIT -> 1024;
+        default -> 1024;
+      };
     }
 
     public int resolvedHeight() {
-      return height == null ? (aspectRatio == AspectRatio.PORTRAIT ? 1536 : 1024) : height;
+      if (height != null) {
+        return height;
+      }
+      return switch (aspectRatio == null ? AspectRatio.SQUARE : aspectRatio) {
+        case WIDE_16_9 -> 1080;
+        case TALL_9_16 -> 1920;
+        case PHOTO_4_3 -> 1056;
+        case PHOTO_3_4 -> 1408;
+        case PORTRAIT -> 1536;
+        case LANDSCAPE -> 1024;
+        default -> 1024;
+      };
     }
   }
 }

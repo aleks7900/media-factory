@@ -2,6 +2,7 @@ package com.mediafactory.provider.routing;
 
 import com.mediafactory.provider.ImageGenerationProperties;
 import com.mediafactory.provider.ImageGenerationProvider;
+import com.mediafactory.provider.ImageProviderType;
 import com.mediafactory.provider.ProviderTypes.Request;
 import com.mediafactory.provider.resilience.ImageGenerationException;
 import com.mediafactory.provider.resilience.ImageGenerationException.Type;
@@ -29,9 +30,14 @@ public class ImageProviderRouter {
     adapters = Map.copyOf(map);
   }
 
+  public static String resolveProviderId(String id) {
+    return ImageProviderType.resolveProviderId(id);
+  }
+
   public ImageGenerationProvider provider(String id) {
-    var p = adapters.get(id);
-    if (p == null || !properties.providers().containsKey(id) || !properties.provider(id).enabled()
+    String resolved = resolveProviderId(id);
+    var p = adapters.get(resolved);
+    if (p == null || !properties.providers().containsKey(resolved) || !properties.provider(resolved).enabled()
         || !p.configured()) {
       throw new ImageGenerationException(Type.AUTHENTICATION,
           "Provider is disabled or not configured");
@@ -44,13 +50,17 @@ public class ImageProviderRouter {
   }
 
   public Request validate(ProviderRoute.Hop hop, Request request) {
-    var adapter = provider(hop.provider());
-    if (!properties.provider(hop.provider()).models().contains(hop.model())) {
+    String providerId = resolveProviderId(hop.provider());
+    var adapter = provider(providerId);
+    String model = hop.model() == null || hop.model().isBlank()
+        ? properties.provider(providerId).model()
+        : hop.model();
+    if (!properties.provider(providerId).models().contains(model)) {
       throw new ImageGenerationException(Type.INVALID_REQUEST,
           "Model is not in the provider's configured allowlist");
     }
     var normalized = new Request(request.operationId(), request.prompt(), request.width(),
-        request.height(), request.options().withModel(hop.model()));
+        request.height(), request.options().withProvider(providerId).withModel(model));
     adapter.capabilities().validate(normalized);
     return normalized;
   }

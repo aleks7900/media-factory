@@ -22,20 +22,25 @@ public class GptImageProcessor implements BulkProcessor {
 
   ProviderTypes.Request request(Input i) {
     var o = i.options();
+    String providerId = ImageProviderRouter.resolveProviderId(i.provider());
+    String refImage = null;
+    if (!i.references().isEmpty()) {
+      refImage = Base64.getEncoder().encodeToString(i.references().getFirst());
+    }
     var options =
         new ImageOptions(
-            i.provider(),
+            providerId,
             i.model(),
             ImageOptions.AspectRatio.CUSTOM,
             ImageOptions.Quality.valueOf(Objects.toString(o.get("quality"), "AUTO")),
             ImageOptions.Format.valueOf(Objects.toString(o.get("format"), "PNG")),
             null,
             null,
-            null,
+            refImage,
             Boolean.TRUE.equals(o.get("transparentBackground")),
             integer(o, "numberOfOutputs", 1));
     return router.validate(
-        new ProviderRoute.Hop(i.provider(), i.model()),
+        new ProviderRoute.Hop(providerId, i.model()),
         new ProviderTypes.Request(
             i.attemptId().toString(),
             i.prompt(),
@@ -45,10 +50,11 @@ public class GptImageProcessor implements BulkProcessor {
   }
 
   public void validate(Input i) {
-    if (!Set.of("openai", "mock").contains(i.provider())) {
-      throw new IllegalArgumentException("Select OpenAI or explicit mock test mode");
+    String providerId = ImageProviderRouter.resolveProviderId(i.provider());
+    if (!Set.of("openai", "mock", "gemini").contains(providerId)) {
+      throw new IllegalArgumentException("Select a supported image provider (OpenAI, Gemini, or Mock)");
     }
-    if (!i.references().isEmpty()) {
+    if (!i.references().isEmpty() && !providerId.equals("gemini")) {
       throw new IllegalArgumentException(
           "REFERENCE_IMAGES_UNSUPPORTED: configured image generation endpoint does not accept"
               + " reference images");
@@ -79,7 +85,7 @@ public class GptImageProcessor implements BulkProcessor {
         usage.inputUsage(),
         usage.outputUsage(),
         usage.estimatedCost(),
-        i.provider().equals("mock") ? java.math.BigDecimal.ZERO : null,
+        "mock".equals(ImageProviderRouter.resolveProviderId(i.provider())) ? java.math.BigDecimal.ZERO : null,
         usage.currency());
   }
 }
