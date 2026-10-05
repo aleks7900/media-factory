@@ -20,7 +20,12 @@ export interface ProviderInfo {
     supportedQualities: string[];
     supportedSizes: string[];
     arbitraryDimensions: boolean;
-    supportsTransparentBackground: boolean
+    supportsTransparentBackground: boolean;
+    supportedAspectRatios?: string[];
+    supportsReferenceImage?: boolean;
+    supportsNegativePrompt?: boolean;
+    supportsSeed?: boolean;
+    maximumImages?: number;
   };
   requestsPerMinute: number;
   maxConcurrent: number;

@@ -52,7 +52,16 @@ OPENAI_API_KEY=<your own key, set locally>
 OPENAI_IMAGE_MODEL=gpt-image-2
 ```
 
-Then run `docker compose up -d --build`. A generation submitted in this mode may incur provider charges. Keep secrets out of frontend settings and Git. The app never sends the key to the browser. Supported output is one PNG/JPEG at 1024×1024, 1024×1536, or 1536×1024. Unsupported options fail validation. Model access depends on your provider account.
+Or for Google Gemini 3.1 Flash Image generation:
+
+```text
+MEDIA_FACTORY_IMAGE_PROVIDER=gemini
+GEMINI_IMAGE_ENABLED=true
+GEMINI_API_KEY=<your own Google AI Studio / Gemini API key, set locally>
+GEMINI_IMAGE_MODEL=gemini-3.1-flash-image
+```
+
+Then run `docker compose up -d --build`. A generation submitted in this mode may incur provider charges. Keep secrets out of frontend settings and Git. The app never sends the key to the browser. Supported output for GPT Image 2 is one PNG/JPEG at 1024×1024, 1024×1536, or 1536×1024. For Gemini 3.1 Flash Image, supported aspect ratios include 1:1, 16:9, 9:16, 4:3, 3:4, with resolution controls and multimodal reference images supported. Unsupported options fail validation. Model access depends on your provider account.
 
 Fallback is disabled by default. `IMAGE_FALLBACK_ENABLED=true` plus `IMAGE_FALLBACK_PROVIDERS=mock` deliberately enables a development fallback. Production additionally requires `MOCK_PRODUCTION_FALLBACK_ENABLED=true` to use mock automatically. Ambiguous paid outcomes require manual acknowledgement by default; review [resilience](docs/resilience.md) before enabling automatic timeout retries.
 

@@ -25,7 +25,7 @@ public class GptImageProcessor implements BulkProcessor {
     String providerId = ImageProviderRouter.resolveProviderId(i.provider());
     String refImage = null;
     if (!i.references().isEmpty()) {
-      refImage = Base64.getEncoder().encodeToString(i.references().getFirst());
+      refImage = Base64.getEncoder().encodeToString(i.references().getFirst().bytes());
     }
     var options =
         new ImageOptions(
