@@ -3,9 +3,11 @@ import {cleanup, render, screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {App} from './App';
+import {setAuth, clearAuth} from './api';
 
 afterEach(() => {
   cleanup();
+  clearAuth();
   vi.restoreAllMocks();
 });
 const qaReview = {
@@ -39,9 +41,11 @@ const qaReview = {
 };
 
 function setup() {
+  setAuth('test-token', { username: 'admin', role: 'ROLE_ADMIN' });
   const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
     const path = String(input);
     let data: unknown = [];
+    if (path === '/api/auth/me') data = { username: 'admin', role: 'ROLE_ADMIN' };
     if (path === '/api/dashboard') data = {
       generated_today: 1,
       approved_today: 0,
@@ -106,5 +110,52 @@ describe('Media Factory dashboard', () => {
     setup();
     await userEvent.click(screen.getByRole('button', {name: 'New generation'}));
     expect(screen.getByRole('dialog')).toHaveTextContent('Create a project, collection, and concept');
+  });
+
+  it('renders login screen when unauthenticated and logs in on submit', async () => {
+    clearAuth();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = String(input);
+      if (path === '/api/auth/me') {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+      }
+      if (path === '/api/auth/login') {
+        return new Response(JSON.stringify({ token: 'jwt-new', username: 'admin', role: 'ROLE_ADMIN' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      if (path === '/api/dashboard') {
+        return new Response(JSON.stringify({ generated_today: 0, approved_today: 0, pending_review: 0 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+
+    render(
+      <QueryClientProvider client={new QueryClient({defaultOptions: {queries: {retry: false}}})}>
+        <App />
+      </QueryClientProvider>
+    );
+
+    expect(await screen.findByRole('button', { name: /Sign In to Studio/i })).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText(/Username or Email/i), 'admin');
+    await userEvent.type(screen.getByLabelText(/^Password/i), 'admin123');
+    await userEvent.click(screen.getByRole('button', { name: /Sign In to Studio/i }));
+
+    expect(await screen.findByText(/Studio overview/i)).toBeInTheDocument();
+  });
+
+  it('logging out removes auth state and returns to login screen', async () => {
+    setup();
+    expect(await screen.findByText('Studio frame asset-')).toBeInTheDocument();
+
+    const logoutBtns = screen.getAllByRole('button', { name: /log out/i });
+    await userEvent.click(logoutBtns[0]);
+
+    expect(await screen.findByRole('button', { name: /Sign In to Studio/i })).toBeInTheDocument();
   });
 });

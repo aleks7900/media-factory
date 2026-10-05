@@ -64,6 +64,8 @@ class PromptIntegrationTest {
   @Autowired
   com.mediafactory.quality.ReviewWorkflowService reviewWorkflow;
   @Autowired
+  com.mediafactory.security.JwtService jwtService;
+  @Autowired
   com.mediafactory.quality.QaConfiguration qaConfig;
   @Autowired
   com.mediafactory.quality.QualityPolicyEngine qaPolicy;
@@ -361,18 +363,21 @@ class PromptIntegrationTest {
   @Test
   void httpGenerationAndPreviewReturnStructuredVariableErrors() throws Exception {
     catalog.publish(version, 0);
+    String token = jwtService.generateToken("admin", "ROLE_ADMIN");
     var client = HttpClient.newHttpClient();
     String body = PromptCatalog.JSON.writeValueAsString(
         Map.of("conceptId", concept, "promptVersionId", version, "variables",
             Map.of("subject", "wolf"), "provider", "mock"));
     var request = HttpRequest.newBuilder(
             URI.create("http://localhost:" + port + "/api/v1/generations/images"))
+        .header("Authorization", "Bearer " + token)
         .header("Content-Type", "application/json").header("Idempotency-Key", "http-template")
         .POST(HttpRequest.BodyPublishers.ofString(body)).build();
     assertThat(client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(
         202);
     var bad = HttpRequest.newBuilder(
             URI.create("http://localhost:" + port + "/api/v1/prompts/render"))
+        .header("Authorization", "Bearer " + token)
         .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(
             PromptCatalog.JSON.writeValueAsString(Map.of("promptVersionId", version, "variables",
                 Map.of("subject", "wolf", "lighting", "LASER"))))).build();

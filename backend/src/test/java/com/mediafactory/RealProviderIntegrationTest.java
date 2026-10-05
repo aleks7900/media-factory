@@ -78,6 +78,8 @@ class RealProviderIntegrationTest {
   @Autowired
   GenerationAttemptRepository attempts;
   @Autowired
+  com.mediafactory.security.JwtService jwtService;
+  @Autowired
   ProviderObservability telemetry;
   @Autowired
   MediaStorage storage;
@@ -156,8 +158,10 @@ class RealProviderIntegrationTest {
     var concept = service.concept((UUID) c.get("id"), "Concept", "A studio");
     var body = JsonMapper.builder().build().writeValueAsString(
         Map.of("conceptId", concept.get("id"), "prompt", "A studio", "provider", "mock"));
+    String token = jwtService.generateToken("admin", "ROLE_ADMIN");
     var request = HttpRequest.newBuilder(
             URI.create("http://localhost:" + port + "/api/v1/generations/images"))
+        .header("Authorization", "Bearer " + token)
         .header("Content-Type", "application/json")
         .header("Idempotency-Key", UUID.randomUUID().toString())
         .POST(HttpRequest.BodyPublishers.ofString(body)).build();
@@ -258,14 +262,19 @@ class RealProviderIntegrationTest {
       assertThat(service.one("generations", (UUID) g.get("id")).get("status")).isEqualTo("FAILED");
       assertThat(worker.claim()).isNull();
       assertThat(calls.get()).isEqualTo(1);
+      String token = jwtService.generateToken("admin", "ROLE_ADMIN");
       var detail = HttpClient.newHttpClient().send(HttpRequest.newBuilder(
-              URI.create("http://localhost:" + port + "/api/v1/generations/" + g.get("id"))).GET()
+              URI.create("http://localhost:" + port + "/api/v1/generations/" + g.get("id")))
+          .header("Authorization", "Bearer " + token)
+          .GET()
           .build(), HttpResponse.BodyHandlers.ofString());
       assertThat(detail.body()).doesNotContain(SECRET);
       assertThat(service.list("generation_costs").toString()).doesNotContain(SECRET);
     }
+    String token = jwtService.generateToken("admin", "ROLE_ADMIN");
     var providers = HttpClient.newHttpClient().send(
         HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/v1/providers/image"))
+            .header("Authorization", "Bearer " + token)
             .GET().build(), HttpResponse.BodyHandlers.ofString());
     assertThat(providers.body()).doesNotContain(SECRET, "apiKey", "Authorization");
     assertThat(output.getAll()).doesNotContain(SECRET);

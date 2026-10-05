@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useState, useEffect} from 'react';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {
     Activity,
@@ -10,6 +10,8 @@ import {
     Layers3,
     LayoutDashboard,
     ListVideo,
+    Loader2,
+    LogOut,
     Plug,
     Plus,
     RotateCw,
@@ -18,7 +20,9 @@ import {
     Sparkles,
     X
 } from 'lucide-react';
-import {api, apiUrl, type Row} from './api';
+import {api, apiUrl, checkAuth, getCurrentUser, logout, subscribeUnauthorized, type AuthUser, type Row} from './api';
+import {Login} from './Login';
+import './login.css';
 import {
     GenerationDetails,
     GenerationDialog,
@@ -53,8 +57,8 @@ const labels: Record<string, string> = {
   failed_jobs: 'Failed jobs'
 };
 
-function useRows(path: string) {
-  return useQuery({queryKey: [path], queryFn: () => api<Row[]>(path)});
+function useRows(path: string, enabled = true) {
+  return useQuery({queryKey: [path], queryFn: () => api<Row[]>(path), enabled});
 }
 
 function Badge({children}: { children: React.ReactNode }) {
@@ -63,27 +67,71 @@ function Badge({children}: { children: React.ReactNode }) {
 }
 
 export function App() {
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => getCurrentUser());
+  const [authChecked, setAuthChecked] = useState(false);
+  const client = useQueryClient();
+
+  useEffect(() => {
+    let mounted = true;
+    checkAuth()
+      .then(user => {
+        if (mounted) {
+          setCurrentUser(user);
+          setAuthChecked(true);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setCurrentUser(null);
+          setAuthChecked(true);
+        }
+      });
+
+    const unsubscribe = subscribeUnauthorized(() => {
+      if (mounted) {
+        setCurrentUser(null);
+        client.clear();
+      }
+    });
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, [client]);
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } finally {
+      setCurrentUser(null);
+      client.clear();
+    }
+  };
+
+  const isAuth = !!currentUser;
   const [page, setPage] = useState<Page>('Dashboard');
   const [creating, setCreating] = useState(false);
   const [selectedGeneration, setSelectedGeneration] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const [processingAsset, setProcessingAsset] = useState<string>();
   const [processingProfiles, setProcessingProfiles] = useState<string[]>();
-  const client = useQueryClient();
   const dashboard = useQuery({
     queryKey: ['dashboard'],
-    queryFn: () => api<Record<string, number>>('/dashboard')
+    queryFn: () => api<Record<string, number>>('/dashboard'),
+    enabled: isAuth
   });
-  const assets = useRows('/assets');
-  const generations = useRows('/generations');
-  const jobs = useRows('/jobs');
-  const collections = useRows('/collections');
-  const projects = useRows('/projects');
-  const concepts = useRows('/concepts');
-  const costs = useRows('/costs');
+  const assets = useRows('/assets', isAuth);
+  const generations = useRows('/generations', isAuth);
+  const jobs = useRows('/jobs', isAuth);
+  const collections = useRows('/collections', isAuth);
+  const projects = useRows('/projects', isAuth);
+  const concepts = useRows('/concepts', isAuth);
+  const costs = useRows('/costs', isAuth);
   const providers = useQuery({
     queryKey: ['/providers'],
-    queryFn: () => api<ProviderInfo[]>('/v1/providers/image')
+    queryFn: () => api<ProviderInfo[]>('/v1/providers/image'),
+    enabled: isAuth
   });
   const realEnabled = providers.data?.some(p => p.enabled && p.id !== 'mock') ?? false;
   const action = useMutation({
@@ -100,6 +148,20 @@ export function App() {
   const pending = assets.data?.filter(a => ['QA_PENDING', 'QA_RUNNING', 'NEEDS_REVIEW'].includes(status(a))) ?? [];
   const visibleAssets = assets.data ?? [];
   const error = [dashboard, assets, generations, jobs, collections, projects, concepts, costs, providers].find(q => q.error)?.error;
+
+  if (!currentUser) {
+    if (!authChecked) {
+      return (
+        <div className="login-container">
+          <div className="login-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 180 }}>
+            <Loader2 size={24} className="login-spinner" style={{ color: '#c7b2fc' }} />
+          </div>
+        </div>
+      );
+    }
+    return <Login onLoginSuccess={(user) => { setCurrentUser(user); client.invalidateQueries(); }} />;
+  }
+
   return <div className="app-shell">
     <aside><a className="brand" href="#" onClick={() => setPage('Dashboard')}><span
         className="brand-mark"><Layers3
@@ -134,17 +196,41 @@ export function App() {
           <span/>{realEnabled ? 'Provider routing enabled' : 'Mock providers enabled'}</div>
         <p>{realEnabled ? 'Provider costs tracked per attempt.' : 'Your ideas. Zero API spend.'}</p>
         <div className="profile">
-          <div className="avatar">MF</div>
-          <div>Creative studio<small>Foundation edition</small></div>
+          <div className="avatar">AD</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 600, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+              {currentUser.username}
+            </div>
+            <small>{currentUser.role}</small>
+          </div>
+          <button
+            type="button"
+            className="logout-btn"
+            onClick={handleLogout}
+            title="Log out"
+            aria-label="Log out"
+          >
+            <LogOut size={13} />
+          </button>
         </div>
       </div>
     </aside>
     <main>
       <header>
         <div className="breadcrumb">Workspace <ChevronRight size={13}/> <span>{page === 'TikTok Publishing' ? 'Publishing → TikTok' : page}</span></div>
-        <div className="header-right"><span
-            className="environment">● {realEnabled ? 'LIVE PROVIDERS ENABLED' : 'MOCK ENVIRONMENT'}</span>
-          <div className="avatar">MF</div>
+        <div className="header-right">
+          <span className="environment">● {realEnabled ? 'LIVE PROVIDERS ENABLED' : 'MOCK ENVIRONMENT'}</span>
+          <button
+            type="button"
+            className="logout-btn"
+            onClick={handleLogout}
+            title="Log out"
+            aria-label="Log out"
+          >
+            <LogOut size={13} />
+            <span>Logout</span>
+          </button>
+          <div className="avatar">AD</div>
         </div>
       </header>
       <div className="page-content">

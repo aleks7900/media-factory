@@ -58,6 +58,8 @@ class PipelineIntegrationTest {
   QualityPolicyEngine policyEngine;
   @Autowired
   io.micrometer.core.instrument.MeterRegistry metrics;
+  @Autowired
+  com.mediafactory.security.JwtService jwtService;
 
   @DynamicPropertySource
   static void properties(DynamicPropertyRegistry r) {
@@ -183,20 +185,25 @@ class PipelineIntegrationTest {
 
   @Test
   void httpValidationAndMissingResources() throws Exception {
+    String token = jwtService.generateToken("admin", "ROLE_ADMIN");
     var client = java.net.http.HttpClient.newHttpClient();
     var invalid = java.net.http.HttpRequest.newBuilder(
             java.net.URI.create("http://localhost:" + port + "/api/projects"))
+        .header("Authorization", "Bearer " + token)
         .header("Content-Type", "application/json")
         .POST(java.net.http.HttpRequest.BodyPublishers.ofString("{\"name\":\"\"}")).build();
     assertThat(client.send(invalid, java.net.http.HttpResponse.BodyHandlers.ofString())
         .statusCode()).isEqualTo(400);
     var missing = java.net.http.HttpRequest.newBuilder(
-            java.net.URI.create("http://localhost:" + port + "/api/assets/" + UUID.randomUUID())).GET()
+            java.net.URI.create("http://localhost:" + port + "/api/assets/" + UUID.randomUUID()))
+        .header("Authorization", "Bearer " + token)
+        .GET()
         .build();
     assertThat(client.send(missing, java.net.http.HttpResponse.BodyHandlers.ofString())
         .statusCode()).isEqualTo(404);
     var absentKey = java.net.http.HttpRequest.newBuilder(
             java.net.URI.create("http://localhost:" + port + "/api/generations"))
+        .header("Authorization", "Bearer " + token)
         .header("Content-Type", "application/json").POST(
             java.net.http.HttpRequest.BodyPublishers.ofString("{\"conceptId\":\"" + concept()
                 + "\",\"prompt\":\"Test\",\"width\":128,\"height\":128}")).build();

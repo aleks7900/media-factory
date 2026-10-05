@@ -42,6 +42,8 @@ class AnalyticsIntegrationTest {
   AnalyticsDetailService details;
   @Autowired
   AnalyticsExportService exports;
+  @Autowired
+  com.mediafactory.security.JwtService jwtService;
   @org.springframework.boot.test.web.server.LocalServerPort
   int port;
   UUID asset, generation, collection;
@@ -316,10 +318,12 @@ class AnalyticsIntegrationTest {
     assertThat(db.sql("select status from analytics_jobs").query(String.class).single())
         .isEqualTo("SUCCEEDED");
     var client = java.net.http.HttpClient.newHttpClient();
+    String token = jwtService.generateToken("admin", "ROLE_ADMIN");
     var response =
         client.send(
             java.net.http.HttpRequest.newBuilder(
                     java.net.URI.create("http://localhost:" + port + "/api/v1/analytics/overview"))
+                .header("Authorization", "Bearer " + token)
                 .build(),
             java.net.http.HttpResponse.BodyHandlers.ofString());
     assertThat(response.statusCode()).isEqualTo(200);
@@ -329,6 +333,7 @@ class AnalyticsIntegrationTest {
             java.net.http.HttpRequest.newBuilder(
                     java.net.URI.create(
                         "http://localhost:" + port + "/api/v1/analytics/overview?grain=invalid"))
+                .header("Authorization", "Bearer " + token)
                 .build(),
             java.net.http.HttpResponse.BodyHandlers.ofString());
     assertThat(response.statusCode()).isEqualTo(400);
