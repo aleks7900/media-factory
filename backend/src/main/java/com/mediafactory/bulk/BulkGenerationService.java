@@ -7,9 +7,14 @@ import com.mediafactory.service.FactoryService;
 import com.mediafactory.storage.MediaStorage;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.util.*;
 import java.util.zip.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
@@ -19,6 +24,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class BulkGenerationService {
+
+  private static final Logger log = LoggerFactory.getLogger(BulkGenerationService.class);
 
   final JdbcClient db;
   final TransactionTemplate tx;
@@ -538,6 +545,7 @@ public class BulkGenerationService {
           db.sql("update bulk_tasks set deleted_at=now() where batch_id=? and deleted_at is null")
               .param(id)
               .update();
+          cleanCachedZips(id);
         }
       }
       case "retry-failed" -> {
@@ -702,6 +710,7 @@ public class BulkGenerationService {
   }
 
   public void export(UUID batch, OutputStream output) throws IOException {
+    log.info("Starting ZIP batch={}", batch);
     var rows =
         db.sql(
                 "select"
@@ -714,8 +723,11 @@ public class BulkGenerationService {
     var manifest = new ArrayList<Map<String, Object>>();
     var usedNames = new HashSet<String>();
     long total = 0;
+    int entryIndex = 0;
+    int totalCount = rows.size();
     try (var zip = new ZipOutputStream(output)) {
       for (var row : rows) {
+        entryIndex++;
         var entry = new LinkedHashMap<String, Object>();
         entry.put("taskId", row.get("id"));
         entry.put("name", row.get("name"));
@@ -734,40 +746,144 @@ public class BulkGenerationService {
         }
         entry.put("metadata", clean(row).get("provider_metadata"));
         if (row.get("status").equals("COMPLETED") && row.get("storage_key") != null) {
-          byte[] bytes = storage.read(row.get("storage_key").toString());
-          check(sha(bytes).equals(row.get("sha256")), "Result checksum mismatch");
-          total += bytes.length;
-          check(
-              total <= 2L * 1024 * 1024 * 1024,
-              "Export exceeds 2 GiB; download outputs individually");
-          String type = row.get("media_type").toString();
-          String ext =
-              type.equals("video/mp4")
-                  ? ".mp4"
-                  : type.equals("image/png") ? ".png" : ".jpg";
-          String base = row.get("name").toString().replaceAll("[^A-Za-z0-9_-]", "_");
-          if (base.isBlank()) {
-            base = "task";
+          String key = row.get("storage_key").toString();
+          log.info("Adding entry {}/{} ... task={}, key={}", entryIndex, totalCount, row.get("name"), key);
+          byte[] bytes = null;
+          try {
+            bytes = storage.read(key);
+          } catch (Exception ex) {
+            log.error("Failed to read storage key '{}' for task '{}' (ID: {}): {}", key, row.get("name"), row.get("id"), ex.getMessage());
+            entry.put("status", "FAILED");
+            entry.put("errorCode", "STORAGE_READ_ERROR");
+            entry.put("errorMessage", "Storage object missing or unreadable: " + ex.getMessage());
           }
-          String candidate = base + ext;
-          if (!usedNames.add(candidate.toLowerCase(Locale.ROOT))) {
-            candidate = base + "-" + row.get("id") + ext;
-            usedNames.add(candidate.toLowerCase(Locale.ROOT));
+
+          if (bytes != null) {
+            String actualSha = sha(bytes);
+            String expectedSha = Objects.toString(row.get("sha256"), "");
+            if (!actualSha.equals(expectedSha)) {
+              log.warn("Result checksum mismatch for task '{}' (ID: {}). Expected: {}, got: {}", row.get("name"), row.get("id"), expectedSha, actualSha);
+              entry.put("status", "FAILED");
+              entry.put("errorCode", "CHECKSUM_MISMATCH");
+              entry.put("errorMessage", "Checksum mismatch: expected " + expectedSha + " but got " + actualSha);
+            } else {
+              total += bytes.length;
+              check(
+                  total <= 2L * 1024 * 1024 * 1024,
+                  "Export exceeds 2 GiB; download outputs individually");
+              String type = Objects.toString(row.get("media_type"), "image/jpeg");
+              String ext =
+                  type.equals("video/mp4")
+                      ? ".mp4"
+                      : type.equals("image/png") ? ".png" : ".jpg";
+              String base = row.get("name").toString().replaceAll("[^A-Za-z0-9_-]", "_");
+              if (base.isBlank()) {
+                base = "task";
+              }
+              String candidate = base + ext;
+              if (!usedNames.add(candidate.toLowerCase(Locale.ROOT))) {
+                candidate = base + "-" + row.get("id") + ext;
+                if (!usedNames.add(candidate.toLowerCase(Locale.ROOT))) {
+                  candidate = base + "-" + row.get("id") + "-" + entryIndex + ext;
+                  usedNames.add(candidate.toLowerCase(Locale.ROOT));
+                }
+              }
+              String name = candidate;
+              zip.putNextEntry(new ZipEntry(name));
+              try (var in = new ByteArrayInputStream(bytes)) {
+                in.transferTo(zip);
+              }
+              zip.closeEntry();
+              log.info("Completed entry {}/{} bytes={}", entryIndex, totalCount, bytes.length);
+              entry.put("file", name);
+              entry.put("sha256", actualSha);
+            }
           }
-          String name = candidate;
-          zip.putNextEntry(new ZipEntry(name));
-          zip.write(bytes);
-          zip.closeEntry();
-          entry.put("file", name);
-          entry.put("sha256", row.get("sha256"));
         }
         manifest.add(entry);
       }
+      log.info("Adding manifest.json to ZIP batch={}", batch);
       zip.putNextEntry(new ZipEntry("manifest.json"));
-      zip.write(
-          write(Map.of("batchId", batch, "tasks", manifest)).getBytes(StandardCharsets.UTF_8));
+      byte[] manifestBytes = write(Map.of("batchId", batch, "tasks", manifest)).getBytes(StandardCharsets.UTF_8);
+      try (var in = new ByteArrayInputStream(manifestBytes)) {
+        in.transferTo(zip);
+      }
       zip.closeEntry();
+      log.info("Finishing ZIP batch={}", batch);
+      zip.finish();
+      log.info("ZIP finished successfully batch={}", batch);
     }
+  }
+
+  public record ExportedZip(Path path, long size, String downloadName) {}
+
+  public ExportedZip getOrBuildResultsZip(UUID batchId) throws IOException {
+    var b = detail(batchId);
+    String base = Objects.toString(b.get("archive_name"), "batch").replaceFirst("(?i)\\.zip$", "");
+    String downloadName = base.replaceAll("[^A-Za-z0-9_-]", "_") + "-results.zip";
+    Map<?, ?> counts = (Map<?, ?>) b.get("counts");
+    long completedCount = counts != null && counts.get("COMPLETED") instanceof Number n ? n.longValue() : 0L;
+
+    Path cacheDir = Path.of(System.getProperty("java.io.tmpdir"), "media-factory-bulk-exports");
+    Files.createDirectories(cacheDir);
+
+    Path finalizedZip = cacheDir.resolve("batch-" + batchId + "-c" + completedCount + ".zip");
+    if (Files.exists(finalizedZip) && Files.size(finalizedZip) > 0) {
+      log.info("Serving cached results ZIP for batch={} (path={}, size={})", batchId, finalizedZip, Files.size(finalizedZip));
+      return new ExportedZip(finalizedZip, Files.size(finalizedZip), downloadName);
+    }
+
+    synchronized (batchId.toString().intern()) {
+      if (Files.exists(finalizedZip) && Files.size(finalizedZip) > 0) {
+        log.info("Serving cached results ZIP for batch={} (path={}, size={})", batchId, finalizedZip, Files.size(finalizedZip));
+        return new ExportedZip(finalizedZip, Files.size(finalizedZip), downloadName);
+      }
+
+      Path tempZip = Files.createTempFile(cacheDir, "temp-batch-" + batchId + "-", ".tmp");
+      try {
+        try (var fileOut = new BufferedOutputStream(Files.newOutputStream(tempZip))) {
+          export(batchId, fileOut);
+        }
+        long finalSize = Files.size(tempZip);
+        check(finalSize > 0, "Generated ZIP file is empty");
+
+        Files.move(tempZip, finalizedZip, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        log.info("Finalized results ZIP created for batch={} at {} (size={})", batchId, finalizedZip, finalSize);
+
+        // Clean up older cache files for this batch
+        cleanOlderCachedZips(cacheDir, batchId, finalizedZip);
+
+        return new ExportedZip(finalizedZip, finalSize, downloadName);
+      } catch (Exception e) {
+        Files.deleteIfExists(tempZip);
+        throw e;
+      }
+    }
+  }
+
+  void cleanOlderCachedZips(Path cacheDir, UUID batchId, Path currentZip) {
+    try (var stream = Files.list(cacheDir)) {
+      stream
+          .filter(p -> p.getFileName().toString().startsWith("batch-" + batchId + "-") && !p.equals(currentZip))
+          .forEach(p -> {
+            try { Files.deleteIfExists(p); } catch (Exception ignored) {}
+          });
+    } catch (Exception ignored) {}
+  }
+
+  void cleanCachedZips(UUID batchId) {
+    try {
+      Path cacheDir = Path.of(System.getProperty("java.io.tmpdir"), "media-factory-bulk-exports");
+      if (Files.exists(cacheDir)) {
+        try (var stream = Files.list(cacheDir)) {
+          stream
+              .filter(p -> p.getFileName().toString().contains("batch-" + batchId))
+              .forEach(p -> {
+                try { Files.deleteIfExists(p); } catch (Exception ignored) {}
+              });
+        }
+      }
+    } catch (Exception ignored) {}
   }
 
   public record ImportRequest(

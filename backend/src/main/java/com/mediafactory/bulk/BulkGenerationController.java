@@ -3,11 +3,13 @@ package com.mediafactory.bulk;
 import com.mediafactory.provider.ImageGenerationProperties;
 import com.mediafactory.provider.routing.ImageProviderRouter;
 import com.mediafactory.provider.video.VideoProviderRouter;
+import java.io.IOException;
 import java.util.*;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 @RestController
 @RequestMapping("/api/v1/bulk")
@@ -156,17 +158,17 @@ public class BulkGenerationController {
   }
 
   @GetMapping("/batches/{id}/results.zip")
-  public ResponseEntity<StreamingResponseBody> export(@PathVariable UUID id) {
-    var b = service.detail(id);
-    String base = Objects.toString(b.get("archive_name"), "batch").replaceFirst("(?i)\\.zip$", "");
-    String downloadName = base.replaceAll("[^A-Za-z0-9_-]", "_") + "-results.zip";
+  public ResponseEntity<Resource> export(@PathVariable UUID id) throws IOException {
+    var exported = service.getOrBuildResultsZip(id);
+    Resource resource = new FileSystemResource(exported.path());
     return ResponseEntity.ok()
         .contentType(MediaType.parseMediaType("application/zip"))
-        .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + downloadName + "\"")
+        .contentLength(exported.size())
+        .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + exported.downloadName() + "\"")
         .header(HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate, private")
         .header(HttpHeaders.PRAGMA, "no-cache")
         .header("Expires", "0")
         .header("X-Content-Type-Options", "nosniff")
-        .body(out -> service.export(id, out));
+        .body(resource);
   }
 }
