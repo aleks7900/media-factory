@@ -3,7 +3,11 @@ package com.mediafactory.publishing;
 import com.mediafactory.publishing.model.*;
 import com.mediafactory.publishing.service.PublishingService;
 import com.mediafactory.publishing.tiktok.TikTokClient;
+import com.mediafactory.publishing.tiktok.TikTokOAuthService;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -17,10 +21,16 @@ public class PublishingController {
 
   private final PublishingService service;
   private final TikTokClient tikTokClient;
+  private final TikTokOAuthService tikTokOAuthService;
 
-  public PublishingController(PublishingService service, TikTokClient tikTokClient) {
+  public PublishingController(
+      PublishingService service,
+      TikTokClient tikTokClient,
+      TikTokOAuthService tikTokOAuthService
+  ) {
     this.service = service;
     this.tikTokClient = tikTokClient;
+    this.tikTokOAuthService = tikTokOAuthService;
   }
 
   // --- Account & OAuth Endpoints ---
@@ -32,17 +42,96 @@ public class PublishingController {
   }
 
   @GetMapping("/tiktok/auth-url")
-  public Map<String, String> getTikTokAuthUrl(@RequestParam(name = "state", required = false) String state) {
-    return Map.of("url", tikTokClient.getAuthorizationUrl(state));
+  public Map<String, Object> getTikTokAuthUrl(@RequestParam(name = "state", required = false) String state) {
+    var result = tikTokOAuthService.initiateAuthorization(state);
+    return Map.of(
+        "url", result.authorizationUrl(),
+        "attemptId", result.attemptId().toString(),
+        "state", result.state(),
+        "expiresAt", result.expiresAt().toString()
+    );
   }
 
   @PostMapping("/tiktok/callback")
   public PublishingAccountDto handleTikTokCallback(@RequestBody Map<String, String> body) {
     String code = body.get("code");
+    String state = body.get("state");
+
     if (code == null || code.isBlank()) {
       throw new IllegalArgumentException("Authorization code is required");
     }
-    return service.connectTikTokAccount(code);
+
+    TikTokOAuthService.OAuthAttempt attempt = null;
+    if (state != null && !state.isBlank()) {
+      attempt = tikTokOAuthService.validateAndConsumeState(state, code);
+    }
+
+    try {
+      PublishingAccountDto account = service.connectTikTokAccount(code);
+      if (attempt != null) {
+        tikTokOAuthService.recordAttemptCompletion(attempt.attemptId(), true, null);
+      }
+      return account;
+    } catch (Exception e) {
+      if (attempt != null) {
+        tikTokOAuthService.recordAttemptCompletion(attempt.attemptId(), false, e.getMessage());
+      }
+      throw e;
+    }
+  }
+
+  @GetMapping("/tiktok/callback")
+  public void handleTikTokBrowserRedirect(
+      @RequestParam(name = "code", required = false) String code,
+      @RequestParam(name = "state", required = false) String state,
+      @RequestParam(name = "error", required = false) String error,
+      @RequestParam(name = "error_description", required = false) String errorDescription,
+      HttpServletResponse response
+  ) throws IOException {
+    String frontendRedirect = determineFrontendUrl();
+
+    if (error != null && !error.isBlank()) {
+      String errParam = URLEncoder.encode(error, StandardCharsets.UTF_8);
+      String descParam = errorDescription != null ? URLEncoder.encode(errorDescription, StandardCharsets.UTF_8) : "";
+      response.sendRedirect(frontendRedirect + "?tiktok_error=" + errParam + "&error_description=" + descParam);
+      return;
+    }
+
+    if (code == null || code.isBlank()) {
+      response.sendRedirect(frontendRedirect + "?tiktok_error=missing_code");
+      return;
+    }
+
+    TikTokOAuthService.OAuthAttempt attempt = null;
+    if (state != null && !state.isBlank()) {
+      try {
+        attempt = tikTokOAuthService.validateAndConsumeState(state, code);
+      } catch (Exception e) {
+        response.sendRedirect(frontendRedirect + "?tiktok_error=" + URLEncoder.encode(e.getMessage(), StandardCharsets.UTF_8));
+        return;
+      }
+    }
+
+    try {
+      service.connectTikTokAccount(code);
+      if (attempt != null) {
+        tikTokOAuthService.recordAttemptCompletion(attempt.attemptId(), true, null);
+      }
+      response.sendRedirect(frontendRedirect + "?tiktok_connected=true");
+    } catch (Exception e) {
+      if (attempt != null) {
+        tikTokOAuthService.recordAttemptCompletion(attempt.attemptId(), false, e.getMessage());
+      }
+      response.sendRedirect(frontendRedirect + "?tiktok_error=" + URLEncoder.encode(e.getMessage(), StandardCharsets.UTF_8));
+    }
+  }
+
+  private String determineFrontendUrl() {
+    String redirectUri = tikTokClient.getProperties().getRedirectUri();
+    if (redirectUri != null && redirectUri.contains("/publishing/tiktok/callback")) {
+      return redirectUri.replace("/publishing/tiktok/callback", "");
+    }
+    return "/media-factory";
   }
 
   // --- ZIP Upload & Preview Workflow ---

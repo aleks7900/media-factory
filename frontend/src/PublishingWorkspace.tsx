@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useState, useEffect} from 'react';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {
   AlertCircle,
@@ -110,6 +110,16 @@ export function PublishingWorkspace() {
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [isAuthorizing, setIsAuthorizing] = useState<boolean>(false);
+  const [authCooldownSec, setAuthCooldownSec] = useState<number>(0);
+
+  useEffect(() => {
+    if (authCooldownSec <= 0) return;
+    const timer = setInterval(() => {
+      setAuthCooldownSec(prev => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [authCooldownSec]);
 
   // 1. Account Query
   const accountQuery = useQuery({
@@ -268,12 +278,19 @@ export function PublishingWorkspace() {
   };
 
   const handleTikTokReauth = async () => {
+    if (isAuthorizing || authCooldownSec > 0) return;
+    setIsAuthorizing(true);
     setActionError(null);
 
     try {
       const response = await fetch(
           apiUrl('/v1/publishing/tiktok/auth-url')
       );
+
+      if (response.status === 429) {
+        setAuthCooldownSec(60);
+        throw new Error('Too many TikTok authorization attempts. Please wait 60 seconds before trying again.');
+      }
 
       if (!response.ok) {
         throw new Error(
@@ -287,8 +304,10 @@ export function PublishingWorkspace() {
         throw new Error('TikTok authorization URL was not returned');
       }
 
+      setAuthCooldownSec(30);
       window.location.assign(data.url);
     } catch (e: any) {
+      setIsAuthorizing(false);
       setActionError(e.message ?? 'Failed to start TikTok authorization');
     }
   };
@@ -309,6 +328,11 @@ export function PublishingWorkspace() {
             <h3>
               TikTok account: <span className="account-handle">@{account?.username || 'mediafactory_studio'}</span>
               <span className="account-badge-pill">Direct Post API v2</span>
+              {account?.isAuthorized ? (
+                <span style={{ marginLeft: 8, color: '#4ade80', fontSize: '0.8rem', fontWeight: 600 }}>● Connected</span>
+              ) : (
+                <span style={{ marginLeft: 8, color: '#f87171', fontSize: '0.8rem', fontWeight: 600 }}>○ Not Connected</span>
+              )}
             </h3>
             <div className="account-meta">
               <span>{account?.displayName || 'Media Content Factory'}</span>
@@ -322,8 +346,18 @@ export function PublishingWorkspace() {
           <button
               className="control-btn"
               onClick={handleTikTokReauth}
+              disabled={isAuthorizing || authCooldownSec > 0}
+              title={authCooldownSec > 0 ? `Please wait ${authCooldownSec}s before retrying` : undefined}
           >
-            <RefreshCw size={14} /> Switch / Re-auth Account
+            {isAuthorizing ? (
+              <><RotateCw size={14} className="spin" /> Connecting...</>
+            ) : authCooldownSec > 0 ? (
+              <><Clock size={14} /> Wait {authCooldownSec}s</>
+            ) : account?.isAuthorized ? (
+              <><RefreshCw size={14} /> Switch / Re-auth Account</>
+            ) : (
+              <><Play size={14} /> Connect TikTok Account</>
+            )}
           </button>
         </div>
       </section>

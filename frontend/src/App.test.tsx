@@ -158,4 +158,39 @@ describe('Media Factory dashboard', () => {
 
     expect(await screen.findByRole('button', { name: /Sign In to Studio/i })).toBeInTheDocument();
   });
+
+  it('exchanges OAuth authorization code exactly once and clears URL query', async () => {
+    const replaceStateSpy = vi.spyOn(window.history, 'replaceState');
+    const origSearch = window.location.search;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        search: '?code=auth_code_999&state=state_abc',
+        pathname: '/publishing/tiktok/callback',
+        href: 'http://localhost:3000/publishing/tiktok/callback?code=auth_code_999&state=state_abc'
+      }
+    });
+
+    const fetcher = setup();
+
+    await waitFor(() => {
+      expect(fetcher).toHaveBeenCalledWith(
+        expect.stringContaining('/v1/publishing/tiktok/callback'),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ code: 'auth_code_999', state: 'state_abc' })
+        })
+      );
+    });
+
+    // Verify it was called only once (no duplicate code exchange)
+    const callbackCalls = fetcher.mock.calls.filter(call =>
+      String(call[0]).includes('/v1/publishing/tiktok/callback')
+    );
+    expect(callbackCalls.length).toBe(1);
+
+    // Verify URL was cleaned
+    expect(replaceStateSpy).toHaveBeenCalled();
+  });
 });
+

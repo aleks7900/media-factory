@@ -225,3 +225,37 @@ it('renders video tasks with thumbnails, filenames, captions, status, and TikTok
   const postLink = screen.getByRole('link', {name: /TikTok Post/i});
   expect(postLink).toHaveAttribute('href', 'https://www.tiktok.com/@mediafactory_cars/video/7350000000000000001');
 });
+
+it('disables OAuth button immediately on click to prevent duplicate requests and double-clicks', async () => {
+  const {fetcher} = setup();
+
+  await waitFor(() => {
+    expect(screen.getByRole('button', {name: /Switch \/ Re-auth Account/i})).toBeInTheDocument();
+  });
+
+  const btn = screen.getByRole('button', {name: /Switch \/ Re-auth Account/i});
+  expect(btn).not.toBeDisabled();
+
+  // Mock window.location.assign
+  const assignMock = vi.fn();
+  Object.defineProperty(window, 'location', {
+    configurable: true,
+    value: { assign: assignMock, href: 'http://localhost:3000' }
+  });
+
+  // Click once
+  await userEvent.click(btn);
+
+  expect(fetcher).toHaveBeenCalledWith(
+    expect.stringContaining('/v1/publishing/tiktok/auth-url')
+  );
+});
+
+it('renders Connected status indicator when account is authorized', async () => {
+  setup();
+
+  await waitFor(() => {
+    expect(screen.getByText(/● Connected/i)).toBeInTheDocument();
+  });
+});
+

@@ -1,4 +1,4 @@
-import {useState, useEffect} from 'react';
+import {useState, useEffect, useRef} from 'react';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {
     Activity,
@@ -124,6 +124,61 @@ export function App() {
   const [notice, setNotice] = useState('');
   const [processingAsset, setProcessingAsset] = useState<string>();
   const [processingProfiles, setProcessingProfiles] = useState<string[]>();
+  const oauthExchangedRef = useRef(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const search = window.location.search;
+    const pathname = window.location.pathname;
+    const isCallbackPath = pathname.includes('/publishing/tiktok/callback');
+    const params = new URLSearchParams(search);
+    const code = params.get('code');
+    const state = params.get('state');
+    const tiktokError = params.get('tiktok_error') || params.get('error');
+    const tiktokDesc = params.get('error_description');
+    const tiktokConnected = params.get('tiktok_connected');
+
+    if (tiktokError) {
+      setNotice(`TikTok authorization cancelled or failed: ${tiktokDesc || tiktokError}`);
+      setPage('TikTok Publishing');
+      const cleanUrl = pathname.replace(/\/publishing\/tiktok\/callback.*/, '') || '/';
+      window.history.replaceState({}, document.title, cleanUrl);
+      return;
+    }
+
+    if (tiktokConnected) {
+      setNotice('TikTok account connected successfully!');
+      setPage('TikTok Publishing');
+      client.invalidateQueries({ queryKey: ['publishing-account'] });
+      const cleanUrl = pathname.replace(/\/publishing\/tiktok\/callback.*/, '') || '/';
+      window.history.replaceState({}, document.title, cleanUrl);
+      return;
+    }
+
+    if ((code || isCallbackPath) && !oauthExchangedRef.current) {
+      if (code) {
+        oauthExchangedRef.current = true;
+        setNotice('Connecting TikTok account, exchanging code...');
+        setPage('TikTok Publishing');
+
+        api('/v1/publishing/tiktok/callback', { code, state })
+          .then((acc: any) => {
+            const handle = acc?.username ? `@${acc.username}` : 'TikTok';
+            setNotice(`TikTok account ${handle} connected successfully!`);
+            client.invalidateQueries({ queryKey: ['publishing-account'] });
+          })
+          .catch((err: any) => {
+            const msg = err.message || 'Failed to exchange TikTok authorization code';
+            setNotice(`TikTok connection failed: ${msg}`);
+          })
+          .finally(() => {
+            const cleanUrl = pathname.replace(/\/publishing\/tiktok\/callback.*/, '') || '/';
+            window.history.replaceState({}, document.title, cleanUrl);
+          });
+      }
+    }
+  }, [client]);
   const dashboard = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => api<Record<string, number>>('/dashboard'),
