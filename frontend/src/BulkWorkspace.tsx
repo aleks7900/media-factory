@@ -333,7 +333,7 @@ export function BulkWorkspace({kind}: { kind: Kind }) {
     </section>
     {b && <section className="panel">
       <div className="bulk-bar"><h3>{b.name}</h3><span className="badge">{b.status}</span><a
-          className="bulk-download" href={apiUrl(`/v1/bulk/batches/${selected}/results.zip`)}><Download
+          className="bulk-download" download href={apiUrl(`/v1/bulk/batches/${selected}/results.zip`)}><Download
           size={16}/> Results ZIP</a></div>
       <p>{b.archive_name} · {b.totalTasks} tasks · {b.references} references
         · {b.provider} / {b.model}</p>
@@ -349,7 +349,7 @@ export function BulkWorkspace({kind}: { kind: Kind }) {
           <button
               disabled={action.isPending || (b.cancelled && a !== 'delete') || (a === 'retry-failed' && (b.counts.FAILED ?? 0) === 0)}
               key={a} onClick={() => act('batches', selected, a)}>{a.replace('-', ' ')}</button>)}<a
-          className="button bulk-download-btn"
+          className="button bulk-download-btn" download
           href={apiUrl(`/v1/bulk/batches/${selected}/results.zip`)}><Download size={14}/> Download
         results ({b.counts.COMPLETED ?? 0})</a></div>
       <div className="bulk-bar"><input aria-label="Search tasks" placeholder="Search task names…"

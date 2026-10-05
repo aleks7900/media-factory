@@ -43,6 +43,30 @@ public class BulkArchiveParser {
     }
   }
 
+  static boolean isIgnoredMetadataOrDocFile(String fileName) {
+    String lower = fileName.toLowerCase(Locale.ROOT).trim();
+    return lower.equals("readme")
+        || lower.matches("^readme\\.(md|txt|markdown|rst|html|pdf)$")
+        || lower.equals("license")
+        || lower.matches("^license\\.(md|txt)$")
+        || lower.equals("metadata.json")
+        || lower.equals("manifest.json")
+        || lower.equals(".gitignore")
+        || lower.equals("package.json")
+        || lower.equals("info.txt")
+        || lower.equals("notes.txt")
+        || lower.equals("notes.md");
+  }
+
+  static boolean isIgnoredMetadataOrDocPath(String path) {
+    for (String part : path.split("/", -1)) {
+      if (isIgnoredMetadataOrDocFile(part)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   static boolean isOsMetadataPart(String part) {
     String lower = part.toLowerCase(Locale.ROOT);
     return lower.equals(".ds_store")
@@ -89,7 +113,7 @@ public class BulkArchiveParser {
           var e = all.nextElement();
           require(++count <= limits.files(), "Archive file count exceeded");
           String name = Normalizer.normalize(e.getName(), Normalizer.Form.NFC);
-          if (isOsMetadataPath(name)) {
+          if (isOsMetadataPath(name) || isIgnoredMetadataOrDocPath(name)) {
             continue;
           }
           require(

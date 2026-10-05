@@ -162,7 +162,11 @@ public class BulkGenerationController {
     String downloadName = base.replaceAll("[^A-Za-z0-9_-]", "_") + "-results.zip";
     return ResponseEntity.ok()
         .contentType(MediaType.parseMediaType("application/zip"))
-        .header("Content-Disposition", "attachment; filename=" + downloadName)
+        .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + downloadName + "\"")
+        .header(HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate, private")
+        .header(HttpHeaders.PRAGMA, "no-cache")
+        .header("Expires", "0")
+        .header("X-Content-Type-Options", "nosniff")
         .body(out -> service.export(id, out));
   }
 }

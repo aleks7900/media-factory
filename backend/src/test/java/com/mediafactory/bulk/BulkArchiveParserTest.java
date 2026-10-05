@@ -136,4 +136,37 @@ class BulkArchiveParserTest {
     assertThat(result.tasks().getFirst().prompt()).contains("Гоночный автомобиль");
     assertThat(result.tasks().getLast().prompt()).contains("赛博朋克龙");
   }
+
+  @Test
+  void ignoresReadmeAndMetadataFilesWithoutCreatingTasks() throws Exception {
+    var files = new LinkedHashMap<String, byte[]>();
+    for (int i = 1; i <= 10; i++) {
+      files.put(String.format("task-%02d.txt", i), text("Prompt " + i));
+    }
+    files.put("README.md", text("# Instructions\nThis is a readme file, not a generation task."));
+    files.put("metadata.json", text("{\"author\":\"test\",\"version\":\"1.0\"}"));
+    files.put("LICENSE.txt", text("MIT License"));
+
+    var result = parse(files);
+    // Exactly 10 actual tasks must be parsed, ignoring README, metadata and license
+    assertThat(result.tasks()).hasSize(10);
+    assertThat(result.tasks().stream().allMatch(BulkArchiveParser.Task::valid)).isTrue();
+    assertThat(result.tasks().stream().map(BulkArchiveParser.Task::name))
+        .doesNotContain("README", "metadata", "LICENSE");
+  }
+
+  @Test
+  void ignoresRootReadmeInDirectoryArchive() throws Exception {
+    var files = new LinkedHashMap<String, byte[]>();
+    files.put("README.md", text("Root archive overview"));
+    files.put("car-1/task.md", text("A fast red car"));
+    files.put("car-1/README.txt", text("Local directory notes"));
+    files.put("car-2/task.md", text("A sleek blue car"));
+
+    var result = parse(files);
+    assertThat(result.tasks()).hasSize(2);
+    assertThat(result.tasks().stream().allMatch(BulkArchiveParser.Task::valid)).isTrue();
+    assertThat(result.tasks().stream().map(BulkArchiveParser.Task::name))
+        .containsExactlyInAnyOrder("car-1", "car-2");
+  }
 }
