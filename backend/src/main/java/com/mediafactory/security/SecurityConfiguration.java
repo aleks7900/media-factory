@@ -23,6 +23,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import jakarta.servlet.DispatcherType;
 
 @Configuration
 @EnableWebSecurity
@@ -106,10 +107,23 @@ public class SecurityConfiguration {
             })
         )
         .authorizeHttpRequests(auth -> auth
+            // Allow internal asynchronous and error dispatches
+            .dispatcherTypeMatchers(
+                DispatcherType.ASYNC,
+                DispatcherType.ERROR
+            ).permitAll()
+
+            // Public authentication endpoints
             .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
             .requestMatchers(HttpMethod.POST, "/api/auth/logout").permitAll()
+
+            // Health checks
             .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+
+            // CORS preflight
             .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+            // All original application requests still require ADMIN
             .anyRequest().hasRole("ADMIN")
         )
         .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
