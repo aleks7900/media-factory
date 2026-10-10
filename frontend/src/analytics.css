@@ -1,11 +1,274 @@
-.analytics-workspace{display:grid;gap:20px}.analytics-heading{display:flex;align-items:center;justify-content:space-between;gap:20px}.analytics-heading h2{font-size:28px;margin:8px 0}.analytics-heading p,.analytics-note{color:#99a3b6;font-size:13px}.analytics-filters{display:flex;flex-wrap:wrap;gap:12px}.analytics-filters label,.analytics-heading label{display:grid;gap:6px;color:#a7b0c0;font-size:12px}.analytics-filters input,.analytics-filters select,.analytics-heading select{background:#141a24;color:#e0e6f0;border:1px solid #30394a;border-radius:7px;padding:8px;max-width:210px}.analytics-tabs{display:flex;gap:5px;flex-wrap:wrap}.analytics-tabs .selected{color:#bdaaed;background:#302442}.analytics-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:12px}.analytics-cards article{background:linear-gradient(145deg,#202231,#151a24);border:1px solid #303446;border-radius:12px;padding:20px 14px}.analytics-cards span{font-size:10px;letter-spacing:1.2px;color:#9aa6bd}.analytics-cards strong{display:block;font-size:23px;margin-top:12px;font-variant-numeric:tabular-nums}.analytics-workspace .negative{color:#f19eab}.analytics-chart{display:flex;align-items:end;gap:8px;overflow:auto;min-height:180px;padding:16px 0}.analytics-chart>div{min-width:30px;flex:1}.analytics-chart>div>div{background:linear-gradient(#ab91ec,#605693);border-radius:4px 4px 0 0}.analytics-chart>div>div.negative{background:#b56b78}.analytics-chart small{font-size:9px;color:#8896ae}.analytics-table{overflow:auto}.analytics-table td{font-variant-numeric:tabular-nums;white-space:nowrap}.analytics-table td:first-child{max-width:220px;overflow:hidden;text-overflow:ellipsis}.analytics-pagination{display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:16px}.analytics-workspace pre{max-height:380px;overflow:auto;font-size:11px}.analytics-workspace textarea{width:100%;background:#111722;color:#dce3ee;padding:12px}.analytics-workspace summary{cursor:pointer;font-weight:600}
-.analytics-thumbnail{width:36px;height:48px;object-fit:cover;border-radius:4px;margin-right:8px;vertical-align:middle}
-.analytics-workspace{min-width:0;grid-template-columns:minmax(0,1fr)}
-.analytics-workspace .panel{min-width:0;max-width:100%}
-.analytics-heading{flex-wrap:wrap}
-.analytics-table{min-width:0;max-width:100%}
-.analytics-tabs{flex-direction:row}
-.analytics-tabs button{width:auto;flex:0 0 auto}
-.analytics-funnel{display:flex;flex-wrap:wrap;align-items:center;gap:16px;border:1px solid #303446;border-radius:10px;padding:16px;color:#aab3c5;font-size:12px}
-.analytics-funnel b{color:#e1d5ff;margin-left:8px}.analytics-funnel small{flex-basis:100%;color:#8f9ab0}
-.analytics-money-row{display:grid;grid-template-columns:100px 1fr 1fr;gap:15px;margin:18px 0;font-size:12px}.analytics-money-row i{display:block;height:8px;border-radius:4px;margin-top:6px;background:#a88ae3}.analytics-money-row i.revenue{background:#6fc6af}
+/* ==========================================================================
+   Media Factory - Operations Analytics & Financial Ledger
+   ========================================================================== */
+
+.analytics-workspace {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  color: #edeaf5;
+}
+
+.analytics-workspace .panel {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.analytics-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.analytics-heading h2 {
+  font-size: 28px;
+  letter-spacing: -0.03em;
+  margin: 8px 0;
+  color: #f8fafc;
+}
+
+.analytics-heading p, .analytics-note {
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.analytics-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.analytics-filters label, .analytics-heading label {
+  display: grid;
+  gap: 6px;
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.analytics-filters input, .analytics-filters select, .analytics-heading select {
+  background: rgba(12, 16, 24, 0.85);
+  color: #f1f5f9;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 9px 12px;
+  max-width: 210px;
+  font-size: 13px;
+  transition: all 0.2s ease;
+}
+
+.analytics-filters input:focus, .analytics-filters select:focus, .analytics-heading select:focus {
+  outline: none;
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.2);
+}
+
+.analytics-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex-direction: row;
+}
+
+.analytics-tabs button {
+  width: auto;
+  flex: 0 0 auto;
+  font-size: 12px;
+  padding: 8px 14px;
+}
+
+.analytics-tabs .selected {
+  background: linear-gradient(135deg, #a78bfa, #7c3aed) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  box-shadow: 0 4px 18px rgba(167, 139, 250, 0.4);
+}
+
+.analytics-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px;
+}
+
+.analytics-cards article {
+  background: rgba(20, 24, 34, 0.72);
+  border: 1px solid var(--border-glass, rgba(255, 255, 255, 0.08));
+  border-radius: 14px;
+  padding: 20px 16px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  transition: all 0.2s ease;
+}
+
+.analytics-cards article:hover {
+  background: rgba(26, 32, 46, 0.85);
+  border-color: rgba(167, 139, 250, 0.35);
+  transform: translateY(-2px);
+}
+
+.analytics-cards span {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+.analytics-cards strong {
+  display: block;
+  font-size: 25px;
+  font-weight: 750;
+  margin-top: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #f8fafc;
+}
+
+.analytics-workspace .negative {
+  color: #fca5a5;
+}
+
+.analytics-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  overflow: auto;
+  min-height: 190px;
+  padding: 20px 0 10px;
+}
+
+.analytics-chart > div {
+  min-width: 32px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+}
+
+.analytics-chart > div > div {
+  background: linear-gradient(180deg, #c4b5fd 0%, #7c3aed 100%);
+  border-radius: 6px 6px 0 0;
+  box-shadow: 0 0 12px rgba(167, 139, 250, 0.25);
+  transition: height 0.3s ease;
+}
+
+.analytics-chart > div > div.negative {
+  background: linear-gradient(180deg, #f87171 0%, #b91c1c 100%);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.25);
+}
+
+.analytics-chart small {
+  font-size: 10px;
+  color: #94a3b8;
+  text-align: center;
+  margin-top: 6px;
+}
+
+.analytics-table {
+  overflow: auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.analytics-table td {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.analytics-table td:first-child {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.analytics-pagination {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+  font-size: 12px;
+}
+
+.analytics-workspace pre {
+  max-height: 380px;
+  overflow: auto;
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+  background: #080c12;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 16px;
+  color: #c4b5fd;
+}
+
+.analytics-workspace textarea {
+  width: 100%;
+  background: rgba(10, 14, 20, 0.85);
+  color: #f1f5f9;
+  padding: 14px;
+}
+
+.analytics-workspace summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #c7b2fc;
+}
+
+.analytics-thumbnail {
+  width: 38px;
+  height: 50px;
+  object-fit: cover;
+  border-radius: 6px;
+  margin-right: 10px;
+  vertical-align: middle;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.analytics-funnel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid var(--border-glass, rgba(255, 255, 255, 0.08));
+  border-radius: 14px;
+  padding: 18px 22px;
+  color: #cbd5e1;
+  font-size: 12px;
+  background: rgba(18, 22, 32, 0.6);
+}
+
+.analytics-funnel b {
+  color: #f1edfb;
+  margin-left: 8px;
+}
+
+.analytics-funnel small {
+  flex-basis: 100%;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.analytics-money-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 1fr;
+  gap: 16px;
+  margin: 18px 0;
+  font-size: 12px;
+  align-items: center;
+}
+
+.analytics-money-row i {
+  display: block;
+  height: 8px;
+  border-radius: 9999px;
+  margin-top: 6px;
+  background: linear-gradient(90deg, #a78bfa, #7c3aed);
+}
+
+.analytics-money-row i.revenue {
+  background: linear-gradient(90deg, #34d399, #059669);
+}

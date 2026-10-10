@@ -10,7 +10,7 @@
   height: 100vh;
   pointer-events: none;
   z-index: 0;
-  opacity: 0.85;
+  opacity: 0.9;
   transition: opacity 0.8s ease;
 }
 
@@ -23,9 +23,9 @@
   pointer-events: none;
   z-index: 0;
   background:
-    radial-gradient(ellipse at 80% 20%, rgba(139, 92, 246, 0.15) 0%, transparent 60%),
-    radial-gradient(ellipse at 20% 80%, rgba(6, 182, 212, 0.12) 0%, transparent 55%),
-    radial-gradient(ellipse at 50% 50%, rgba(99, 102, 241, 0.08) 0%, transparent 70%),
+    radial-gradient(ellipse 70% 50% at 85% 15%, rgba(139, 92, 246, 0.18) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 15% 85%, rgba(6, 182, 212, 0.14) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 50% at 50% 50%, rgba(99, 102, 241, 0.09) 0%, transparent 70%),
     #07070b;
   animation: fallbackNebula 18s ease-in-out infinite alternate;
 }
@@ -65,35 +65,35 @@
 
 /* Glass UI Enhancements */
 .app-shell aside {
-  background: rgba(14, 14, 20, 0.72) !important;
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border-right: 1px solid rgba(255, 255, 255, 0.07) !important;
-  z-index: 2;
+  background: rgba(12, 10, 18, 0.78) !important;
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+  z-index: 20;
 }
 
 .app-shell header {
-  background: rgba(14, 14, 20, 0.65) !important;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+  background: rgba(12, 10, 18, 0.68) !important;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 25;
 }
 
 .panel {
-  background: rgba(22, 22, 30, 0.68) !important;
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.07) !important;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+  background: rgba(20, 18, 30, 0.72) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
 
 .hero {
-  background: radial-gradient(ellipse at 85% 50%, rgba(88, 28, 135, 0.45), rgba(28, 25, 44, 0.7) 50%, rgba(18, 16, 26, 0.85) 80%) !important;
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(167, 139, 250, 0.22) !important;
+  background: radial-gradient(ellipse at 85% 50%, rgba(98, 35, 155, 0.45), rgba(28, 23, 46, 0.75) 50%, rgba(16, 13, 25, 0.9) 85%) !important;
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(167, 139, 250, 0.25) !important;
 }
 
 /* Global Background Job Indicator Pill (in Header) */
@@ -101,23 +101,23 @@
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 14px;
-  background: rgba(30, 27, 46, 0.85);
-  border: 1px solid rgba(167, 139, 250, 0.35);
+  padding: 6px 15px;
+  background: rgba(28, 23, 44, 0.85);
+  border: 1px solid rgba(167, 139, 250, 0.38);
   border-radius: 9999px;
   font-size: 11px;
-  color: #e9e1f5;
-  box-shadow: 0 0 15px rgba(139, 92, 246, 0.25);
+  color: #ede5f8;
+  box-shadow: 0 0 18px rgba(139, 92, 246, 0.28);
   cursor: pointer;
-  transition: all 0.2s ease;
-  backdrop-filter: blur(10px);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(14px);
 }
 
 .global-job-indicator:hover {
-  background: rgba(45, 38, 70, 0.95);
-  border-color: rgba(196, 181, 253, 0.6);
+  background: rgba(45, 36, 72, 0.95);
+  border-color: rgba(196, 181, 253, 0.65);
   transform: translateY(-1px);
-  box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+  box-shadow: 0 0 24px rgba(139, 92, 246, 0.45);
 }
 
 .global-job-pulse {
@@ -156,9 +156,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(6, 7, 12, 0.82);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  background: rgba(5, 4, 9, 0.85);
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
   animation: overlayFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   padding: 24px;
 }
@@ -170,7 +170,7 @@
   }
   to {
     opacity: 1;
-    backdrop-filter: blur(24px);
+    backdrop-filter: blur(28px);
   }
 }
 
@@ -178,14 +178,14 @@
   position: relative;
   width: 100%;
   max-width: 540px;
-  background: linear-gradient(135deg, rgba(26, 23, 40, 0.85) 0%, rgba(15, 14, 25, 0.92) 100%);
-  border: 1px solid rgba(167, 139, 250, 0.25);
-  border-radius: 20px;
-  padding: 40px 36px 32px;
+  background: linear-gradient(135deg, rgba(28, 24, 44, 0.9) 0%, rgba(14, 12, 24, 0.96) 100%);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  border-radius: 22px;
+  padding: 44px 38px 34px;
   box-shadow:
-    0 25px 60px -15px rgba(0, 0, 0, 0.7),
-    0 0 40px -10px rgba(139, 92, 246, 0.25),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    0 30px 80px -15px rgba(0, 0, 0, 0.8),
+    0 0 50px -10px rgba(139, 92, 246, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -206,7 +206,7 @@
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 2px dashed rgba(167, 139, 250, 0.4);
+  border: 2px dashed rgba(167, 139, 250, 0.45);
   animation: rotateRing 14s linear infinite;
 }
 
@@ -224,10 +224,10 @@
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #e9d5ff, #8b5cf6 45%, #3b0764 90%);
+  background: radial-gradient(circle at 35% 35%, #f1e4ff, #8b5cf6 45%, #3b0764 90%);
   box-shadow:
-    0 0 30px rgba(147, 51, 234, 0.6),
-    inset 0 0 15px rgba(255, 255, 255, 0.5);
+    0 0 35px rgba(147, 51, 234, 0.65),
+    inset 0 0 18px rgba(255, 255, 255, 0.55);
   animation: corePulse 3s ease-in-out infinite alternate;
 }
 
@@ -248,9 +248,9 @@
 
 /* Percent or Indeterminate Badge */
 .hud-percent-value {
-  font-size: 42px;
-  font-weight: 700;
-  letter-spacing: -1.5px;
+  font-size: 44px;
+  font-weight: 750;
+  letter-spacing: -0.04em;
   background: linear-gradient(135deg, #ffffff 30%, #c4b5fd 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -260,41 +260,41 @@
 
 .hud-indeterminate-badge {
   font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 1.5px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: #c4b5fd;
-  background: rgba(139, 92, 246, 0.16);
-  border: 1px solid rgba(167, 139, 250, 0.3);
-  padding: 6px 14px;
+  background: rgba(139, 92, 246, 0.18);
+  border: 1px solid rgba(167, 139, 250, 0.35);
+  padding: 6px 16px;
   border-radius: 9999px;
   margin-bottom: 12px;
 }
 
 .hud-title {
-  font-size: 20px;
-  font-weight: 600;
-  color: #f3e8ff;
+  font-size: 21px;
+  font-weight: 650;
+  color: #f7effe;
   margin-bottom: 8px;
 }
 
 .hud-phase-desc {
-  font-size: 12px;
-  color: #a78bfa;
-  margin-bottom: 24px;
-  max-width: 380px;
+  font-size: 13px;
+  color: #bca4ff;
+  margin-bottom: 26px;
+  max-width: 400px;
   line-height: 1.6;
 }
 
 /* Real Progress Track vs Indeterminate Shimmer Track */
 .hud-progress-track {
   width: 100%;
-  height: 7px;
-  background: rgba(255, 255, 255, 0.08);
+  height: 8px;
+  background: rgba(255, 255, 255, 0.09);
   border-radius: 9999px;
   overflow: hidden;
   position: relative;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .hud-progress-bar-fill {
@@ -302,7 +302,7 @@
   background: linear-gradient(90deg, #8b5cf6, #06b6d4);
   border-radius: 9999px;
   transition: width 0.35s ease-out;
-  box-shadow: 0 0 12px rgba(6, 182, 212, 0.6);
+  box-shadow: 0 0 14px rgba(6, 182, 212, 0.65);
 }
 
 .hud-progress-shimmer {
@@ -326,8 +326,8 @@
   justify-content: space-between;
   width: 100%;
   font-size: 11px;
-  color: #9ca3af;
-  margin-bottom: 26px;
+  color: #a49ab5;
+  margin-bottom: 28px;
   padding: 0 4px;
 }
 
@@ -339,20 +339,21 @@
 }
 
 .hud-background-btn {
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #e5e7eb;
-  padding: 10px 22px;
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #eae7f2;
+  padding: 10px 24px;
+  border-radius: 9px;
   font-size: 12px;
-  font-weight: 500;
-  transition: all 0.15s ease;
+  font-weight: 550;
+  transition: all 0.18s ease;
 }
 
 .hud-background-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
-  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.28);
   color: #ffffff;
+  transform: translateY(-1px);
 }
 
 /* Reduced Motion Overrides */
